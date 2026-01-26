@@ -1,0 +1,57 @@
+services:
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: ./dev/Dockerfile
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     - DATABASE_URL=postgres://user:password@db:5432/rekreativko
+  #   depends_on:
+  #     - db
+
+  db:
+    build:
+      context: .
+      dockerfile: ./db.Dockerfile
+    container_name: rekreativko_db
+    ports:
+      - "5432:5432"
+    volumes:
+      # - ../../rekreativko_db:/var/lib/postgresql/data
+      - rekreativko_db:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rekreativko
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rekreativko -d rekreativko"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rekreativko
+
+  redis:
+    image: redis
+    container_name: rekreativko_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - rekreativko_redis:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rekreativko
+
+volumes:
+  rekreativko_db:
+  rekreativko_redis:
+
+networks:
+  rekreativko:
+    driver: bridge

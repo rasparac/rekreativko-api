@@ -1,0 +1,153 @@
+# https://taskfile.dev
+
+version: "3"
+
+vars:
+  GREETING: Hello, World!
+  DB_HOST: localhost
+  DB_USER: postgres
+  DB_PASSWORD: postgres
+  DB_NAME: rekreativko
+  DB_URL: postgres://{{.DB_USER}}:{{.DB_PASSWORD}}@{{.DB_HOST}}/{{.DB_NAME}}?sslmode=disable
+  MIGRATIONS_DIR: ./migrations
+  APP_NAME: rekreativko
+
+dotenv: [".env"]
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  #dev
+
+  run:
+    desc: Run the application
+    cmds:
+      - go run cmd/api/main.go
+
+  build:
+    desc: Build the application
+    cmds:
+      - go build -o bin/{{.APP_NAME}} cmd/api/main.go
+
+  #docker
+
+  docker:up:
+    desc: Start docker containers
+    cmds:
+      - docker compose up -d --force-recreate
+    status:
+      - docker compose ps | grep -q "Up"
+
+  docker:build-api:
+    desc: Build new api image
+    cmds:
+      - docker compose build api
+
+  docker:down:
+    desc: Stop docker containers
+    cmds:
+      - docker compose down --remove-orphans
+
+  docker:restart:
+    desc: Restart docker containers
+    cmds:
+      - task: docker:down
+      - task: docker:up
+
+  #migrations
+
+  migrate:up:
+    desc: Run all migrations
+    deps: [docker:up]
+    cmds:
+      - migrate -path {{.MIGRATIONS_DIR}} -database {{.DB_URL}} up
+      - echo "migrations applied successfully"
+
+  migrate:down:
+    desc: Revert all migrations
+    deps: [docker:up]
+    cmds:
+      - migrate -path {{.MIGRATIONS_DIR}} -database {{.DB_URL}} down 1
+      - echo "migration rolled back"
+
+  migrate:down:all:
+    desc: Revert all migrations
+    deps: [docker:up]
+    cmds:
+      - migrate -path {{.MIGRATIONS_DIR}} -database {{.DB_URL}} down -all
+      - echo "migrations reverted successfully"
+
+  migrate:create:
+    desc: Create a new migration (usage task migrate:create -- create_users_table)
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          echo "Please provide a migration name"
+          echo "Usage: task migrate:create -- <name>"
+          exit 1
+        fi
+      - migrate create -ext sql -dir {{.MIGRATIONS_DIR}} -seq "{{.CLI_ARGS}}"
+      - echo "migration created successfully"
+
+  #test
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test -v ./...
+
+  #deps
+
+  deps:install:
+    desc: Install dependencies
+    cmds:
+      - go mod download
+      - go mod tidy
+
+  deps:update:
+    desc: Update dependencies
+    cmds:
+      - go get -u ./...
+      - go mod tidy
+
+  #tools
+
+  tools:install:
+    desc: Install tools
+    cmds:
+      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+      - go install golang.org/x/tools/cmd/goimports@latest
+      - echo "tools installed successfully"
+
+  #generate
+
+  generate:
+    desc: Run go generate
+    cmds:
+      - go generate ./...
+
+  docs:swagger:
+    desc: Generate swagger docs
+    cmds:
+      - swag init -g cmd/api/main.go -o docs --parseDependency --parseInternal
+      - echo "swagger docs generated successfully"
+
+  docs:serve:
+    desc: Serve swagger docs
+    deps: [docs:swagger, run]
+
+  docs:format:
+    desc: Format swagger docs
+    cmds:
+      - swag fmt
+
+  #lint
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run
