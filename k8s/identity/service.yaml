@@ -5,7 +5,7 @@ metadata:
   namespace: rekreativko
 spec:
   selector:
-    app: identity-service
+    app: identity
   ports:
     - port: 8081
       targetPort: 8081
