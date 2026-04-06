@@ -39,9 +39,13 @@ func NewDomainEventManager(
 
 func (tm *domainEventManager) InsertEvents(
 	ctx context.Context,
-	schema string,
+	_ string,
 	events []Event,
 ) error {
+	if len(events) == 0 {
+		return nil
+	}
+
 	var (
 		eventValues  = make([]any, 0, len(events)*5)
 		placeHolders = make([]string, 0)
@@ -68,7 +72,7 @@ func (tm *domainEventManager) InsertEvents(
 			fmt.Sprintf("($%d, $%d, $%d, $%d, $%d)", i*5+1, i*5+2, i*5+3, i*5+4, i*5+5),
 		)
 	}
-
+	schema := "public" // TODO: read from config
 	const insertEventQueryBlueprint = `
 		INSERT INTO %s.event_outbox (
 			event_id,
@@ -104,7 +108,7 @@ func (dem *domainEventManager) ReadEvents(
 			event_id,
 			event_type,
 			payload
-		FROM event_outbox
+		FROM public.event_outbox
 		WHERE
 			published_at IS NULL
 		ORDER BY created_at ASC
@@ -133,7 +137,7 @@ func (dem *domainEventManager) MarkEventAsPublished(
 	eventID uuid.UUID,
 ) error {
 	_, err := dem.txManager.Querier(ctx).Exec(ctx, `
-		UPDATE event_outbox
+		UPDATE public.event_outbox
 		SET
 			published_at = NOW()
 		WHERE event_id = $1

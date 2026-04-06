@@ -1,0 +1,32 @@
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile
+      args:
+        SERVICE: gateway
+    image: rekreativko/gateway:latest
+
+  identity:
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile
+      args:
+        SERVICE: identity
+    image: rekreativko/identity:latest
+
+  account-profile:
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile
+      args:
+        SERVICE: account-profile
+    image: rekreativko/account-profile:latest
+
+  outbox-publisher:
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile
+      args:
+        SERVICE: outbox-publisher
+    image: rekreativko/outbox-publisher:latest

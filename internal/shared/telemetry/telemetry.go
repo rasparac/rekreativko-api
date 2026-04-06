@@ -60,7 +60,6 @@ func InitTracing(
 	)
 
 	otel.SetTracerProvider(traceProvider)
-
 	otel.SetTextMapPropagator(
 		propagation.NewCompositeTextMapPropagator(
 			propagation.TraceContext{},
@@ -86,6 +85,7 @@ const (
 	TracerIdentityService    = "identity.service"
 	TracerIdentityRepository = "identity.repository"
 
-	TracerUserProfileService    = "user_profile.service"
-	TracerUserProfileRepository = "user_profile.repository"
+	TracerAccountProfileService    = "account_profile.service"
+	TracerAccountProfileRepository = "account_profile.repository"
+	TracerAccountSettingsService   = "account_settings.service"
 )

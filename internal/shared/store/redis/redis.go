@@ -51,7 +51,7 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	return c.Ping(ctx).Err()
 }

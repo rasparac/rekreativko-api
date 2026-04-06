@@ -7,7 +7,7 @@ import (
 	"unicode"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/rasparac/rekreativko-api/internal/shared/metrics"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type (
@@ -18,12 +18,20 @@ type (
 		startTime time.Time
 	}
 
+	metrics interface {
+		DatabaseQueryDuration() *prometheus.HistogramVec
+		DatabaseQueryTotal() *prometheus.CounterVec
+	}
+
+	// MetricsTracer is a pgx.Trace
+	// https://pkg.go.dev/github.com/jackc/pgx/v5#Trace
+
 	MetricsTracer struct {
-		metrics *metrics.Metrics
+		metrics metrics
 	}
 )
 
-func New(metrics *metrics.Metrics) *MetricsTracer {
+func New(metrics metrics) *MetricsTracer {
 	return &MetricsTracer{
 		metrics: metrics,
 	}
@@ -62,8 +70,8 @@ func (m *MetricsTracer) TraceQueryEnd(
 		status = "error"
 	}
 
-	m.metrics.DatabaseQueryDuration.WithLabelValues(queryData.operation, queryData.table, status).Observe(float64(duration))
-	m.metrics.DatabaseQueryTotal.WithLabelValues(queryData.operation, queryData.table, status).Inc()
+	m.metrics.DatabaseQueryDuration().WithLabelValues(queryData.operation, status, queryData.table).Observe(float64(duration))
+	m.metrics.DatabaseQueryTotal().WithLabelValues(queryData.operation, status, queryData.table).Inc()
 }
 
 func parseSQL(sql string) (string, string) {

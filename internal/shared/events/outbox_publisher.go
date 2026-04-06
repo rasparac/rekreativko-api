@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/internal/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/internal/shared/logger"
-	"github.com/rasparac/rekreativko-api/internal/shared/metrics"
 )
 
 type (
@@ -17,7 +16,7 @@ type (
 		broker        MessageBroker
 		readLimit     int
 		pollIntervalS time.Duration
-		metrics       *metrics.Metrics
+		metrics       *Metrics
 	}
 
 	eventOutboxReader interface {
@@ -32,7 +31,7 @@ func NewOutboxPublisher(
 	logger *logger.Logger,
 	readLimit int,
 	pollIntervalS time.Duration,
-	metrics *metrics.Metrics,
+	metrics *Metrics,
 ) *outboxPublisher {
 	return &outboxPublisher{
 		eventReader:   eventReader,

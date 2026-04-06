@@ -85,7 +85,7 @@ func splitLines(s string) []string {
 }
 
 func splitKeyValue(s string, sep byte) []string {
-	for i, _ := range s {
+	for i := range s {
 		if s[i] == sep {
 			return []string{s[:i], s[i+1:]}
 		}

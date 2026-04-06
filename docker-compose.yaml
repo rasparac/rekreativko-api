@@ -16,31 +16,102 @@ services:
     networks:
       - rekreativko
 
-  # api:
-  #   build:
-  #     context: .
-  #     dockerfile: ./Dockerfile
-  #   ports:
-  #     - "8080:8080"
-  #   env_file:
-  #     - .env
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #   networks:
-  #     - rekreativko
-  #   develop:
-  #     watch:
-  #       - action: rebuild
-  #         path: .
-  #         ignore:
-  #           - vendor/
-  #           - .git/
-  #           - .idea/
-  #           - node_modules/
+  gateway:
+    image: rekreativko/gateway:latest
+    container_name: gateway
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - IDENTITY_SERVICE_URL=http://identity:8081
+      - ACCOUNT_PROFILE_SERVICE_URL=http://account-profile:8082
+      - NATS_URL=nats://nats:4222
+      - SERVICE_NAME=gateway
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      - rekreativko
+    restart: unless-stopped
+
+  identity:
+    image: rekreativko/identity:latest
+    container_name: identity
+    env_file:
+      - .env
+    environment:
+      - NATS_URL=nats://nats:4222
+      - PORT=8081
+      - SERVICE_NAME=identity
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    networks:
+      - rekreativko
+    restart: unless-stopped
+
+  account-profile:
+    image: rekreativko/account-profile:latest
+    container_name: account-profile
+    env_file:
+      - .env
+    environment:
+      - NATS_URL=nats://nats:4222
+      - PORT=8082
+      - SERVICE_NAME=account_profile
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    networks:
+      - rekreativko
+    restart: unless-stopped
+
+  outbox-publisher:
+    image: rekreativko/outbox-publisher:latest
+    container_name: outbox-publisher
+    env_file:
+      - .env
+    environment:
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    networks:
+      - rekreativko
+    restart: unless-stopped
+
+  nats:
+    image: nats:latest
+    container_name: rekreativko_nats
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    volumes:
+      - rekreativko_nats:/data
+    networks:
+      - rekreativko
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   redis:
-    image: redis
+    image: redis:7-alpine
     container_name: rekreativko_redis
     env_file:
       - .env
@@ -57,23 +128,22 @@ services:
     networks:
       - rekreativko
 
-  ## observability
-
   jaeger:
     image: jaegertracing/all-in-one:latest
-    container_name: rekreativko_jaeger
+    container_name: jaeger
     ports:
-      - "16686:16686" # UI
-      - "4318:4318" # OTLP HTTP receiver
-      - "14268:14268" # Jaeger collector
+      - "16686:16686"
+      - "4318:4318"
+      - "14268:14268"
     env_file:
       - .env
     networks:
       - rekreativko
+    restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: rekreativko_prometheus
+    container_name: prometheus
     ports:
       - "9090:9090"
     volumes:
@@ -86,10 +156,11 @@ services:
       - "--web.console.templates=/usr/share/prometheus/consoles"
     networks:
       - rekreativko
+    restart: unless-stopped
 
   grafana:
     image: grafana/grafana:latest
-    container_name: rekreativko_grafana
+    container_name: grafana
     ports:
       - "3000:3000"
     env_file:
@@ -103,10 +174,12 @@ services:
       - jaeger
     networks:
       - rekreativko
+    restart: unless-stopped
 
 volumes:
   rekreativko_db:
   rekreativko_redis:
+  rekreativko_nats:
   prometheus-data:
   grafana-data:
 

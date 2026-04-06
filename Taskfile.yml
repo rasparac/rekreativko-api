@@ -41,10 +41,20 @@ tasks:
     status:
       - docker compose ps | grep -q "Up"
 
-  docker:build-api:
-    desc: Build new api image
+  docker:build:
+    desc: Build all services
     cmds:
-      - docker compose build api
+      - docker compose -f docker-compose.build.yml build
+
+  docker:run:local-testing:
+    desc: Run everything without context services
+    cmds:
+      - docker compose up -d --force-recreate jaeger prometheus grafana db redis nats
+
+  docker:build-by-name:
+    desc: Build a specific service
+    cmds:
+      - docker compose -f docker-compose.build.yml build {{.CLI_ARGS}}
 
   docker:down:
     desc: Stop docker containers
@@ -151,3 +161,71 @@ tasks:
     desc: Run golangci-lint
     cmds:
       - golangci-lint run
+
+  # minikube
+
+  minikube-build:
+    desc: Build images in minikube Docker context
+    cmd: eval $(minikube -p minikube docker-env) && task docker:build
+
+  minikube-start:
+    desc: Start minikube cluster
+    cmds:
+      - minikube start
+
+  minikube-stop:
+    desc: Stop minikube cluster
+    cmds:
+      - minikube stop
+
+  # kubernetes
+  k8s-db-nats:
+    desc: Deploy to kubernetes
+    cmds:
+      - kubectl apply -f k8s/namespace.yaml
+      - kubectl apply -f k8s/config/
+      - kubectl apply -f k8s/postgres/
+      - kubectl apply -f k8s/nats/
+
+  k8s-deploy-microservices:
+    desc: Deploy only app microservices
+    cmds:
+      - kubectl apply -f k8s/identity/
+      - kubectl apply -f k8s/account-profile/
+      - kubectl apply -f k8s/outbox-publisher/
+      - kubectl apply -f k8s/gateway/
+
+  k8s-delete:
+    desc: Delete all k8s resources
+    cmd: kubectl delete namespace rekreativko
+
+  k8s-status:
+    desc: Show k8s resources
+    cmd: kubectl get all -n rekreativko
+
+  k8s-logs:
+    desc: Show k8s logs
+    cmd: kubectl logs -f -n rekreativko
+
+  k8s-forward-db-port:
+    desc: Forward k8s db port
+    cmd:
+      POSTGRES_POD=$(kubectl get pod -n rekreativko -l app=postgres -o jsonpath="{.items[0].metadata.name}") && echo $POSTGRES_POD \
+      && kubectl port-forward -n rekreativko pod/$POSTGRES_POD 5433:5432
+
+  k8s-forward-gw-port:
+    desc: Forward k8s gateway port
+    cmd:
+      GATEWAY_POD=$(kubectl get pod -n rekreativko -l app=gateway -o jsonpath="{.items[0].metadata.name}") && echo $GATEWAY_POD \
+      && kubectl port-forward -n rekreativko pod/$GATEWAY_POD 8080:8080
+
+  k8s-forward-ap-port:
+    desc: Forward k8s gateway port
+    cmd:
+      GATEWAY_POD=$(kubectl get pod -n rekreativko -l app=account-profile -o jsonpath="{.items[0].metadata.name}") && echo $GATEWAY_POD \
+      && kubectl port-forward -n rekreativko pod/$GATEWAY_POD 8081:8081
+
+  k8s-migrate:
+    desc: Migrate k8s resources
+    cmds:
+      - migrate -path {{.MIGRATIONS_DIR}} -database "postgres://postgres:postgres@$localhost:5433/rekreativko?sslmode=disable" up

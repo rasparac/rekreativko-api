@@ -8,12 +8,14 @@ import (
 )
 
 type RefreshToken struct {
-	id        uuid.UUID
-	accountID uuid.UUID
-	value     string
-	expiresAt time.Time
-	createdAt time.Time
-	revokedAt *time.Time
+	id          uuid.UUID
+	accessToken string
+	tokenType   string
+	accountID   uuid.UUID
+	value       string
+	expiresAt   time.Time
+	createdAt   time.Time
+	revokedAt   *time.Time
 
 	events []domainevent.Event
 }
@@ -51,6 +53,7 @@ func ReconstructRefreshToken(
 		expiresAt: expiresAt,
 		createdAt: createdAt,
 		revokedAt: revokedAt,
+		tokenType: "Bearer",
 	}
 }
 
@@ -74,6 +77,14 @@ func (rt *RefreshToken) CreatedAt() time.Time {
 	return rt.createdAt
 }
 
+func (rt *RefreshToken) AccessToken() string {
+	return rt.accessToken
+}
+
+func (rt *RefreshToken) TokenType() string {
+	return rt.tokenType
+}
+
 func (rt *RefreshToken) RevokedAt() *time.Time {
 	return rt.revokedAt
 }
@@ -85,11 +96,7 @@ func (rt *RefreshToken) IsValid() bool {
 
 	now := time.Now().UTC()
 
-	if now.After(rt.expiresAt) {
-		return false
-	}
-
-	return true
+	return !now.After(rt.expiresAt)
 }
 
 func (rt *RefreshToken) IsExpired() bool {
@@ -111,6 +118,10 @@ func (rt *RefreshToken) Revoke(reason string) error {
 	rt.addEvent(NewRefreshTokenRevokedEvent(rt, reason))
 
 	return nil
+}
+
+func (rt *RefreshToken) SetAccessToken(accessToken string) {
+	rt.accessToken = accessToken
 }
 
 func (rt *RefreshToken) TimeUntilExpiration() time.Duration {

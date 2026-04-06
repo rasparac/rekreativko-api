@@ -5,10 +5,19 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/rasparac/rekreativko-api/internal/shared/metrics"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
-func Metrics(m *metrics.Metrics) func(http.Handler) http.Handler {
+type (
+	httpMetrics interface {
+		RequestSize() *prometheus.HistogramVec
+		RequestTotal() *prometheus.CounterVec
+		RequestDuration() *prometheus.HistogramVec
+		ResponseSize() *prometheus.HistogramVec
+	}
+)
+
+func Metrics(m httpMetrics) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -19,7 +28,7 @@ func Metrics(m *metrics.Metrics) func(http.Handler) http.Handler {
 			}
 
 			if r.ContentLength > 0 {
-				m.HTTPRequestSize.WithLabelValues(
+				m.RequestSize().WithLabelValues(
 					r.Method,
 					r.URL.Path,
 				).Observe(float64(r.ContentLength))
@@ -29,8 +38,7 @@ func Metrics(m *metrics.Metrics) func(http.Handler) http.Handler {
 
 			status := strconv.Itoa(rw.statusCode)
 
-			// Request count
-			m.HTTPRequestTotal.WithLabelValues(
+			m.RequestTotal().WithLabelValues(
 				r.Method,
 				r.URL.Path,
 				status,
@@ -38,20 +46,17 @@ func Metrics(m *metrics.Metrics) func(http.Handler) http.Handler {
 
 			duration := time.Since(start).Seconds()
 
-			// Request duration
-			m.HTTPRequestDuration.WithLabelValues(
+			m.RequestDuration().WithLabelValues(
 				r.Method,
 				r.URL.Path,
 				status,
 			).Observe(duration)
 
-			// Response size
-			m.HTTPResponseSize.WithLabelValues(
+			m.ResponseSize().WithLabelValues(
 				r.Method,
 				r.URL.Path,
 				status,
 			).Observe(float64(rw.written))
-
 		})
 	}
 }

@@ -1,0 +1,368 @@
+// // cmd/api/main.go
+
+// //	@title			Rekreativko API
+// //	@version		1.0.0
+// //	@description	Rekreativko API
+// //	@termsOfService	https://github.com/rasparac/rekreativko-api
+
+// //	@contact.name	Rekreativko
+// //	@contact.url	https://github.com/rasparac/rekreativko-api
+
+// //	@license.name	MIT
+// //	@license.url	https://github.com/rasparac/rekreativko-api/blob/main/LICENSE
+
+// //	@host	localhost:8080
+
+// //	@securityDefinitions.apikey	BearerAuth
+// //	@in							header
+// //	@name						Authorization
+// //	@description				Type "Bearer" followed by a space and the JWT token.
+
+// package main
+
+// import (
+// 	"context"
+// 	"errors"
+// 	"fmt"
+// 	"log/slog"
+// 	"net/http"
+// 	"os"
+// 	"os/signal"
+// 	"strings"
+// 	"syscall"
+// 	"time"
+
+// 	"github.com/prometheus/client_golang/prometheus/promhttp"
+// 	_ "github.com/rasparac/rekreativko-api/docs"
+// 	httpSwagger "github.com/swaggo/http-swagger/v2"
+
+// 	"github.com/rasparac/rekreativko-api/internal/notification"
+// 	"github.com/rasparac/rekreativko-api/internal/shared/config"
+// 	"github.com/rasparac/rekreativko-api/internal/shared/domainevent"
+// 	"github.com/rasparac/rekreativko-api/internal/shared/events"
+// 	"github.com/rasparac/rekreativko-api/internal/shared/health"
+// 	"github.com/rasparac/rekreativko-api/internal/shared/logger"
+// 	"github.com/rasparac/rekreativko-api/internal/shared/metrics"
+// 	"github.com/rasparac/rekreativko-api/internal/shared/middleware"
+// 	metricstracer "github.com/rasparac/rekreativko-api/internal/shared/store/metrics_tracer"
+// 	"github.com/rasparac/rekreativko-api/internal/shared/store/postgres"
+// 	"github.com/rasparac/rekreativko-api/internal/shared/store/redis"
+// 	"github.com/rasparac/rekreativko-api/internal/shared/telemetry"
+// 	"github.com/rasparac/rekreativko-api/internal/shared/token"
+
+// 	"github.com/rasparac/rekreativko-api/internal/account-profile/application"
+// 	"github.com/rasparac/rekreativko-api/internal/account-profile/infrastructure/persistence"
+// 	accountProfileHttp "github.com/rasparac/rekreativko-api/internal/account-profile/interfaces/http"
+
+// 	accountProfileEvents "github.com/rasparac/rekreativko-api/internal/account-profile/interfaces/events"
+// )
+
+// func main() {
+// 	cfg, err := config.Load()
+// 	if err != nil {
+// 		slog.Error("failed to load configuration", "error", err)
+// 		os.Exit(1)
+// 	}
+
+// 	ctx := context.Background()
+// 	ctx, cancel := context.WithCancel(ctx)
+// 	defer cancel()
+
+// 	logger := logger.New(cfg.Logger.Level, cfg.Logger.Format)
+
+// 	log := logger.WithName(
+// 		"rekreativko",
+// 	)
+
+// 	log.Info(
+// 		ctx,
+// 		"starting rekreativko",
+// 		"version", cfg.Service.Version,
+// 		"environment", cfg.Service.Environment,
+// 	)
+
+// 	telemetryConfig := telemetry.Config{
+// 		ServiceName:       cfg.Service.Name,
+// 		ServiceVersion:    cfg.Service.Version,
+// 		Environment:       cfg.Service.Environment,
+// 		OTLPEndpoint:      cfg.Telemetry.OTLPEndpoint,
+// 		Enabled:           cfg.Telemetry.Enabled,
+// 		TraceIDRatioBased: cfg.Telemetry.OTELTracesSampleRate,
+// 	}
+
+// 	shutdownTracing, err := telemetry.InitTracing(ctx, telemetryConfig)
+// 	if err != nil {
+// 		log.Error(ctx, "failed to initialize telemetry", "error", err)
+// 		os.Exit(1)
+// 	}
+// 	defer func() {
+// 		if tracingErr := shutdownTracing(ctx); err != nil {
+// 			log.Error(ctx, "failed to shutdown telemetry", "error", tracingErr)
+// 		}
+// 	}()
+
+// 	err = run(ctx, cfg, log)
+// 	if err != nil {
+// 		logger.Error(ctx, "failed to start rekreativko", "error", err)
+// 		os.Exit(1)
+// 	}
+// }
+
+// func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
+// 	appMetrics := metrics.New("rekreativko")
+
+// 	dbTracer := metricstracer.New(appMetrics)
+
+// 	pg, err := postgres.New(
+// 		ctx,
+// 		log,
+// 		cfg.Postgres,
+// 		dbTracer,
+// 	)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer pg.Close()
+
+// 	redisClient, err := redis.New(
+// 		ctx,
+// 		log,
+// 		cfg.Redis,
+// 	)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer redisClient.Close()
+
+// 	txManager := postgres.NewTransactionManager(pg.Pool)
+
+// 	tokenGen := token.NewGenerator(
+// 		[]byte(cfg.JWT.Secret),
+// 		cfg.JWT.AccessTokenDuration,
+// 		cfg.JWT.RefreshTokenDuration,
+// 	)
+
+// 	// identityAccountRepo := identity.NewAccountManager(
+// 	// 	pg.Pool,
+// 	// 	txManager,
+// 	// 	log,
+// 	// )
+
+// 	// identityRefreshTokenRepo := identity.NewRefreshTokenManager(
+// 	// 	pg.Pool,
+// 	// 	txManager,
+// 	// 	log,
+// 	// )
+
+// 	// verificationCodeRepo := identity.NewVerificationCodeManager(
+// 	// 	pg.Pool,
+// 	// 	txManager,
+// 	// 	log,
+// 	// )
+
+// 	accountProfileRepo := persistence.NewAccountProfileManager(txManager, log)
+
+// 	var messageBroker events.MessageBroker
+
+// 	prepareNotifications(messageBroker, appMetrics, cfg, log)
+
+// 	domainEventMgr := domainevent.NewDomainEventManager(txManager)
+
+// 	outboxPublisher := events.NewOutboxPublisher(
+// 		domainEventMgr,
+// 		messageBroker,
+// 		log,
+// 		cfg.Outbox.ReadLimit,
+// 		cfg.Outbox.PollIntervalS,
+// 		appMetrics,
+// 	)
+
+// 	go func() {
+// 		err := outboxPublisher.Start(ctx)
+// 		if err != nil {
+// 			log.Error(ctx, "failed to start outbox publisher", "error", err)
+// 		}
+// 	}()
+
+// 	// verificationCodeGenerator := token.NewVerificationCodeGenerator(6)
+// 	// passwordHasher := token.NewPasswordHasher(10)
+
+// 	// identityService := identity.NewService(
+// 	// 	identityAccountRepo,
+// 	// 	verificationCodeRepo,
+// 	// 	identityRefreshTokenRepo,
+// 	// 	txManager,
+// 	// 	domainEventMgr,
+// 	// 	tokenGen,
+// 	// 	log,
+// 	// 	verificationCodeGenerator,
+// 	// 	passwordHasher,
+// 	// 	appMetrics,
+// 	// )
+
+// 	publicChain := middleware.NewChain(
+// 		middleware.RequestID,
+// 		middleware.ClientInfo,
+// 		middleware.Recover(log),
+// 		middleware.Logging(log),
+// 		middleware.Tracing,
+// 		middleware.CORS(
+// 			middleware.CORSConfig{
+// 				AllowedOrigins:   strings.Split(cfg.CORS.AllowedOrigins, ","),
+// 				AllowedHeaders:   strings.Split(cfg.CORS.AllowedHeaders, ","),
+// 				AllowedMethods:   strings.Split(cfg.CORS.AllowedMethods, ","),
+// 				ExposedHeaders:   strings.Split(cfg.CORS.ExposedHeaders, ","),
+// 				MaxAge:           cfg.CORS.MaxAge,
+// 				AllowCredentials: cfg.CORS.AllowCredentials,
+// 			},
+// 		),
+// 		middleware.NewRateLimiter(cfg.RateLimiter.RequestsPerMinute).RateLimiter,
+// 	)
+
+// 	protectedChain := publicChain.Extend(
+// 		middleware.NewAuthMiddleware(
+// 			tokenGen,
+// 			log,
+// 		).RequireAuth,
+// 	)
+
+// 	mux := http.NewServeMux()
+// 	mux.HandleFunc("/{$}", rootHandler)
+
+// 	if cfg.IsDevMode() {
+// 		mux.Handle("GET /swagger/", httpSwagger.WrapHandler)
+// 		log.Info(ctx, "swagger UI enabled", "url", fmt.Sprintf("%s/swagger/index.html", cfg.Server.Address()))
+// 	}
+
+// 	if cfg.Telemetry.MetricsEnabled {
+// 		log.Info(ctx, "metrics enabled")
+// 		publicChain.Append(middleware.Metrics(appMetrics))
+// 		mux.Handle("GET /metrics", promhttp.Handler())
+// 	}
+
+// 	pgHealth := postgres.NewHealthCheck(pg)
+// 	redisHealth := redis.NewHealthCheck(redisClient)
+
+// 	healthHandler := health.NewHandler(
+// 		pgHealth,
+// 		redisHealth,
+// 	)
+
+// 	healthHandler.RegisterRoutes(mux)
+
+// 	accountProfileService := application.NewService(
+// 		log,
+// 		txManager,
+// 		accountProfileRepo,
+// 		domainEventMgr,
+// 		appMetrics,
+// 	)
+
+// 	accountSettingsRepo := persistence.NewAccountProfileSettingsManager(
+// 		txManager,
+// 	)
+
+// 	accountSettingsService := application.NewAccountSettingsService(
+// 		accountSettingsRepo,
+// 		txManager,
+// 		domainEventMgr,
+// 		log,
+// 		appMetrics,
+// 	)
+
+// 	accountProfileSubscriber := accountProfileEvents.NewSubscriber(
+// 		messageBroker,
+// 		txManager,
+// 		accountProfileService,
+// 		accountSettingsService,
+// 		log,
+// 		appMetrics,
+// 	)
+
+// 	if err := accountProfileSubscriber.Subscribe(ctx); err != nil {
+// 		log.Error(ctx, "failed to subscribe to account profile events", "error", err)
+// 	}
+
+// 	accountProfileHandler := accountProfileHttp.NewHandler(
+// 		accountProfileService,
+// 		accountSettingsService,
+// 	)
+
+// 	// identityHandler.RegisterRoutes(mux, publicChain, protectedChain)
+// 	accountProfileHandler.RegisterRoutes(mux, protectedChain)
+
+// 	return startServer(cfg, mux, log)
+// }
+
+// func prepareNotifications(
+// 	broker events.MessageBroker,
+// 	appMetrics *metrics.Metrics,
+// 	cfg *config.Config,
+// 	log *logger.Logger,
+// ) {
+// 	var (
+// 		emailSender notification.EmailSender
+// 		smsSender   notification.SMSSender
+// 	)
+
+// 	if cfg.IsDevMode() {
+// 		emailSender = notification.NewInMemoryEmailSender(log)
+// 		smsSender = notification.NewInMemorySMSSender(log)
+// 	}
+
+// 	notificationService := notification.NewService(
+// 		smsSender,
+// 		emailSender,
+// 		appMetrics,
+// 	)
+
+// 	ctx := context.Background()
+
+// 	_ = broker.Subscribe(ctx, "identity.account.verified", notificationService.HandleAccountVerified)
+// 	_ = broker.Subscribe(ctx, "identity.account.locked", notificationService.HandleAccountLocked)
+// 	_ = broker.Subscribe(ctx, "identity.account.password.changed", notificationService.HandlePasswordChanged)
+// 	_ = broker.Subscribe(ctx, "identity.verification_code.created", notificationService.HandleVerificationCodeGenerated)
+// }
+
+// func startServer(cfg *config.Config, handler http.Handler, log *logger.Logger) error {
+// 	srv := http.Server{
+// 		Addr:         cfg.Server.Address(),
+// 		Handler:      handler,
+// 		ReadTimeout:  15 * time.Second,
+// 		WriteTimeout: 15 * time.Second,
+// 		IdleTimeout:  60 * time.Second,
+// 	}
+
+// 	serverErrors := make(chan error, 1)
+
+// 	go func() {
+// 		log.Info(context.Background(), "http server starting", "addr", cfg.Server.Address())
+// 		err := srv.ListenAndServe()
+// 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+// 			serverErrors <- err
+// 		}
+// 	}()
+
+// 	shutdown := make(chan os.Signal, 1)
+// 	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
+
+// 	select {
+// 	case err := <-serverErrors:
+// 		return err
+// 	case <-shutdown:
+// 		log.Info(context.Background(), "shutting down http server")
+// 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// 		defer cancel()
+// 		if err := srv.Shutdown(ctx); err != nil {
+// 			return err
+// 		}
+// 	}
+
+// 	return nil
+// }
+
+// func rootHandler(w http.ResponseWriter, r *http.Request) {
+// 	w.Header().Set("Content-Type", "application/json")
+// 	w.WriteHeader(http.StatusOK)
+// 	fmt.Fprintf(w, `{"serivce": "rekreativko-api", "status": "running", "version": 1.0.0}`)
+// }

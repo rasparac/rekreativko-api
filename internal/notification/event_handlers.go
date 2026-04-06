@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 )
 
-func (s *Service) HandleVerificationCodeGenerated(ctx context.Context, payload []byte) error {
+func (s *service) HandleVerificationCodeGenerated(ctx context.Context, payload []byte) error {
 	ctx, span := s.tracer.Start(ctx, "HandleVerificationCodeGenerated")
 	defer span.End()
 
@@ -54,7 +54,7 @@ func (s *Service) HandleVerificationCodeGenerated(ctx context.Context, payload [
 	return nil
 }
 
-func (s *Service) HandleAccountVerified(ctx context.Context, payload []byte) error {
+func (s *service) HandleAccountVerified(ctx context.Context, payload []byte) error {
 	ctx, span := s.tracer.Start(ctx, "HandleAccountVerified")
 	defer span.End()
 
@@ -91,7 +91,7 @@ func (s *Service) HandleAccountVerified(ctx context.Context, payload []byte) err
 	return nil
 }
 
-func (s *Service) HandlePasswordChanged(ctx context.Context, payload []byte) error {
+func (s *service) HandlePasswordChanged(ctx context.Context, payload []byte) error {
 	ctx, span := s.tracer.Start(ctx, "HandlePasswordChanged")
 	defer span.End()
 
@@ -134,7 +134,7 @@ func (s *Service) HandlePasswordChanged(ctx context.Context, payload []byte) err
 	return nil
 }
 
-func (s *Service) HandleAccountLocked(ctx context.Context, payload []byte) error {
+func (s *service) HandleAccountLocked(ctx context.Context, payload []byte) error {
 	ctx, span := s.tracer.Start(ctx, "HandleAccountLocked")
 	defer span.End()
 

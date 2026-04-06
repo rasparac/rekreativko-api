@@ -7,8 +7,6 @@ type MessageBroker interface {
 
 	Subscribe(ctx context.Context, topic string, handler MessageHandler) error
 
-	Start(ctx context.Context) error
-
 	Close(ctx context.Context) error
 }
 

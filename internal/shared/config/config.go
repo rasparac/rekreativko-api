@@ -19,6 +19,10 @@ type (
 		CORS        CORSConfig
 		Telemetry   TelemetryConfig
 		Outbox      OutboxConfig
+		NatsConfig  NatsConfig
+
+		IdentityServiceConfig       IdentityServiceConfig
+		AccountProfileServiceConfig AccountProfileServiceConfig
 	}
 
 	Logger struct {
@@ -27,7 +31,7 @@ type (
 	}
 
 	ServiceConfig struct {
-		Name        string `envconfig:"SERVICE_NAME" default:"rekreativko-api"`
+		Name        string `envconfig:"SERVICE_NAME" default:"rekreativko"`
 		Version     string `envconfig:"SERVICE_VERSION" default:"v1.0.0"`
 		Environment string `envconfig:"SERVICE_ENVIRONMENT" default:"development"`
 	}
@@ -88,6 +92,10 @@ type (
 	OutboxConfig struct {
 		PollIntervalS time.Duration `envconfig:"OUTBOX_POLL_INTERVAL" default:"5s"`
 		ReadLimit     int           `envconfig:"OUTBOX_READ_LIMIT" default:"100"`
+	}
+
+	NatsConfig struct {
+		URL string `envconfig:"NATS_URL" required:"true" default:"nats://localhost:4222"`
 	}
 )
 
