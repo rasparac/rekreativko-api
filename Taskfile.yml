@@ -183,9 +183,7 @@ tasks:
     desc: Deploy to kubernetes
     cmds:
       - kubectl apply -f k8s/namespace.yaml
-      - kubectl apply -f k8s/config/
-      - kubectl apply -f k8s/postgres/
-      - kubectl apply -f k8s/nats/
+      - kubectl apply -R -f k8s/infrastructure/
 
   k8s-deploy-microservices:
     desc: Deploy only app microservices
@@ -229,3 +227,15 @@ tasks:
     desc: Migrate k8s resources
     cmds:
       - migrate -path {{.MIGRATIONS_DIR}} -database "postgres://postgres:postgres@$localhost:5433/rekreativko?sslmode=disable" up
+
+  k8s-restart:
+    desc: Restart all deployments to pick up new images
+    cmd: kubectl rollout restart deployment -n rekreativko
+
+  k8s-config:
+    desc: Apply configmap and secrets and restart all deployments
+    cmds:
+      - kubectl apply -f k8s/config/configmap.yaml
+      - kubectl apply -f k8s/config/secrets.yaml
+      - kubectl rollout restart deployment -n rekreativko
+      - kubectl rollout status deployment -n rekreativko

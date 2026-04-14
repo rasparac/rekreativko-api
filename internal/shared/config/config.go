@@ -21,6 +21,7 @@ type (
 		Outbox      OutboxConfig
 		NatsConfig  NatsConfig
 
+		GatewayServiceConfig        GatewayServiceConfig
 		IdentityServiceConfig       IdentityServiceConfig
 		AccountProfileServiceConfig AccountProfileServiceConfig
 	}
@@ -34,6 +35,11 @@ type (
 		Name        string `envconfig:"SERVICE_NAME" default:"rekreativko"`
 		Version     string `envconfig:"SERVICE_VERSION" default:"v1.0.0"`
 		Environment string `envconfig:"SERVICE_ENVIRONMENT" default:"development"`
+		GatewayKey  string `envconfig:"GATEWAY_API_KEY" required:"true"`
+	}
+
+	GatewayServiceConfig struct {
+		GatewayKeys string `envconfig:"GATEWAY_API_KEYS" required:"true"`
 	}
 
 	ServerConfig struct {

@@ -137,6 +137,7 @@ func main() {
 			log,
 			publicPaths,
 		).RequireAuth,
+		middleware.AddGatewayKey(cfg.GatewayServiceConfig.GatewayKeys),
 	)
 
 	appMetrics := gateway.New(cfg.Service.Name)

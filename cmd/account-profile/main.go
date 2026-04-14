@@ -129,6 +129,10 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	middlewaresChain := middleware.NewChain(
 		middleware.RequestID,
+		middleware.CheckGatewayKey(
+			log,
+			cfg.Service.GatewayKey,
+		),
 		middleware.ExtractUserContext,
 		middleware.Tracing,
 		middleware.SpanEnrichment,
