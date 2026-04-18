@@ -12,7 +12,7 @@ vars:
   MIGRATIONS_DIR: ./migrations
   APP_NAME: rekreativko
 
-dotenv: [".env"]
+dotenv: [ ".env" ]
 
 tasks:
   default:
@@ -49,7 +49,8 @@ tasks:
   docker:run:local-testing:
     desc: Run everything without context services
     cmds:
-      - docker compose up -d --force-recreate jaeger prometheus grafana db redis nats
+      - docker compose up -d --force-recreate jaeger prometheus grafana db redis
+        nats
 
   docker:build-by-name:
     desc: Build a specific service
@@ -71,21 +72,21 @@ tasks:
 
   migrate:up:
     desc: Run all migrations
-    deps: [docker:up]
+    deps: [ docker:up ]
     cmds:
       - migrate -path {{.MIGRATIONS_DIR}} -database {{.DB_URL}} up
       - echo "migrations applied successfully"
 
   migrate:down:
     desc: Revert all migrations
-    deps: [docker:up]
+    deps: [ docker:up ]
     cmds:
       - migrate -path {{.MIGRATIONS_DIR}} -database {{.DB_URL}} down 1
       - echo "migration rolled back"
 
   migrate:down:all:
     desc: Revert all migrations
-    deps: [docker:up]
+    deps: [ docker:up ]
     cmds:
       - migrate -path {{.MIGRATIONS_DIR}} -database {{.DB_URL}} down -all
       - echo "migrations reverted successfully"
@@ -129,7 +130,8 @@ tasks:
     desc: Install tools
     cmds:
       - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-      - go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+      - go install -tags 'postgres'
+        github.com/golang-migrate/migrate/v4/cmd/migrate@latest
       - go install golang.org/x/tools/cmd/goimports@latest
       - echo "tools installed successfully"
 
@@ -148,7 +150,7 @@ tasks:
 
   docs:serve:
     desc: Serve swagger docs
-    deps: [docs:swagger, run]
+    deps: [ docs:swagger, run ]
 
   docs:format:
     desc: Format swagger docs
@@ -161,81 +163,3 @@ tasks:
     desc: Run golangci-lint
     cmds:
       - golangci-lint run
-
-  # minikube
-
-  minikube-build:
-    desc: Build images in minikube Docker context
-    cmd: eval $(minikube -p minikube docker-env) && task docker:build
-
-  minikube-start:
-    desc: Start minikube cluster
-    cmds:
-      - minikube start
-
-  minikube-stop:
-    desc: Stop minikube cluster
-    cmds:
-      - minikube stop
-
-  # kubernetes
-  k8s-db-nats:
-    desc: Deploy to kubernetes
-    cmds:
-      - kubectl apply -f k8s/namespace.yaml
-      - kubectl apply -R -f k8s/infrastructure/
-
-  k8s-deploy-microservices:
-    desc: Deploy only app microservices
-    cmds:
-      - kubectl apply -f k8s/identity/
-      - kubectl apply -f k8s/account-profile/
-      - kubectl apply -f k8s/outbox-publisher/
-      - kubectl apply -f k8s/gateway/
-
-  k8s-delete:
-    desc: Delete all k8s resources
-    cmd: kubectl delete namespace rekreativko
-
-  k8s-status:
-    desc: Show k8s resources
-    cmd: kubectl get all -n rekreativko
-
-  k8s-logs:
-    desc: Show k8s logs
-    cmd: kubectl logs -f -n rekreativko
-
-  k8s-forward-db-port:
-    desc: Forward k8s db port
-    cmd:
-      POSTGRES_POD=$(kubectl get pod -n rekreativko -l app=postgres -o jsonpath="{.items[0].metadata.name}") && echo $POSTGRES_POD \
-      && kubectl port-forward -n rekreativko pod/$POSTGRES_POD 5433:5432
-
-  k8s-forward-gw-port:
-    desc: Forward k8s gateway port
-    cmd:
-      GATEWAY_POD=$(kubectl get pod -n rekreativko -l app=gateway -o jsonpath="{.items[0].metadata.name}") && echo $GATEWAY_POD \
-      && kubectl port-forward -n rekreativko pod/$GATEWAY_POD 8080:8080
-
-  k8s-forward-ap-port:
-    desc: Forward k8s gateway port
-    cmd:
-      GATEWAY_POD=$(kubectl get pod -n rekreativko -l app=account-profile -o jsonpath="{.items[0].metadata.name}") && echo $GATEWAY_POD \
-      && kubectl port-forward -n rekreativko pod/$GATEWAY_POD 8081:8081
-
-  k8s-migrate:
-    desc: Migrate k8s resources
-    cmds:
-      - migrate -path {{.MIGRATIONS_DIR}} -database "postgres://postgres:postgres@$localhost:5433/rekreativko?sslmode=disable" up
-
-  k8s-restart:
-    desc: Restart all deployments to pick up new images
-    cmd: kubectl rollout restart deployment -n rekreativko
-
-  k8s-config:
-    desc: Apply configmap and secrets and restart all deployments
-    cmds:
-      - kubectl apply -f k8s/config/configmap.yaml
-      - kubectl apply -f k8s/config/secrets.yaml
-      - kubectl rollout restart deployment -n rekreativko
-      - kubectl rollout status deployment -n rekreativko
