@@ -1,0 +1,66 @@
+name: Build & Push Image
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Service to build"
+        required: true
+        type: choice
+        options:
+          - identity
+          - account-profile
+          - outbox-publisher
+          - gateway
+      version:
+        description: "Version tag (e.g. 1.2.0)"
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/rasparac
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [ identity, account-profile, outbox-publisher, gateway ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if manual trigger and wrong service
+        if: github.event_name == 'workflow_dispatch' && inputs.service != matrix.service
+        run: exit 0
+
+      - name: Set version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "VERSION=${{ inputs.version }}" >> $GITHUB_ENV
+          else
+            echo "VERSION=$(date +'%Y.%m.%d')-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_ENV
+          fi
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: . # root so COPY ./cmd and ./internal work
+          file: ./build/Dockerfile # ← point to your Dockerfile location
+          push: true
+          build-args: |
+            SERVICE=${{ matrix.service }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ env.VERSION }}
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
