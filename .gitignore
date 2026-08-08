@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+bin/
 
 # Test binary, build with `go test -c`
 *.test
@@ -20,8 +21,6 @@ service-*
 vendor/
 
 .env
-
-ai
 
 docs/docs.go
 docs/swagger.json

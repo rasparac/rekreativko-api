@@ -1,0 +1,16 @@
+BEGIN;
+DROP TABLE IF EXISTS activity.event_outbox;
+DROP TABLE IF EXISTS activity.session_statistics;
+DROP TABLE IF EXISTS activity.activity_group_statistics;
+DROP TABLE IF EXISTS activity.session_attendee;
+DROP TABLE IF EXISTS activity.session;
+DROP TABLE IF EXISTS activity.session_template;
+DROP TABLE IF EXISTS activity.recurrence_rule;
+DROP TABLE IF EXISTS activity.group_invite_link_usage;
+DROP TABLE IF EXISTS activity.group_invite_links;
+DROP TABLE IF EXISTS activity.group_invites;
+DROP TABLE IF EXISTS activity.member;
+DROP TABLE IF EXISTS activity.activity_group;
+DROP SCHEMA IF EXISTS activity;
+COMMIT;
+

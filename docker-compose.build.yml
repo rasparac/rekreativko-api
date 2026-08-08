@@ -5,6 +5,7 @@ services:
       dockerfile: ./build/Dockerfile
       args:
         SERVICE: gateway
+        CMD_PATH: api
     image: rekreativko/gateway:latest
 
   identity:
@@ -13,6 +14,7 @@ services:
       dockerfile: ./build/Dockerfile
       args:
         SERVICE: identity
+        CMD_PATH: api
     image: rekreativko/identity:latest
 
   account-profile:
@@ -21,7 +23,26 @@ services:
       dockerfile: ./build/Dockerfile
       args:
         SERVICE: account-profile
+        CMD_PATH: api
     image: rekreativko/account-profile:latest
+
+  activity:
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile
+      args:
+        SERVICE: activity
+        CMD_PATH: api
+    image: rekreativko/activity:latest
+
+  activity-cron:
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile
+      args:
+        SERVICE: activity
+        CMD_PATH: cron
+    image: rekreativko/activity-cron:latest
 
   outbox-publisher:
     build:
@@ -29,4 +50,5 @@ services:
       dockerfile: ./build/Dockerfile
       args:
         SERVICE: outbox-publisher
+        CMD_PATH: worker
     image: rekreativko/outbox-publisher:latest

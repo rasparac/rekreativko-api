@@ -16,6 +16,8 @@ on:
           - account-profile
           - outbox-publisher
           - gateway
+          - activity
+          - activity-cron
       version:
         description: "Version tag (e.g. 1.2.0)"
         required: true
@@ -34,7 +36,20 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ identity, account-profile, outbox-publisher, gateway ]
+        include:
+          - service: identity
+            cmd_path: api
+          - service: account-profile
+            cmd_path: api
+          - service: gateway
+            cmd_path: api
+          - service: activity
+            cmd_path: api
+          - service: activity-cron
+            service_name: activity
+            cmd_path: cron
+          - service: outbox-publisher
+            cmd_path: worker
     steps:
       - uses: actions/checkout@v4
 
@@ -60,11 +75,12 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: . # root so COPY ./cmd and ./internal work
-          file: ./build/Dockerfile # ← point to your Dockerfile location
+          context: .
+          file: ./build/Dockerfile
           push: true
           build-args: |
-            SERVICE=${{ matrix.service }}
+            SERVICE=${{ matrix.service_name || matrix.service }}
+            CMD_PATH=${{ matrix.cmd_path }}
           tags: |
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ env.VERSION }}
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
