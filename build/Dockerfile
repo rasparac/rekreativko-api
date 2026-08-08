@@ -3,7 +3,9 @@ ARG GO_VERSION=1.26-alpine
 # ---- build stage ----
 FROM golang:${GO_VERSION} AS builder
 
+# Build arguments for service configuration
 ARG SERVICE
+ARG CMD_PATH=api
 
 WORKDIR /app
 
@@ -15,8 +17,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download -x
 
 # Copy source after deps are cached
-COPY ./cmd/${SERVICE} ./cmd
-COPY ./internal ./internal
+# New structure: copy specific service folder + shared
+COPY ./${SERVICE} ./${SERVICE}
+COPY ./shared ./shared
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
@@ -24,7 +27,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -trimpath \
     -ldflags="-s -w" \
     -o service \
-    ./cmd/main.go
+    ./${SERVICE}/cmd/${CMD_PATH}/main.go
 
 # ---- runtime stage ----
 FROM gcr.io/distroless/base-debian12
