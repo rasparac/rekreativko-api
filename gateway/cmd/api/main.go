@@ -114,6 +114,20 @@ func main() {
 		"^/health$",
 	}
 
+	// CORS configuration
+	// Note: AllowCredentials cannot be true when AllowedOrigins is "*"
+	// For development: use "*" without credentials
+	// For production: specify exact origins and enable credentials
+	corsConfig := middleware.CORSConfig{
+		AllowedOrigins: []string{"*"},
+		AllowedHeaders: []string{"*"},
+		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		ExposedHeaders: []string{"X-Proxied-By", "X-Service-Name"},
+		MaxAge:         3600,
+		// Credentials disabled with wildcard origin (browser requirement)
+		AllowCredentials: false,
+	}
+
 	middlewaresChain := middleware.NewChain(
 		middleware.Recover(log),
 		middleware.RequestID,
@@ -121,16 +135,7 @@ func main() {
 		middleware.Logging(log),
 		middleware.Tracing,
 		middleware.SpanEnrichment,
-		middleware.CORS(
-			middleware.CORSConfig{
-				AllowedOrigins:   []string{"*"},
-				AllowedHeaders:   []string{"*"},
-				AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-				ExposedHeaders:   []string{"X-Proxied-By", "X-Service-Name"},
-				MaxAge:           3600,
-				AllowCredentials: true,
-			},
-		),
+		middleware.CORS(corsConfig),
 		middleware.NewRateLimiter(cfg.RateLimiter.RequestsPerMinute).RateLimiter,
 		middleware.NewAuthMiddleware(
 			tokenGen,
