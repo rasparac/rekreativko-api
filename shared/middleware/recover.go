@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 	"runtime/debug"
 
@@ -14,8 +13,10 @@ func Recover(log *logger.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if err := recover(); err != nil {
+					// Use request context to preserve tracing, request ID, etc.
+					ctx := r.Context()
 					log.Error(
-						context.Background(),
+						ctx,
 						"recovered from panic",
 						"error", err,
 						"stack", string(debug.Stack()),
