@@ -19,15 +19,17 @@ type (
 		}
 	*/
 	UpdateAccountSettingsRequest struct {
-		Settings map[string]any `json:"settings"`
+		// Settings is a map of setting keys to their values
+		// Example: {"notification.email.enabled": true, "preference.language": "en"}
+		Settings map[string]interface{} `json:"settings" swaggertype:"object"`
 	}
 
 	Setting struct {
-		Value       any    `json:"value"`
-		Type        string `json:"type"`
-		Label       string `json:"label"`
-		Category    string `json:"category"`
-		Description string `json:"description"`
+		Value       interface{} `json:"value" swaggertype:"primitive,string" example:"true"`
+		Type        string      `json:"type" example:"boolean"`
+		Label       string      `json:"label" example:"Email Notifications"`
+		Category    string      `json:"category" example:"notification"`
+		Description string      `json:"description" example:"Enable or disable email notifications"`
 	}
 
 	GetAccountSettingsResponse struct {

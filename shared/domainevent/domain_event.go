@@ -39,7 +39,7 @@ func NewDomainEventManager(
 
 func (tm *domainEventManager) InsertEvents(
 	ctx context.Context,
-	_ string,
+	schema string,
 	events []Event,
 ) error {
 	if len(events) == 0 {
@@ -72,7 +72,6 @@ func (tm *domainEventManager) InsertEvents(
 			fmt.Sprintf("($%d, $%d, $%d, $%d, $%d)", i*5+1, i*5+2, i*5+3, i*5+4, i*5+5),
 		)
 	}
-	schema := "public" // TODO: read from config
 	const insertEventQueryBlueprint = `
 		INSERT INTO %s.event_outbox (
 			event_id,
@@ -101,19 +100,22 @@ type BrokerEvent struct {
 
 func (dem *domainEventManager) ReadEvents(
 	ctx context.Context,
+	schema string,
 	limit int,
 ) ([]BrokerEvent, error) {
-	rows, err := dem.txManager.Querier(ctx).Query(ctx, `
+	query := fmt.Sprintf(`
 		SELECT
 			event_id,
 			event_type,
 			payload
-		FROM public.event_outbox
+		FROM %s.event_outbox
 		WHERE
 			published_at IS NULL
 		ORDER BY created_at ASC
 		LIMIT $1
-	`, limit)
+	`, schema)
+
+	rows, err := dem.txManager.Querier(ctx).Query(ctx, query, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -134,13 +136,16 @@ func (dem *domainEventManager) ReadEvents(
 
 func (dem *domainEventManager) MarkEventAsPublished(
 	ctx context.Context,
+	schema string,
 	eventID uuid.UUID,
 ) error {
-	_, err := dem.txManager.Querier(ctx).Exec(ctx, `
-		UPDATE public.event_outbox
+	query := fmt.Sprintf(`
+		UPDATE %s.event_outbox
 		SET
 			published_at = NOW()
 		WHERE event_id = $1
-	`, eventID)
+	`, schema)
+
+	_, err := dem.txManager.Querier(ctx).Exec(ctx, query, eventID)
 	return err
 }

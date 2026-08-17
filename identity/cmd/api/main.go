@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,7 +14,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rasparac/rekreativko-api/identity/internal/application"
-	"github.com/rasparac/rekreativko-api/identity/internal/infrastructure/persistance"
+	"github.com/rasparac/rekreativko-api/identity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/identity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/config"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
@@ -25,8 +26,23 @@ import (
 	"github.com/rasparac/rekreativko-api/shared/token"
 
 	identityHttp "github.com/rasparac/rekreativko-api/identity/internal/interfaces/http"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
+	_ "github.com/rasparac/rekreativko-api/identity/docs" // swagger docs
 )
 
+//	@title			Identity Service API
+//	@version		1.0
+
+//	@securityDefinitions.apikey	GatewayKeyAuth
+//	@in								header
+//	@name							X-Gateway-Key
+//	@description					Key added automatically by the gateway when proxying requests; required directly here only when bypassing the gateway.
+
+//	@securityDefinitions.apikey	BearerAuth
+//	@in								header
+//	@name							Authorization
+
+//	@security		GatewayKeyAuth
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -84,19 +100,19 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		cfg.JWT.RefreshTokenDuration,
 	)
 
-	identityAccountRepo := persistance.NewAccountManager(
+	identityAccountRepo := persistence.NewAccountManager(
 		pg.Pool,
 		txManager,
 		log,
 	)
 
-	identityRefreshTokenRepo := persistance.NewRefreshTokenManager(
+	identityRefreshTokenRepo := persistence.NewRefreshTokenManager(
 		pg.Pool,
 		txManager,
 		log,
 	)
 
-	verificationCodeRepo := persistance.NewVerificationCodeManager(
+	verificationCodeRepo := persistence.NewVerificationCodeManager(
 		pg.Pool,
 		txManager,
 		log,
@@ -146,6 +162,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	)
 
 	middlewaresChain := middleware.NewChain(
+		middleware.Recover(log),
 		middleware.RequestID,
 		middleware.CheckGatewayKey(
 			log,
@@ -166,6 +183,11 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		log.Info(r.Context(), "checking status", "method", r.Method, "path", r.URL.Path)
 		w.WriteHeader(http.StatusOK)
 	}))
+
+	if cfg.IsDevMode() {
+		mux.Handle("GET /swagger/", httpSwagger.WrapHandler)
+		log.Info(ctx, "swagger UI enabled", "url", fmt.Sprintf("%s/swagger/index.html", cfg.Server.Address()))
+	}
 
 	identityHandler.RegisterRoutes(mux, middlewaresChain)
 

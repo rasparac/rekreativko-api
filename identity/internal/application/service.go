@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/identity/internal/domain"
-	"github.com/rasparac/rekreativko-api/identity/internal/infrastructure/persistance"
+	"github.com/rasparac/rekreativko-api/identity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/identity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/domainerror"
@@ -24,14 +24,14 @@ import (
 type (
 	accountReaderWriter interface {
 		CreateAccount(ctx context.Context, account *domain.Account) error
-		GetBy(ctx context.Context, filter persistance.AccountFilter) (*domain.Account, error)
+		GetBy(ctx context.Context, filter persistence.AccountFilter) (*domain.Account, error)
 		UpdateAccount(ctx context.Context, account *domain.Account) error
 		DeleteAccount(ctx context.Context, UUID uuid.UUID) error
 	}
 
 	refreshTokenReaderWriter interface {
 		CreateRefreshToken(ctx context.Context, token *domain.RefreshToken) error
-		GetTokenBy(ctx context.Context, filter persistance.RefreshTokenFilter) (*domain.RefreshToken, error)
+		GetTokenBy(ctx context.Context, filter persistence.RefreshTokenFilter) (*domain.RefreshToken, error)
 		Revoke(ctx context.Context, uuid uuid.UUID) error
 		RevokeAll(ctx context.Context, accountID uuid.UUID) error
 		DeleteExpired(ctx context.Context) error
@@ -39,7 +39,7 @@ type (
 
 	verificationCodeReaderWriter interface {
 		CreateVerificationCode(ctx context.Context, code *domain.VerificationCode) error
-		GetVerificationCodesBy(ctx context.Context, filter persistance.VerificationCodeFilter) ([]*domain.VerificationCode, error)
+		GetVerificationCodesBy(ctx context.Context, filter persistence.VerificationCodeFilter) ([]*domain.VerificationCode, error)
 		MarkAsUsed(ctx context.Context, code string) error
 		DeleteExpiredVerificationCodes(ctx context.Context) error
 	}
@@ -121,7 +121,7 @@ func (s *Service) GetAccount(ctx context.Context, accountID uuid.UUID) (*domain.
 		"account_id", accountID.String(),
 	))
 
-	account, err := s.accountRepository.GetBy(ctx, persistance.AccountFilter{
+	account, err := s.accountRepository.GetBy(ctx, persistence.AccountFilter{
 		UUID: &accountID,
 	})
 	if err != nil {
@@ -301,7 +301,7 @@ func (s *Service) Login(ctx context.Context, req LoginParams) (*domain.RefreshTo
 		return nil, domainerror.BadRequest("email_or_phone_required", "Email or phone number is required", nil)
 	}
 
-	var filter persistance.AccountFilter
+	var filter persistence.AccountFilter
 	if req.PhoneNumber != "" {
 		filter.PhoneNumber = &req.PhoneNumber
 	} else if req.Email != "" {
@@ -411,7 +411,7 @@ func (s *Service) Logout(ctx context.Context, req LogoutParams) (*EmptyResponse,
 	)
 
 	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
-		token, err := s.refreshTokenRepository.GetTokenBy(ctx, persistance.RefreshTokenFilter{
+		token, err := s.refreshTokenRepository.GetTokenBy(ctx, persistence.RefreshTokenFilter{
 			AccountID: req.AccountID,
 			Token:     req.RefreshToken,
 		})
@@ -468,7 +468,7 @@ func (s *Service) VerifyAccount(ctx context.Context, req VerifyAccountParams) (u
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
 		verificationCodes, err := s.verificationCodeRepository.GetVerificationCodesBy(
 			tCtx,
-			persistance.VerificationCodeFilter{
+			persistence.VerificationCodeFilter{
 				Code: req.Code,
 			},
 		)
@@ -487,7 +487,7 @@ func (s *Service) VerifyAccount(ctx context.Context, req VerifyAccountParams) (u
 			"account_id", accountID,
 		)
 
-		account, err := s.accountRepository.GetBy(tCtx, persistance.AccountFilter{
+		account, err := s.accountRepository.GetBy(tCtx, persistence.AccountFilter{
 			UUID: &accountID,
 		})
 		if err != nil {
@@ -575,7 +575,7 @@ func (s *Service) RefreshToken(ctx context.Context, req RefreshTokenParams) (*do
 
 	var newToken *domain.RefreshToken
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		oldToken, err := s.refreshTokenRepository.GetTokenBy(tCtx, persistance.RefreshTokenFilter{
+		oldToken, err := s.refreshTokenRepository.GetTokenBy(tCtx, persistence.RefreshTokenFilter{
 			Token: req.RefreshToken,
 		})
 		if err != nil {
@@ -649,7 +649,7 @@ func (s *Service) ResendVerificationCode(ctx context.Context, req ResendVerifica
 	)
 
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		filter := persistance.AccountFilter{}
+		filter := persistence.AccountFilter{}
 		if req.Type == "email" {
 			filter.Email = &req.Identity
 		} else {

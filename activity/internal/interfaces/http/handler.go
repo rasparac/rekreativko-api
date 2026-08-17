@@ -7,11 +7,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
-	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/mapper"
-	"github.com/rasparac/rekreativko-api/shared/api"
-	"github.com/rasparac/rekreativko-api/shared/authcontext"
-	"github.com/rasparac/rekreativko-api/shared/domainerror"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/middleware"
 )
@@ -28,9 +23,57 @@ type (
 		ListSessionTemplates(ctx context.Context, params application.ListSessionTemplatesParams) ([]*domain.SessionTemplate, error)
 	}
 
+	// activityGroupService defines the interface for activity group operations
+	activityGroupService interface {
+		CreateActivityGroup(ctx context.Context, params application.CreateActivityGroupParams) (*domain.ActivityGroup, error)
+		GetActivityGroup(ctx context.Context, groupID uuid.UUID) (*domain.ActivityGroup, error)
+		UpdateActivityGroup(ctx context.Context, groupID uuid.UUID, params application.UpdateActivityGroupParams) error
+		ActivateActivityGroup(ctx context.Context, groupID uuid.UUID, requesterID uuid.UUID) error
+		CancelActivityGroup(ctx context.Context, groupID uuid.UUID, requesterID uuid.UUID, reason string) error
+		ListActivityGroups(ctx context.Context, params application.ListActivityGroupsParams) ([]*domain.ActivityGroup, error)
+		DiscoverActivityGroups(ctx context.Context, params application.DiscoverActivityGroupsParams) ([]*domain.ActivityGroup, error)
+	}
+
+	// sessionService defines the interface for session operations
+	sessionService interface {
+		CreateSession(ctx context.Context, params application.CreateSessionParams) (*domain.Session, error)
+		GetSession(ctx context.Context, sessionID uuid.UUID) (*domain.Session, error)
+		UpdateSession(ctx context.Context, sessionID uuid.UUID, params application.UpdateSessionParams) error
+		StartSession(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID, requesterRole string) error
+		CompleteSession(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID, requesterRole string) error
+		CancelSession(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID, requesterRole string, reason string) error
+		ListSessions(ctx context.Context, params application.ListSessionsParams) ([]*domain.Session, error)
+	}
+
+	// memberService defines the interface for member operations
+	memberService interface {
+		InviteMember(ctx context.Context, params application.InviteMemberParams) (*domain.Member, error)
+		RemoveMember(ctx context.Context, params application.RemoveMemberParams) error
+		PromoteMember(ctx context.Context, params application.UpdateMemberRoleParams) error
+		DemoteMember(ctx context.Context, params application.UpdateMemberRoleParams) error
+		ApproveMember(ctx context.Context, params application.ApproveMemberParams) error
+		RejectMember(ctx context.Context, params application.RejectMemberParams) error
+		LeaveMember(ctx context.Context, activityGroupID uuid.UUID, userID uuid.UUID) error
+		GetMember(ctx context.Context, activityGroupID uuid.UUID, userID uuid.UUID) (*domain.Member, error)
+		ListMembers(ctx context.Context, params application.ListMembersParams) ([]*domain.Member, error)
+	}
+
+	// attendeeService defines the interface for attendee/RSVP operations
+	attendeeService interface {
+		CreateRSVP(ctx context.Context, params application.CreateRSVPParams) (*domain.Attendee, error)
+		UpdateRSVP(ctx context.Context, params application.UpdateRSVPParams) (*domain.Attendee, error)
+		CancelRSVP(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID) error
+		GetRSVP(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID) (*domain.Attendee, error)
+		ListRSVPs(ctx context.Context, params application.ListRSVPsParams) ([]*domain.Attendee, error)
+	}
+
 	// Handler handles HTTP requests for the activity module
 	Handler struct {
 		sessionTemplateService sessionTemplateService
+		activityGroupService   activityGroupService
+		sessionService         sessionService
+		memberService          memberService
+		attendeeService        attendeeService
 		logger                 *logger.Logger
 	}
 )
@@ -38,10 +81,18 @@ type (
 // NewHandler creates a new activity HTTP handler
 func NewHandler(
 	sessionTemplateService sessionTemplateService,
+	activityGroupService activityGroupService,
+	sessionService sessionService,
+	memberService memberService,
+	attendeeService attendeeService,
 	logger *logger.Logger,
 ) *Handler {
 	return &Handler{
 		sessionTemplateService: sessionTemplateService,
+		activityGroupService:   activityGroupService,
+		sessionService:         sessionService,
+		memberService:          memberService,
+		attendeeService:        attendeeService,
 		logger:                 logger.WithName("activity.http.handler"),
 	}
 }
@@ -51,6 +102,36 @@ func (h *Handler) RegisterRoutes(
 	mux *http.ServeMux,
 	middlewares *middleware.Chain,
 ) {
+	// Activity Group routes (ordered from most specific to least specific)
+	mux.Handle(
+		"POST /api/v1/activity-groups",
+		middlewares.ThenFunc(h.CreateActivityGroup),
+	)
+	mux.Handle(
+		"GET /api/v1/activity-groups/discover",
+		middlewares.ThenFunc(h.DiscoverActivityGroups),
+	)
+	mux.Handle(
+		"GET /api/v1/activity-groups",
+		middlewares.ThenFunc(h.ListActivityGroups),
+	)
+	mux.Handle(
+		"GET /api/v1/activity-groups/{id}",
+		middlewares.ThenFunc(h.GetActivityGroup),
+	)
+	mux.Handle(
+		"PUT /api/v1/activity-groups/{id}",
+		middlewares.ThenFunc(h.UpdateActivityGroup),
+	)
+	mux.Handle(
+		"POST /api/v1/activity-groups/{id}/activate",
+		middlewares.ThenFunc(h.ActivateActivityGroup),
+	)
+	mux.Handle(
+		"DELETE /api/v1/activity-groups/{id}",
+		middlewares.ThenFunc(h.CancelActivityGroup),
+	)
+
 	// Session Template routes
 	mux.Handle(
 		"POST /api/v1/activity-groups/{groupId}/templates",
@@ -80,327 +161,90 @@ func (h *Handler) RegisterRoutes(
 		"POST /api/v1/templates/{id}/deactivate",
 		middlewares.ThenFunc(h.DeactivateSessionTemplate),
 	)
-}
 
-// CreateSessionTemplate handles POST /api/v1/activity-groups/{groupId}/templates
-//
-//	@Summary		Create a session template
-//	@Description	Creates a new session template for an activity group
-//	@Tags			Session Templates
-//	@Accept			json
-//	@Produce		json
-//	@Security		BearerAuth
-//	@Param			groupId	path		string											true	"Activity Group ID"
-//	@Param			request	body		dtos.CreateSessionTemplateRequest				true	"Session template data"
-//	@Success		201		{object}	api.Response[dtos.CreateSessionTemplateResponse]	"Template created successfully"
-//	@Failure		400		{object}	api.Response[any]									"Invalid request"
-//	@Failure		401		{object}	api.Response[any]									"Unauthorized"
-//	@Failure		500		{object}	api.Response[any]									"Internal server error"
-//	@Router			/api/v1/activity-groups/{groupId}/templates [post]
-func (h *Handler) CreateSessionTemplate(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	accountID := authcontext.GetAccountID(ctx)
-
-	// Parse activity group ID from path
-	groupIDStr := r.PathValue("groupId")
-	groupID, err := uuid.Parse(groupIDStr)
-	if err != nil {
-		h.logger.Error(ctx, "invalid activity group ID", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_group_id", "Invalid activity group ID")
-		return
-	}
-
-	// Decode request body
-	var req dtos.CreateSessionTemplateRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
-		h.logger.Error(ctx, "failed to decode request body", "error", err)
-		api.WriteValidationErrorResponse(w, err)
-		return
-	}
-
-	// Convert to application params
-	params, err := mapper.CreateRequestToParams(&req, groupID, accountID)
-	if err != nil {
-		h.logger.Error(ctx, "failed to convert request to params", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_params", "Invalid request parameters")
-		return
-	}
-
-	// Create template
-	template, err := h.sessionTemplateService.CreateSessionTemplate(ctx, *params)
-	if err != nil {
-		h.handleServiceError(ctx, w, err)
-		return
-	}
-
-	h.logger.Info(ctx, "session template created",
-		"template_id", template.ID(),
-		"group_id", groupID,
+	// Session routes (ordered from most specific to least specific)
+	mux.Handle(
+		"POST /api/v1/sessions",
+		middlewares.ThenFunc(h.CreateSession),
+	)
+	mux.Handle(
+		"GET /api/v1/sessions",
+		middlewares.ThenFunc(h.ListSessions),
+	)
+	mux.Handle(
+		"GET /api/v1/sessions/{id}",
+		middlewares.ThenFunc(h.GetSession),
+	)
+	mux.Handle(
+		"PUT /api/v1/sessions/{id}",
+		middlewares.ThenFunc(h.UpdateSession),
+	)
+	mux.Handle(
+		"POST /api/v1/sessions/{id}/start",
+		middlewares.ThenFunc(h.StartSession),
+	)
+	mux.Handle(
+		"POST /api/v1/sessions/{id}/complete",
+		middlewares.ThenFunc(h.CompleteSession),
+	)
+	mux.Handle(
+		"DELETE /api/v1/sessions/{id}",
+		middlewares.ThenFunc(h.CancelSession),
 	)
 
-	api.WriteCreatedResponse(w, dtos.CreateSessionTemplateResponse{
-		ID: template.ID(),
-	}, "Session template created successfully")
-}
+	// Member routes (ordered from most specific to least specific)
+	mux.Handle(
+		"POST /api/v1/activity-groups/{groupId}/members/{userId}/approve",
+		middlewares.ThenFunc(h.ApproveMember),
+	)
+	mux.Handle(
+		"POST /api/v1/activity-groups/{groupId}/members/{userId}/reject",
+		middlewares.ThenFunc(h.RejectMember),
+	)
+	mux.Handle(
+		"PATCH /api/v1/activity-groups/{groupId}/members/{userId}/role",
+		middlewares.ThenFunc(h.UpdateMemberRole),
+	)
+	mux.Handle(
+		"DELETE /api/v1/activity-groups/{groupId}/members/{userId}",
+		middlewares.ThenFunc(h.RemoveMember),
+	)
+	mux.Handle(
+		"GET /api/v1/activity-groups/{groupId}/members/{userId}",
+		middlewares.ThenFunc(h.GetMember),
+	)
+	mux.Handle(
+		"POST /api/v1/activity-groups/{groupId}/members",
+		middlewares.ThenFunc(h.InviteMember),
+	)
+	mux.Handle(
+		"GET /api/v1/activity-groups/{groupId}/members",
+		middlewares.ThenFunc(h.ListMembers),
+	)
+	mux.Handle(
+		"POST /api/v1/activity-groups/{groupId}/leave",
+		middlewares.ThenFunc(h.LeaveMember),
+	)
 
-// GetSessionTemplate handles GET /api/v1/templates/{id}
-//
-//	@Summary		Get a session template
-//	@Description	Retrieves a session template by ID
-//	@Tags			Session Templates
-//	@Produce		json
-//	@Security		BearerAuth
-//	@Param			id	path		string									true	"Template ID"
-//	@Success		200	{object}	api.Response[dtos.SessionTemplateResponse]	"Template retrieved successfully"
-//	@Failure		400	{object}	api.Response[any]							"Invalid request"
-//	@Failure		404	{object}	api.Response[any]							"Template not found"
-//	@Failure		500	{object}	api.Response[any]							"Internal server error"
-//	@Router			/api/v1/templates/{id} [get]
-func (h *Handler) GetSessionTemplate(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// Parse template ID from path
-	templateIDStr := r.PathValue("id")
-	templateID, err := uuid.Parse(templateIDStr)
-	if err != nil {
-		h.logger.Error(ctx, "invalid template ID", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_template_id", "Invalid template ID")
-		return
-	}
-
-	// Get template
-	template, err := h.sessionTemplateService.GetSessionTemplate(ctx, templateID)
-	if err != nil {
-		h.handleServiceError(ctx, w, err)
-		return
-	}
-
-	api.WriteOkResponse(w, mapper.DomainToResponse(template), "")
-}
-
-// ListSessionTemplates handles GET /api/v1/activity-groups/{groupId}/templates
-//
-//	@Summary		List session templates
-//	@Description	Lists all session templates for an activity group with optional filters
-//	@Tags			Session Templates
-//	@Produce		json
-//	@Security		BearerAuth
-//	@Param			groupId		path		string										true	"Activity Group ID"
-//	@Param			status		query		string										false	"Filter by status (active, inactive)"
-//	@Param			is_recurring	query		boolean										false	"Filter by recurring status"
-//	@Param			limit		query		int											false	"Limit number of results (default 20)"
-//	@Param			offset		query		int											false	"Offset for pagination (default 0)"
-//	@Success		200			{object}	api.Response[dtos.SessionTemplateListResponse]	"Templates retrieved successfully"
-//	@Failure		400			{object}	api.Response[any]									"Invalid request"
-//	@Failure		500			{object}	api.Response[any]									"Internal server error"
-//	@Router			/api/v1/activity-groups/{groupId}/templates [get]
-func (h *Handler) ListSessionTemplates(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// Parse activity group ID from path
-	groupIDStr := r.PathValue("groupId")
-	groupID, err := uuid.Parse(groupIDStr)
-	if err != nil {
-		h.logger.Error(ctx, "invalid activity group ID", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_group_id", "Invalid activity group ID")
-		return
-	}
-
-	// Parse query parameters
-	params, err := mapper.QueryToListParams(r.URL.Query())
-	if err != nil {
-		h.logger.Error(ctx, "failed to parse query parameters", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_params", "Invalid query parameters")
-		return
-	}
-
-	// Set activity group ID from path
-	params.ActivityGroupID = &groupID
-
-	// List templates
-	templates, err := h.sessionTemplateService.ListSessionTemplates(ctx, *params)
-	if err != nil {
-		h.handleServiceError(ctx, w, err)
-		return
-	}
-
-	api.WriteOkResponse(w,
-		mapper.DomainListToResponse(templates, params.Limit, params.Offset),
-		"")
-}
-
-// UpdateSessionTemplate handles PUT /api/v1/templates/{id}
-//
-//	@Summary		Update a session template
-//	@Description	Updates an existing session template
-//	@Tags			Session Templates
-//	@Accept			json
-//	@Produce		json
-//	@Security		BearerAuth
-//	@Param			id		path		string									true	"Template ID"
-//	@Param			request	body		dtos.UpdateSessionTemplateRequest		true	"Update data"
-//	@Success		200		{object}	api.Response[dtos.EmptyResponse]		"Template updated successfully"
-//	@Failure		400		{object}	api.Response[any]						"Invalid request"
-//	@Failure		404		{object}	api.Response[any]						"Template not found"
-//	@Failure		500		{object}	api.Response[any]						"Internal server error"
-//	@Router			/api/v1/templates/{id} [put]
-func (h *Handler) UpdateSessionTemplate(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// Parse template ID from path
-	templateIDStr := r.PathValue("id")
-	templateID, err := uuid.Parse(templateIDStr)
-	if err != nil {
-		h.logger.Error(ctx, "invalid template ID", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_template_id", "Invalid template ID")
-		return
-	}
-
-	// Decode request body
-	var req dtos.UpdateSessionTemplateRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
-		h.logger.Error(ctx, "failed to decode request body", "error", err)
-		api.WriteValidationErrorResponse(w, err)
-		return
-	}
-
-	// Convert to application params
-	params, err := mapper.UpdateRequestToParams(&req)
-	if err != nil {
-		h.logger.Error(ctx, "failed to convert request to params", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_params", "Invalid request parameters")
-		return
-	}
-
-	// Update template
-	if err := h.sessionTemplateService.UpdateSessionTemplate(ctx, templateID, *params); err != nil {
-		h.handleServiceError(ctx, w, err)
-		return
-	}
-
-	h.logger.Info(ctx, "session template updated", "template_id", templateID)
-
-	api.WriteOkResponse(w, dtos.EmptyResponse{}, "Session template updated successfully")
-}
-
-// DeleteSessionTemplate handles DELETE /api/v1/templates/{id}
-//
-//	@Summary		Delete a session template
-//	@Description	Soft-deletes a session template
-//	@Tags			Session Templates
-//	@Produce		json
-//	@Security		BearerAuth
-//	@Param			id	path		string							true	"Template ID"
-//	@Success		200	{object}	api.Response[dtos.EmptyResponse]	"Template deleted successfully"
-//	@Failure		400	{object}	api.Response[any]				"Invalid request"
-//	@Failure		404	{object}	api.Response[any]				"Template not found"
-//	@Failure		500	{object}	api.Response[any]				"Internal server error"
-//	@Router			/api/v1/templates/{id} [delete]
-func (h *Handler) DeleteSessionTemplate(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// Parse template ID from path
-	templateIDStr := r.PathValue("id")
-	templateID, err := uuid.Parse(templateIDStr)
-	if err != nil {
-		h.logger.Error(ctx, "invalid template ID", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_template_id", "Invalid template ID")
-		return
-	}
-
-	// Delete template
-	if err := h.sessionTemplateService.DeleteSessionTemplate(ctx, templateID); err != nil {
-		h.handleServiceError(ctx, w, err)
-		return
-	}
-
-	h.logger.Info(ctx, "session template deleted", "template_id", templateID)
-
-	api.WriteOkResponse(w, dtos.EmptyResponse{}, "Session template deleted successfully")
-}
-
-// ActivateSessionTemplate handles POST /api/v1/templates/{id}/activate
-//
-//	@Summary		Activate a session template
-//	@Description	Activates an inactive session template
-//	@Tags			Session Templates
-//	@Produce		json
-//	@Security		BearerAuth
-//	@Param			id	path		string							true	"Template ID"
-//	@Success		200	{object}	api.Response[dtos.EmptyResponse]	"Template activated successfully"
-//	@Failure		400	{object}	api.Response[any]				"Invalid request"
-//	@Failure		404	{object}	api.Response[any]				"Template not found"
-//	@Failure		500	{object}	api.Response[any]				"Internal server error"
-//	@Router			/api/v1/templates/{id}/activate [post]
-func (h *Handler) ActivateSessionTemplate(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// Parse template ID from path
-	templateIDStr := r.PathValue("id")
-	templateID, err := uuid.Parse(templateIDStr)
-	if err != nil {
-		h.logger.Error(ctx, "invalid template ID", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_template_id", "Invalid template ID")
-		return
-	}
-
-	// Activate template
-	if err := h.sessionTemplateService.ActivateSessionTemplate(ctx, templateID); err != nil {
-		h.handleServiceError(ctx, w, err)
-		return
-	}
-
-	h.logger.Info(ctx, "session template activated", "template_id", templateID)
-
-	api.WriteOkResponse(w, dtos.EmptyResponse{}, "Session template activated successfully")
-}
-
-// DeactivateSessionTemplate handles POST /api/v1/templates/{id}/deactivate
-//
-//	@Summary		Deactivate a session template
-//	@Description	Deactivates an active session template
-//	@Tags			Session Templates
-//	@Produce		json
-//	@Security		BearerAuth
-//	@Param			id	path		string							true	"Template ID"
-//	@Success		200	{object}	api.Response[dtos.EmptyResponse]	"Template deactivated successfully"
-//	@Failure		400	{object}	api.Response[any]				"Invalid request"
-//	@Failure		404	{object}	api.Response[any]				"Template not found"
-//	@Failure		500	{object}	api.Response[any]				"Internal server error"
-//	@Router			/api/v1/templates/{id}/deactivate [post]
-func (h *Handler) DeactivateSessionTemplate(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// Parse template ID from path
-	templateIDStr := r.PathValue("id")
-	templateID, err := uuid.Parse(templateIDStr)
-	if err != nil {
-		h.logger.Error(ctx, "invalid template ID", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_template_id", "Invalid template ID")
-		return
-	}
-
-	// Deactivate template
-	if err := h.sessionTemplateService.DeactivateSessionTemplate(ctx, templateID); err != nil {
-		h.handleServiceError(ctx, w, err)
-		return
-	}
-
-	h.logger.Info(ctx, "session template deactivated", "template_id", templateID)
-
-	api.WriteOkResponse(w, dtos.EmptyResponse{}, "Session template deactivated successfully")
-}
-
-// handleServiceError converts service errors to HTTP responses
-// Logging is handled by middleware based on HTTP status code
-func (h *Handler) handleServiceError(ctx context.Context, w http.ResponseWriter, err error) {
-	appErr := domainerror.GetAppError(err)
-
-	api.WriteError(
-		w,
-		appErr.StatusCode,
-		appErr.Code,
-		appErr.Message,
-		nil,
+	// RSVP/Attendee routes
+	mux.Handle(
+		"POST /api/v1/sessions/{sessionId}/rsvp",
+		middlewares.ThenFunc(h.CreateRSVP),
+	)
+	mux.Handle(
+		"PUT /api/v1/sessions/{sessionId}/rsvp",
+		middlewares.ThenFunc(h.UpdateRSVP),
+	)
+	mux.Handle(
+		"DELETE /api/v1/sessions/{sessionId}/rsvp",
+		middlewares.ThenFunc(h.CancelRSVP),
+	)
+	mux.Handle(
+		"GET /api/v1/sessions/{sessionId}/rsvp",
+		middlewares.ThenFunc(h.GetRSVP),
+	)
+	mux.Handle(
+		"GET /api/v1/sessions/{sessionId}/attendees",
+		middlewares.ThenFunc(h.ListAttendees),
 	)
 }

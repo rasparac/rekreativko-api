@@ -73,6 +73,18 @@ func (r *Router) loadRoutes() {
 			},
 		},
 	})
+
+	r.addRoute(Route{
+		Prefix:      "/activity",
+		Service:     "activity",
+		StripPrefix: true,
+		AuthRule: []AuthRule{
+			{
+				PathPattern: "^/activity/api/v1/.*",
+				RequireAuth: true,
+			},
+		},
+	})
 }
 
 func (r *Router) addRoute(route Route) {

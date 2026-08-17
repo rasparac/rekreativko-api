@@ -13,7 +13,6 @@ import (
 )
 
 func Tracing(next http.Handler) http.Handler {
-
 	return otelhttp.NewHandler(
 		next,
 		"http.server",
@@ -23,46 +22,6 @@ func Tracing(next http.Handler) http.Handler {
 			return !strings.Contains(r.URL.Path, "/health")
 		}),
 	)
-
-	// return otelhttp.NewHandler(
-	// 	http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-	// 		ctx := r.Context()
-
-	// 		ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(r.Header))
-
-	// 		enrichSpan(ctx, r)
-
-	// 		rw := &responseWriter{
-	// 			ResponseWriter: w,
-	// 			statusCode:     http.StatusOK,
-	// 		}
-
-	// 		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(w.Header()))
-
-	// 		next.ServeHTTP(rw, r)
-
-	// 		span := trace.SpanFromContext(ctx)
-
-	// 		if span.IsRecording() {
-	// 			span.SetAttributes(
-	// 				semconv.HTTPStatusCode(rw.statusCode),
-	// 				attribute.Int64("http.response_size", rw.written),
-	// 			)
-
-	// 			if rw.statusCode >= http.StatusInternalServerError {
-	// 				span.SetAttributes(attribute.Bool("error", true))
-	// 			} else if rw.statusCode == http.StatusUnauthorized || rw.statusCode == http.StatusForbidden {
-	// 				span.SetAttributes(attribute.Bool("error", true))
-	// 				span.SetAttributes(attribute.String("error.type", "security"))
-	// 			}
-	// 		}
-	// 	}),
-	// 	"http.server",
-	// 	otelhttp.WithSpanNameFormatter(spanNameFormatter),
-	// 	otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
-	// )
-
 }
 
 func SpanEnrichment(next http.Handler) http.Handler {
@@ -70,10 +29,7 @@ func SpanEnrichment(next http.Handler) http.Handler {
 		ctx := r.Context()
 		span := enrichSpan(ctx, r)
 
-		rw := &responseWriter{
-			ResponseWriter: w,
-			statusCode:     http.StatusOK,
-		}
+		rw := newResponseWriter(w)
 
 		next.ServeHTTP(rw, r)
 

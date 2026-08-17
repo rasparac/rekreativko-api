@@ -248,7 +248,6 @@ func NewActivityGroup(
 	groupVisibility ActivityGroupVisibility,
 	timezone string,
 	capacity *Capacity,
-	recurrenceRule *RecurrenceRule,
 ) (*ActivityGroup, error) {
 	if !activityType.IsValid() {
 		return nil, fmt.Errorf("invalid activity type: %s", activityType)

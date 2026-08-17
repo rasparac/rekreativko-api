@@ -1,6 +1,9 @@
 package postgres
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // QueryBuilder is a helper for building dynamic SQL queries with parameterized arguments.
 // It helps construct SQL queries safely by managing parameter placeholders and arguments.
@@ -53,6 +56,43 @@ func (qb *QueryBuilder) AddCondition(condition string, value any) {
 //	qb.AddRawCondition("status = '" + userInput + "'")  // UNSAFE: SQL injection risk!
 func (qb *QueryBuilder) AddRawCondition(condition string) {
 	qb.BaseQuery += " AND " + condition
+}
+
+// AddLikeCondition adds a LIKE/ILIKE condition with proper wildcard escaping.
+// Automatically escapes special LIKE characters (%, _, \) in user input and wraps with %.
+//
+// Security: Prevents wildcard injection attacks where users could send patterns like
+// "%" to match everything or "%%%...%" to cause performance issues.
+//
+// Example:
+//
+//	qb.AddLikeCondition("city ILIKE ", userCity)
+//	// User sends: "New%York" -> searches for literal "New%York"
+//	// User sends: "New York" -> searches for "New York"
+//	// Generates: AND city ILIKE $1 with arg "%New\\%York%"
+func (qb *QueryBuilder) AddLikeCondition(condition string, value string) {
+	escapedValue := EscapeLikePattern(value)
+	qb.AddCondition(condition, "%"+escapedValue+"%")
+}
+
+// EscapeLikePattern escapes special characters in LIKE patterns to prevent wildcard injection.
+// Escapes: \ (backslash), % (percent), _ (underscore)
+//
+// This prevents users from injecting wildcards that could:
+// 1. Match unintended data (security issue)
+// 2. Cause expensive queries (performance attack)
+//
+// Example:
+//
+//	EscapeLikePattern("50%")      -> "50\\%"     (literal percent)
+//	EscapeLikePattern("test_db")  -> "test\\_db" (literal underscore)
+//	EscapeLikePattern("a\\b")     -> "a\\\\b"    (literal backslash)
+func EscapeLikePattern(s string) string {
+	// Order matters: escape backslash first, then % and _
+	s = strings.ReplaceAll(s, "\\", "\\\\") // \ -> \\
+	s = strings.ReplaceAll(s, "%", "\\%")   // % -> \%
+	s = strings.ReplaceAll(s, "_", "\\_")   // _ -> \_
+	return s
 }
 
 // Build returns the final query and arguments.

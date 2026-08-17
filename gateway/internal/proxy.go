@@ -49,7 +49,6 @@ func NewReverseProxy(
 		proxy := &httputil.ReverseProxy{
 			Rewrite: func(pr *httputil.ProxyRequest) {
 				pr.SetURL(target)
-				pr.Out.Host = pr.In.Host
 				pr.Out.URL.Path = pr.In.URL.Path
 				pr.SetXForwarded()
 			},

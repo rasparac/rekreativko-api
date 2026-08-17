@@ -17,11 +17,12 @@ type (
 		readLimit     int
 		pollIntervalS time.Duration
 		metrics       *Metrics
+		schemas       []string
 	}
 
 	eventOutboxReader interface {
-		ReadEvents(ctx context.Context, limit int) ([]domainevent.BrokerEvent, error)
-		MarkEventAsPublished(ctx context.Context, eventID uuid.UUID) error
+		ReadEvents(ctx context.Context, schema string, limit int) ([]domainevent.BrokerEvent, error)
+		MarkEventAsPublished(ctx context.Context, schema string, eventID uuid.UUID) error
 	}
 )
 
@@ -32,6 +33,7 @@ func NewOutboxPublisher(
 	readLimit int,
 	pollIntervalS time.Duration,
 	metrics *Metrics,
+	schemas []string,
 ) *outboxPublisher {
 	return &outboxPublisher{
 		eventReader:   eventReader,
@@ -40,6 +42,7 @@ func NewOutboxPublisher(
 		readLimit:     readLimit,
 		pollIntervalS: pollIntervalS,
 		metrics:       metrics,
+		schemas:       schemas,
 	}
 }
 
@@ -66,42 +69,59 @@ func (op *outboxPublisher) Start(ctx context.Context) error {
 func (op *outboxPublisher) publish(ctx context.Context) error {
 	var (
 		start          = time.Now()
-		failedCount    int
-		publishedCount int
+		totalFailed    int
+		totalPublished int
 	)
-	events, err := op.eventReader.ReadEvents(ctx, op.readLimit)
+
+	// Poll events from configured bounded context schemas
+	for _, schema := range op.schemas {
+		failedCount, publishedCount, err := op.publishFromSchema(ctx, schema)
+		if err != nil {
+			op.logger.Error(ctx, "failed to publish from schema", "schema", schema, "error", err)
+			totalFailed += failedCount
+			continue
+		}
+		totalFailed += failedCount
+		totalPublished += publishedCount
+	}
+
+	duration := time.Since(start).Seconds()
+	op.metrics.EventPublishDuration.WithLabelValues(
+		"outbox",
+	).Observe(duration)
+
+	op.metrics.EventsPublishedTotal.WithLabelValues("outbox").Add(float64(totalPublished))
+	op.metrics.EventProcessedTotal.WithLabelValues("outbox", "success").Add(float64(totalPublished))
+
+	if totalFailed > 0 {
+		op.metrics.EventProcessedTotal.WithLabelValues("outbox", "failed").Add(float64(totalFailed))
+	}
+
+	return nil
+}
+
+func (op *outboxPublisher) publishFromSchema(ctx context.Context, schema string) (failedCount, publishedCount int, err error) {
+	events, err := op.eventReader.ReadEvents(ctx, schema, op.readLimit)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 
 	for _, event := range events {
 		err := op.broker.Publish(ctx, event.EventType, event.Payload)
 		if err != nil {
 			failedCount++
-			op.logger.Error(ctx, "failed to publish outbox event", "error", err)
+			op.logger.Error(ctx, "failed to publish outbox event", "schema", schema, "error", err)
 			continue
 		}
 
-		err = op.eventReader.MarkEventAsPublished(ctx, event.EventID)
+		err = op.eventReader.MarkEventAsPublished(ctx, schema, event.EventID)
 		if err != nil {
 			failedCount++
-			op.logger.Error(ctx, "failed to mark as published outbox event", "error", err)
+			op.logger.Error(ctx, "failed to mark as published outbox event", "schema", schema, "error", err)
 			continue
 		}
 		publishedCount++
 	}
 
-	duration := time.Since(start).Seconds()
-	op.metrics.EventPublishDuration.WithLabelValues(
-		"outbox", // TODO think about this name
-	).Observe(duration)
-
-	op.metrics.EventsPublishedTotal.WithLabelValues("outbox").Add(float64(publishedCount))
-	op.metrics.EventProcessedTotal.WithLabelValues("outbox", "success").Add(float64(publishedCount))
-
-	if failedCount > 0 {
-		op.metrics.EventProcessedTotal.WithLabelValues("outbox", "failed").Add(float64(failedCount))
-	}
-
-	return nil
+	return failedCount, publishedCount, nil
 }

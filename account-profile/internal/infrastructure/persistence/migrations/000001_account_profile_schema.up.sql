@@ -104,3 +104,18 @@ CREATE TRIGGER update_statistics_updated_at_column
     FOR EACH ROW
     EXECUTE PROCEDURE account_profile.update_updated_at_column();
 
+-- account_profile event outbox table
+CREATE TABLE IF NOT EXISTS account_profile.event_outbox(
+    event_id uuid PRIMARY KEY NOT NULL,
+    event_type text NOT NULL,
+    aggregate_id uuid NOT NULL,
+    payload jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT NOW(),
+    published_at timestamptz DEFAULT NULL
+);
+
+CREATE UNIQUE INDEX idx_account_profile_event_outbox_event_id ON account_profile.event_outbox(event_id);
+
+CREATE INDEX idx_account_profile_event_outbox_created_at ON account_profile.event_outbox(created_at);
+
+CREATE INDEX idx_account_profile_event_outbox_published_at ON account_profile.event_outbox(published_at);

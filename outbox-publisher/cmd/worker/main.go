@@ -50,7 +50,7 @@ func main() {
 		dbTracer,
 	)
 	if err != nil {
-		slog.Error("error initializing postgres connection", "error", err)
+		log.Error(ctx, "error initializing postgres connection", "error", err)
 		os.Exit(1)
 	}
 	defer pg.Close()
@@ -61,7 +61,7 @@ func main() {
 		log,
 	)
 	if err != nil {
-		slog.Error("error initializing nats connection", "error", err)
+		log.Error(ctx, "error initializing nats connection", "error", err)
 		os.Exit(1)
 	}
 	defer messageBroker.Close(ctx)
@@ -70,6 +70,14 @@ func main() {
 
 	domainEventMgr := domainevent.NewDomainEventManager(txManager)
 
+	schemas := cfg.Outbox.GetSchemas()
+	if len(schemas) == 0 {
+		log.Error(ctx, "no schemas configured for outbox publisher")
+		os.Exit(1)
+	}
+
+	log.Info(ctx, "configured schemas for outbox publisher", "schemas", schemas)
+
 	outboxPublisher := events.NewOutboxPublisher(
 		domainEventMgr,
 		messageBroker,
@@ -77,6 +85,7 @@ func main() {
 		cfg.Outbox.ReadLimit,
 		cfg.Outbox.PollIntervalS,
 		appMetrics,
+		schemas,
 	)
 
 	go func() {

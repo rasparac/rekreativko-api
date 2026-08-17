@@ -19,6 +19,7 @@ type (
 		mu       sync.RWMutex
 		limit    int
 		window   time.Duration
+		stop     chan struct{}
 	}
 )
 
@@ -27,6 +28,7 @@ func NewRateLimiter(requestsPerMinute int) *RateLimiter {
 		requests: make(map[string]*clientRequests),
 		limit:    requestsPerMinute,
 		window:   time.Minute,
+		stop:     make(chan struct{}),
 	}
 
 	go rl.cleanup()
@@ -36,7 +38,7 @@ func NewRateLimiter(requestsPerMinute int) *RateLimiter {
 
 func (rl *RateLimiter) RateLimiter(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clientIP := getClientIP(r)
+		clientIP := GetIP(r)
 
 		if rl.allow(clientIP) {
 			next.ServeHTTP(w, r)
@@ -81,26 +83,24 @@ func (rl *RateLimiter) cleanup() {
 	ticker := time.NewTicker(rl.window)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		rl.mu.Lock()
-		now := time.Now()
-		for k, v := range rl.requests {
-			if now.After(v.resetTime) {
-				delete(rl.requests, k)
+	for {
+		select {
+		case <-ticker.C:
+			rl.mu.Lock()
+			now := time.Now()
+			for k, v := range rl.requests {
+				if now.After(v.resetTime) {
+					delete(rl.requests, k)
+				}
 			}
+			rl.mu.Unlock()
+		case <-rl.stop:
+			return
 		}
-		rl.mu.Unlock()
 	}
 }
 
-func getClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
-	}
-
-	if xri := r.Header.Get("X-Real-Ip"); xri != "" {
-		return xri
-	}
-
-	return r.RemoteAddr
+// Stop gracefully shuts down the rate limiter's cleanup goroutine.
+func (rl *RateLimiter) Stop() {
+	close(rl.stop)
 }

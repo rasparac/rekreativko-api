@@ -88,7 +88,7 @@ func (h *accountPorfileHandler) RegisterRoutes(
 //	@Description	Returns account profile
 //	@Tags			account Profile
 //	@Produce		json
-//	@Security		BearerAuth
+//	@Security		GatewayKeyAuth && BearerAuth
 //	@Param			id	path		string				true	"Account ID"
 //
 //	@Success		200	{object}	api.Response[any]	"Account returned successfully"
@@ -126,7 +126,7 @@ func (h *accountPorfileHandler) GetProfile(
 //	@Tags			account Profile
 //	@Accept			json
 //	@Produce		json
-//	@Security		BearerAuth
+//	@Security		GatewayKeyAuth && BearerAuth
 //
 //	@Param			account_id		query		[]string	false	"Filter by account IDs (can be repeated)"
 //	@Param			nickname		query		[]string	false	"Filter by nicknames (can be repeated)"
@@ -181,9 +181,10 @@ func (h *accountPorfileHandler) GetProfiles(
 //	@Accept			json
 //	@Produce		json
 //
-//	@Security		BearerAuth
+//	@Security		GatewayKeyAuth && BearerAuth
 //	@Param			id		path		string						true	"Profile account ID"
-//	@Param			request	body		dtos.UpdateProfileRequest	true	"Account Registration Data"
+// TODO: Fix swagger parsing for UpdateProfileRequest
+//	Param			request	body		dtos.UpdateProfileRequest	true	"Account Registration Data"
 //	@Success		200		{object}	api.Response[any]			"Account created successfully"
 //	@Failure		400		{object}	api.Response[any]			"Invalid request"
 //	@Failure		500		{object}	api.Response[any]			"Internal server error"
@@ -222,8 +223,8 @@ func (h *accountPorfileHandler) UpdateProfile(
 //	@Accept			json
 //	@Produce		json
 //
-//	@Security		BearerAuth
-//	@Param			request	body		dtos.UpdateAccountSettingsRequest	true	"Account Settings Data"
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param	request	body	dtos.UpdateAccountSettingsRequest	true	"Account Settings Data"
 //	@Success		200		{object}	api.Response[any]			"Account settings updated successfully"
 //	@Failure		400		{object}	api.Response[any]			"Invalid request"
 //	@Failure		500		{object}	api.Response[any]			"Internal server error"
@@ -260,7 +261,7 @@ func (h *accountPorfileHandler) UpdateAccountSettings(
 //	@Description	Returns account account settings for logged in account
 //	@Tags			account Profile
 //	@Produce		json
-//	@Security		BearerAuth
+//	@Security		GatewayKeyAuth && BearerAuth
 //
 //	@Success		200	{object}	api.Response[dtos.Setting]	"Account settings returned successfully"
 //	@Failure		400	{object}	api.Response[any]	"Invalid request"

@@ -14,4 +14,10 @@ type (
 		Timeout time.Duration `envconfig:"ACCOUNT_PROFILE_SERVICE_TIMEOUT" default:"30s"`
 		Version string        `envconfig:"ACCOUNT_PROFILE_SERVICE_VERSION" default:"1.0.0"`
 	}
+
+	ActivityServiceConfig struct {
+		URL     string        `envconfig:"ACTIVITY_SERVICE_URL" default:"http://localhost:8084"`
+		Timeout time.Duration `envconfig:"ACTIVITY_SERVICE_TIMEOUT" default:"30s"`
+		Version string        `envconfig:"ACTIVITY_SERVICE_VERSION" default:"1.0.0"`
+	}
 )

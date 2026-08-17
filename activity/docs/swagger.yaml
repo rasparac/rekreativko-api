@@ -1,0 +1,2475 @@
+definitions:
+  api.APIError:
+    properties:
+      code:
+        example: invalid_request
+        type: string
+      details:
+        additionalProperties: {}
+        type: object
+      message:
+        example: Invalid request
+        type: string
+    type: object
+  api.Response-any:
+    properties:
+      data:
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_ActivityGroupListResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.ActivityGroupListResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_ActivityGroupResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.ActivityGroupResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_AttendeeListResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.AttendeeListResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_AttendeeResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.AttendeeResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_CreateActivityGroupResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateActivityGroupResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_CreateRSVPResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateRSVPResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_CreateSessionResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateSessionResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_CreateSessionTemplateResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateSessionTemplateResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_EmptyResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.EmptyResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_InviteMemberResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.InviteMemberResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_MemberListResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.MemberListResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_MemberResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.MemberResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_SessionListResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.SessionListResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_SessionResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.SessionResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_SessionTemplateListResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.SessionTemplateListResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_SessionTemplateResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.SessionTemplateResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.ActivityGroupListResponse:
+    properties:
+      groups:
+        items:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.ActivityGroupResponse'
+        type: array
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total:
+        type: integer
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.ActivityGroupResponse:
+    properties:
+      activity_type:
+        example: running
+        type: string
+      cancelled_at:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      created_at:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      creator_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      default_capacity:
+        example: 30
+        type: integer
+      description:
+        example: A group for early morning runners in Belgrade
+        type: string
+      difficulty_level:
+        example: beginner
+        type: string
+      id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      location_city:
+        example: Belgrade
+        type: string
+      location_country:
+        example: Serbia
+        type: string
+      status:
+        example: active
+        type: string
+      timezone:
+        example: Europe/Belgrade
+        type: string
+      title:
+        example: Morning Running Group
+        type: string
+      updated_at:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      visibility:
+        example: public
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.AttendeeListResponse:
+    properties:
+      attendees:
+        items:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.AttendeeResponse'
+        type: array
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total:
+        type: integer
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.AttendeeResponse:
+    properties:
+      activity_group_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      created_at:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      session_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      source:
+        example: rsvp_manual
+        type: string
+      status:
+        example: going
+        type: string
+      updated_at:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      user_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateActivityGroupRequest:
+    properties:
+      activity_type:
+        enum:
+        - hiking
+        - cycling
+        - running
+        - swimming
+        - yoga
+        - gym
+        - other
+        example: running
+        type: string
+      default_capacity:
+        example: 30
+        maximum: 1000
+        minimum: 1
+        type: integer
+      description:
+        example: A group for early morning runners in Belgrade
+        maxLength: 1000
+        type: string
+      difficulty_level:
+        enum:
+        - beginner
+        - intermediate
+        - advanced
+        example: beginner
+        type: string
+      location_city:
+        example: Belgrade
+        maxLength: 100
+        minLength: 2
+        type: string
+      location_country:
+        example: Serbia
+        maxLength: 100
+        minLength: 2
+        type: string
+      timezone:
+        example: Europe/Belgrade
+        type: string
+      title:
+        example: Morning Running Group
+        maxLength: 100
+        minLength: 3
+        type: string
+      visibility:
+        enum:
+        - public
+        - private
+        example: public
+        type: string
+    required:
+    - activity_type
+    - difficulty_level
+    - location_city
+    - location_country
+    - timezone
+    - title
+    - visibility
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateActivityGroupResponse:
+    properties:
+      id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateRSVPRequest:
+    properties:
+      status:
+        enum:
+        - going
+        - not_going
+        - maybe
+        example: going
+        type: string
+    required:
+    - status
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateRSVPResponse:
+    properties:
+      id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateSessionRequest:
+    properties:
+      activity_group_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      capacity:
+        example: 20
+        maximum: 1000
+        minimum: 1
+        type: integer
+      end_time:
+        example: "2024-02-01T20:00:00Z"
+        type: string
+      is_recurring:
+        example: false
+        type: boolean
+      location_city:
+        example: Belgrade
+        maxLength: 100
+        minLength: 2
+        type: string
+      location_country:
+        example: Serbia
+        maxLength: 100
+        minLength: 2
+        type: string
+      location_lat:
+        example: 44.8176
+        maximum: 90
+        minimum: -90
+        type: number
+      location_lng:
+        example: 20.4633
+        maximum: 180
+        minimum: -180
+        type: number
+      note:
+        example: Bring your own equipment
+        maxLength: 500
+        type: string
+      start_time:
+        example: "2024-02-01T18:00:00Z"
+        type: string
+    required:
+    - activity_group_id
+    - location_city
+    - location_country
+    - location_lat
+    - location_lng
+    - start_time
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateSessionResponse:
+    properties:
+      id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateSessionTemplateRequest:
+    properties:
+      default_capacity:
+        description: Default session settings
+        example: 20
+        minimum: 1
+        type: integer
+      description:
+        example: Every Monday morning run in the park
+        maxLength: 1000
+        type: string
+      location_city:
+        example: Belgrade
+        maxLength: 100
+        minLength: 2
+        type: string
+      location_country:
+        example: Serbia
+        maxLength: 100
+        minLength: 2
+        type: string
+      recurrence_day_of_month:
+        example: 15
+        maximum: 31
+        minimum: 1
+        type: integer
+      recurrence_day_of_week:
+        description: 0=Sun, 1=Mon, etc.
+        example: 1
+        maximum: 6
+        minimum: 0
+        type: integer
+      recurrence_ends_at:
+        description: RFC3339
+        example: "2025-12-31T23:59:59Z"
+        type: string
+      recurrence_frequency:
+        description: Recurrence configuration (all optional - if not provided, template
+          is not recurring)
+        enum:
+        - daily
+        - weekly
+        - monthly
+        example: weekly
+        type: string
+      recurrence_interval:
+        example: 1
+        minimum: 1
+        type: integer
+      recurrence_time_hour:
+        example: 7
+        maximum: 23
+        minimum: 0
+        type: integer
+      recurrence_time_minute:
+        example: 0
+        maximum: 59
+        minimum: 0
+        type: integer
+      title:
+        example: Weekly Running Session
+        maxLength: 200
+        minLength: 3
+        type: string
+    required:
+    - title
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateSessionTemplateResponse:
+    properties:
+      id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.EmptyResponse:
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.InviteMemberRequest:
+    properties:
+      user_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+    required:
+    - user_id
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.InviteMemberResponse:
+    properties:
+      id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.MemberListResponse:
+    properties:
+      limit:
+        type: integer
+      members:
+        items:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.MemberResponse'
+        type: array
+      offset:
+        type: integer
+      total:
+        type: integer
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.MemberResponse:
+    properties:
+      activity_group_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      decided_at:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      joined_at:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      role:
+        example: member
+        type: string
+      status:
+        example: confirmed
+        type: string
+      user_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.RecurrenceInfo:
+    properties:
+      day_of_month:
+        description: 1-31
+        example: 15
+        type: integer
+      day_of_week:
+        description: 0=Sun, 1=Mon, ..., 6=Sat
+        example: 1
+        type: integer
+      ends_at:
+        example: "2025-12-31T23:59:59Z"
+        type: string
+      frequency:
+        example: weekly
+        type: string
+      interval:
+        example: 1
+        type: integer
+      is_recurring:
+        example: true
+        type: boolean
+      time_hour:
+        description: 0-23
+        example: 7
+        type: integer
+      time_minute:
+        description: 0-59
+        example: 0
+        type: integer
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.SessionListResponse:
+    properties:
+      limit:
+        type: integer
+      offset:
+        type: integer
+      sessions:
+        items:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.SessionResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.SessionResponse:
+    properties:
+      activity_group_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      cancelled_at:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      capacity:
+        example: 20
+        type: integer
+      completed_at:
+        example: "2024-02-01T20:10:00Z"
+        type: string
+      created_at:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      created_by_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      end_time:
+        example: "2024-02-01T20:00:00Z"
+        type: string
+      id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      is_recurring:
+        example: false
+        type: boolean
+      location_city:
+        example: Belgrade
+        type: string
+      location_country:
+        example: Serbia
+        type: string
+      location_lat:
+        example: 44.8176
+        type: number
+      location_lng:
+        example: 20.4633
+        type: number
+      note:
+        example: Bring your own equipment
+        type: string
+      open_at:
+        example: "2024-02-01T12:00:00Z"
+        type: string
+      start_time:
+        example: "2024-02-01T18:00:00Z"
+        type: string
+      started_at:
+        example: "2024-02-01T18:05:00Z"
+        type: string
+      status:
+        example: scheduled
+        type: string
+      template_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      updated_at:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.SessionTemplateListResponse:
+    properties:
+      limit:
+        type: integer
+      offset:
+        type: integer
+      templates:
+        items:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.SessionTemplateResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.SessionTemplateResponse:
+    properties:
+      activity_group_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      created_at:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      created_by_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      default_capacity:
+        example: 20
+        type: integer
+      deleted_at:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+      description:
+        example: Every Monday morning run in the park
+        type: string
+      generated_up_to:
+        example: "2025-12-31T23:59:59Z"
+        type: string
+      id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      location_city:
+        example: Belgrade
+        type: string
+      location_country:
+        example: Serbia
+        type: string
+      recurrence:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.RecurrenceInfo'
+        description: Recurrence information (omitted if template is not recurring)
+      status:
+        example: active
+        type: string
+      title:
+        example: Weekly Running Session
+        type: string
+      updated_at:
+        example: "2024-01-01T00:00:00Z"
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.UpdateActivityGroupRequest:
+    properties:
+      activity_type:
+        enum:
+        - hiking
+        - cycling
+        - running
+        - swimming
+        - yoga
+        - gym
+        - other
+        example: running
+        type: string
+      description:
+        example: A group for early morning runners in Belgrade
+        maxLength: 1000
+        type: string
+      difficulty_level:
+        enum:
+        - beginner
+        - intermediate
+        - advanced
+        example: beginner
+        type: string
+      location_city:
+        example: Belgrade
+        maxLength: 100
+        minLength: 2
+        type: string
+      location_country:
+        example: Serbia
+        maxLength: 100
+        minLength: 2
+        type: string
+      timezone:
+        example: Europe/Belgrade
+        type: string
+      title:
+        example: Morning Running Group
+        maxLength: 100
+        minLength: 3
+        type: string
+    required:
+    - activity_type
+    - difficulty_level
+    - location_city
+    - location_country
+    - timezone
+    - title
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.UpdateMemberRoleRequest:
+    properties:
+      role:
+        enum:
+        - admin
+        - member
+        example: admin
+        type: string
+    required:
+    - role
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.UpdateRSVPRequest:
+    properties:
+      status:
+        enum:
+        - going
+        - not_going
+        - maybe
+        example: not_going
+        type: string
+    required:
+    - status
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.UpdateSessionRequest:
+    properties:
+      capacity:
+        example: 20
+        maximum: 1000
+        minimum: 1
+        type: integer
+      end_time:
+        example: "2024-02-01T20:00:00Z"
+        type: string
+      location_city:
+        example: Belgrade
+        maxLength: 100
+        minLength: 2
+        type: string
+      location_country:
+        example: Serbia
+        maxLength: 100
+        minLength: 2
+        type: string
+      location_lat:
+        example: 44.8176
+        maximum: 90
+        minimum: -90
+        type: number
+      location_lng:
+        example: 20.4633
+        maximum: 180
+        minimum: -180
+        type: number
+      note:
+        example: Bring your own equipment
+        maxLength: 500
+        type: string
+      start_time:
+        example: "2024-02-01T18:00:00Z"
+        type: string
+    required:
+    - location_city
+    - location_country
+    - location_lat
+    - location_lng
+    - start_time
+    type: object
+  github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.UpdateSessionTemplateRequest:
+    properties:
+      default_capacity:
+        description: Default session settings
+        example: 20
+        minimum: 1
+        type: integer
+      description:
+        example: Every Monday morning run in the park
+        maxLength: 1000
+        type: string
+      location_city:
+        example: Belgrade
+        maxLength: 100
+        minLength: 2
+        type: string
+      location_country:
+        example: Serbia
+        maxLength: 100
+        minLength: 2
+        type: string
+      recurrence_day_of_month:
+        example: 15
+        maximum: 31
+        minimum: 1
+        type: integer
+      recurrence_day_of_week:
+        example: 1
+        maximum: 6
+        minimum: 0
+        type: integer
+      recurrence_ends_at:
+        example: "2025-12-31T23:59:59Z"
+        type: string
+      recurrence_frequency:
+        description: Recurrence configuration
+        enum:
+        - daily
+        - weekly
+        - monthly
+        example: weekly
+        type: string
+      recurrence_interval:
+        example: 1
+        minimum: 1
+        type: integer
+      recurrence_time_hour:
+        example: 7
+        maximum: 23
+        minimum: 0
+        type: integer
+      recurrence_time_minute:
+        example: 0
+        maximum: 59
+        minimum: 0
+        type: integer
+      title:
+        example: Weekly Running Session
+        maxLength: 200
+        minLength: 3
+        type: string
+    required:
+    - title
+    type: object
+info:
+  contact: {}
+  title: Activity Service API
+  version: "1.0"
+paths:
+  /api/v1/activity-groups:
+    get:
+      description: Lists activity groups with optional filters
+      parameters:
+      - description: Filter by creator ID
+        in: query
+        name: creator_id
+        type: string
+      - description: Filter by status (draft, active, cancelled)
+        in: query
+        name: status
+        type: string
+      - description: Filter by title (partial match)
+        in: query
+        name: title
+        type: string
+      - description: Limit number of results (default 20)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset for pagination (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Groups retrieved successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_ActivityGroupListResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: List activity groups
+      tags:
+      - Activity Groups
+    post:
+      consumes:
+      - application/json
+      description: Creates a new activity group
+      parameters:
+      - description: Activity group data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateActivityGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Group created successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_CreateActivityGroupResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Create an activity group
+      tags:
+      - Activity Groups
+  /api/v1/activity-groups/{groupId}/leave:
+    post:
+      description: Allows the authenticated user to leave an activity group
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: groupId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully left the group
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Leave an activity group
+      tags:
+      - Members
+  /api/v1/activity-groups/{groupId}/members:
+    get:
+      description: Lists members of an activity group with optional filters
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: groupId
+        required: true
+        type: string
+      - description: Filter by status (pending, confirmed, rejected, left, removed)
+        in: query
+        name: status
+        type: string
+      - description: Filter by role (creator, admin, member)
+        in: query
+        name: role
+        type: string
+      - default: 20
+        description: Limit results
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Offset results
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of members
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_MemberListResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: List members
+      tags:
+      - Members
+    post:
+      consumes:
+      - application/json
+      description: Invites a user to join an activity group
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: groupId
+        required: true
+        type: string
+      - description: Invite data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.InviteMemberRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Member invited successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_InviteMemberResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Invite a member to an activity group
+      tags:
+      - Members
+  /api/v1/activity-groups/{groupId}/members/{userId}:
+    delete:
+      description: Removes a member from an activity group
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: groupId
+        required: true
+        type: string
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Member removed successfully
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Remove a member from an activity group
+      tags:
+      - Members
+    get:
+      description: Retrieves a member by activity group and user ID
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: groupId
+        required: true
+        type: string
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Member data
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_MemberResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Get a member
+      tags:
+      - Members
+  /api/v1/activity-groups/{groupId}/members/{userId}/approve:
+    post:
+      description: Approves a pending join request
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: groupId
+        required: true
+        type: string
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Join request approved
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Approve a join request
+      tags:
+      - Members
+  /api/v1/activity-groups/{groupId}/members/{userId}/reject:
+    post:
+      description: Rejects a pending join request
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: groupId
+        required: true
+        type: string
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Join request rejected
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Reject a join request
+      tags:
+      - Members
+  /api/v1/activity-groups/{groupId}/members/{userId}/role:
+    patch:
+      consumes:
+      - application/json
+      description: Updates a member's role (promote to admin or demote to member)
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: groupId
+        required: true
+        type: string
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      - description: Role data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.UpdateMemberRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Role updated successfully
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Update a member's role
+      tags:
+      - Members
+  /api/v1/activity-groups/{groupId}/templates:
+    get:
+      description: Lists all session templates for an activity group with optional
+        filters
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: groupId
+        required: true
+        type: string
+      - description: Filter by status (active, inactive)
+        in: query
+        name: status
+        type: string
+      - description: Filter by recurring status
+        in: query
+        name: is_recurring
+        type: boolean
+      - description: Limit number of results (default 20)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset for pagination (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Templates retrieved successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_SessionTemplateListResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: List session templates
+      tags:
+      - Session Templates
+    post:
+      consumes:
+      - application/json
+      description: Creates a new session template for an activity group
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: groupId
+        required: true
+        type: string
+      - description: Session template data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateSessionTemplateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Template created successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_CreateSessionTemplateResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Create a session template
+      tags:
+      - Session Templates
+  /api/v1/activity-groups/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Cancels (soft-deletes) an activity group
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Group cancelled successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_EmptyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Group not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Cancel an activity group
+      tags:
+      - Activity Groups
+    get:
+      description: Retrieves an activity group by ID
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Group retrieved successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_ActivityGroupResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Group not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Get an activity group
+      tags:
+      - Activity Groups
+    put:
+      consumes:
+      - application/json
+      description: Updates an existing activity group
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.UpdateActivityGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Group updated successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_EmptyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Group not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Update an activity group
+      tags:
+      - Activity Groups
+  /api/v1/activity-groups/{id}/activate:
+    post:
+      description: Activates a draft activity group
+      parameters:
+      - description: Activity Group ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Group activated successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_EmptyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Group not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Activate an activity group
+      tags:
+      - Activity Groups
+  /api/v1/activity-groups/discover:
+    get:
+      description: Discovers public activity groups with optional filters
+      parameters:
+      - description: Filter by city
+        in: query
+        name: city
+        type: string
+      - description: Filter by country
+        in: query
+        name: country
+        type: string
+      - description: Filter by activity type
+        in: query
+        name: activity_type
+        type: string
+      - description: Limit number of results (default 20)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset for pagination (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Groups retrieved successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_ActivityGroupListResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Discover activity groups
+      tags:
+      - Activity Groups
+  /api/v1/sessions:
+    get:
+      description: Lists sessions with optional filters
+      parameters:
+      - description: Filter by activity group ID
+        in: query
+        name: activity_group_id
+        type: string
+      - description: Filter by session template ID
+        in: query
+        name: session_template_id
+        type: string
+      - description: Filter by status (scheduled, started, canceled, completed)
+        in: query
+        name: status
+        type: string
+      - description: Filter by recurring status
+        in: query
+        name: is_recurring
+        type: boolean
+      - description: Filter by start time from (RFC3339)
+        in: query
+        name: start_time_from
+        type: string
+      - description: Filter by start time to (RFC3339)
+        in: query
+        name: start_time_to
+        type: string
+      - description: Limit number of results (default 20)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset for pagination (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sessions retrieved successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_SessionListResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: List sessions
+      tags:
+      - Sessions
+    post:
+      consumes:
+      - application/json
+      description: Creates a new session for an activity group
+      parameters:
+      - description: Session data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Session created successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_CreateSessionResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Create a session
+      tags:
+      - Sessions
+  /api/v1/sessions/{id}:
+    delete:
+      description: Cancels a session (soft delete)
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session cancelled successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_EmptyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Session not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Cancel a session
+      tags:
+      - Sessions
+    get:
+      description: Retrieves a session by ID
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session retrieved successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_SessionResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Session not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Get a session
+      tags:
+      - Sessions
+    put:
+      consumes:
+      - application/json
+      description: Updates an existing session
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.UpdateSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session updated successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_EmptyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Session not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Update a session
+      tags:
+      - Sessions
+  /api/v1/sessions/{id}/complete:
+    post:
+      description: Completes a session (changes status to completed)
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session completed successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_EmptyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Session not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Complete a session
+      tags:
+      - Sessions
+  /api/v1/sessions/{id}/start:
+    post:
+      description: Starts a session (changes status to started)
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session started successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_EmptyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Session not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Start a session
+      tags:
+      - Sessions
+  /api/v1/sessions/{sessionId}/attendees:
+    get:
+      description: Lists all attendees/RSVPs for a specific session with optional
+        filters
+      parameters:
+      - description: Session ID
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Filter by status (going, pending, not_going, maybe, promoted)
+        in: query
+        name: status
+        type: string
+      - description: Limit number of results (default 20)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset for pagination (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Attendees retrieved successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_AttendeeListResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: List attendees for a session
+      tags:
+      - RSVPs
+  /api/v1/sessions/{sessionId}/rsvp:
+    delete:
+      description: Cancels the authenticated user's RSVP for a specific session
+      parameters:
+      - description: Session ID
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: RSVP cancelled successfully
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: RSVP not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Cancel an RSVP
+      tags:
+      - RSVPs
+    get:
+      description: Retrieves the authenticated user's RSVP for a specific session
+      parameters:
+      - description: Session ID
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: RSVP retrieved successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_AttendeeResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: RSVP not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Get user's RSVP
+      tags:
+      - RSVPs
+    post:
+      consumes:
+      - application/json
+      description: Creates a new RSVP for the authenticated user for a specific session
+      parameters:
+      - description: Session ID
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: RSVP data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.CreateRSVPRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: RSVP created successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_CreateRSVPResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "409":
+          description: Already RSVPed or session full
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Create an RSVP for a session
+      tags:
+      - RSVPs
+    put:
+      consumes:
+      - application/json
+      description: Updates the authenticated user's RSVP for a specific session
+      parameters:
+      - description: Session ID
+        in: path
+        name: sessionId
+        required: true
+        type: string
+      - description: Updated RSVP data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.UpdateRSVPRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: RSVP updated successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_AttendeeResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: RSVP not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Update an RSVP
+      tags:
+      - RSVPs
+  /api/v1/templates/{id}:
+    delete:
+      description: Soft-deletes a session template
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Template deleted successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_EmptyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Template not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Delete a session template
+      tags:
+      - Session Templates
+    get:
+      description: Retrieves a session template by ID
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Template retrieved successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_SessionTemplateResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Template not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Get a session template
+      tags:
+      - Session Templates
+    put:
+      consumes:
+      - application/json
+      description: Updates an existing session template
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Update data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos.UpdateSessionTemplateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Template updated successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_EmptyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Template not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Update a session template
+      tags:
+      - Session Templates
+  /api/v1/templates/{id}/activate:
+    post:
+      description: Activates an inactive session template
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Template activated successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_EmptyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Template not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Activate a session template
+      tags:
+      - Session Templates
+  /api/v1/templates/{id}/deactivate:
+    post:
+      description: Deactivates an active session template
+      parameters:
+      - description: Template ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Template deactivated successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_activity_internal_interfaces_http_dtos_EmptyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "404":
+          description: Template not found
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Deactivate a session template
+      tags:
+      - Session Templates
+security:
+- GatewayKeyAuth: []
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+  GatewayKeyAuth:
+    description: Key added automatically by the gateway when proxying requests; required
+      directly here only when bypassing the gateway.
+    in: header
+    name: X-Gateway-Key
+    type: apiKey
+swagger: "2.0"

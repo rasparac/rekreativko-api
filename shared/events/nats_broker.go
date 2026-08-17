@@ -89,6 +89,7 @@ func (b *natsBroker) Publish(ctx context.Context, topic string, payload []byte) 
 
 	b.logger.Info(
 		ctx,
+		"published message",
 		"subject", subject,
 		"stream", ack.Stream,
 		"sequence", ack.Sequence,

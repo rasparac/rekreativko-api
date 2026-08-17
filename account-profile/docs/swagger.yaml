@@ -1,0 +1,286 @@
+definitions:
+  api.APIError:
+    properties:
+      code:
+        example: invalid_request
+        type: string
+      details:
+        additionalProperties: {}
+        type: object
+      message:
+        example: Invalid request
+        type: string
+    type: object
+  api.Response-any:
+    properties:
+      data:
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_account-profile_internal_interfaces_http_dtos_Setting:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_account-profile_internal_interfaces_http_dtos.Setting'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_account-profile_internal_interfaces_http_dtos.Setting:
+    properties:
+      category:
+        example: notification
+        type: string
+      description:
+        example: Enable or disable email notifications
+        type: string
+      label:
+        example: Email Notifications
+        type: string
+      type:
+        example: boolean
+        type: string
+      value:
+        example: "true"
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_account-profile_internal_interfaces_http_dtos.UpdateAccountSettingsRequest:
+    properties:
+      settings:
+        description: |-
+          Settings is a map of setting keys to their values
+          Example: {"notification.email.enabled": true, "preference.language": "en"}
+        type: object
+    type: object
+info:
+  contact: {}
+  title: Account Profile Service API
+  version: "1.0"
+paths:
+  /api/v1/my/profile:
+    get:
+      description: Returns account profile
+      parameters:
+      - description: Account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Account returned successfully
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Returns account profile
+      tags:
+      - account Profile
+    put:
+      consumes:
+      - application/json
+      description: Update account profile by id and data
+      parameters:
+      - description: Profile account ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Account created successfully
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Update account profile
+      tags:
+      - account Profile
+  /api/v1/my/settings:
+    get:
+      description: Returns account account settings for logged in account
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Account settings returned successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_account-profile_internal_interfaces_http_dtos_Setting'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Returns account account settings
+      tags:
+      - account Profile
+    put:
+      consumes:
+      - application/json
+      description: Update account settings by id and data
+      parameters:
+      - description: Account Settings Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_account-profile_internal_interfaces_http_dtos.UpdateAccountSettingsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Account settings updated successfully
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Update account settings
+      tags:
+      - account Profile
+  /api/v1/profiles:
+    get:
+      consumes:
+      - application/json
+      description: Returns account profiles filtered by query parameters
+      parameters:
+      - collectionFormat: csv
+        description: Filter by account IDs (can be repeated)
+        in: query
+        items:
+          type: string
+        name: account_id
+        type: array
+      - collectionFormat: csv
+        description: Filter by nicknames (can be repeated)
+        in: query
+        items:
+          type: string
+        name: nickname
+        type: array
+      - description: Date of birth after (YYYY-MM-DD)
+        in: query
+        name: dob_gt
+        type: string
+      - description: Date of birth before (YYYY-MM-DD)
+        in: query
+        name: dob_lt
+        type: string
+      - description: Include deleted profiles
+        in: query
+        name: include_deleted
+        type: boolean
+      - description: Sort field (e.g. created_at, nickname)
+        in: query
+        name: sort_by
+        type: string
+      - description: Sort order (asc, desc)
+        in: query
+        name: sort_order
+        type: string
+      - description: Filter by location country
+        in: query
+        name: country
+        type: string
+      - description: Limit number of results (default 20)
+        in: query
+        name: limit
+        type: integer
+      - description: Offset for pagination (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Returns account profiles
+      tags:
+      - account Profile
+security:
+- GatewayKeyAuth: []
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+  GatewayKeyAuth:
+    description: Key added automatically by the gateway when proxying requests; required
+      directly here only when bypassing the gateway.
+    in: header
+    name: X-Gateway-Key
+    type: apiKey
+swagger: "2.0"

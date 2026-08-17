@@ -62,7 +62,7 @@ func New(namespace string) *Metrics {
 				Help:        "HTTP request duration in seconds",
 				ConstLabels: constLabels,
 			},
-			[]string{"method", "path"},
+			[]string{"method", "path", "status"},
 		),
 		HTTPResponseSize: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
@@ -71,7 +71,7 @@ func New(namespace string) *Metrics {
 				Help:        "HTTP response size in bytes",
 				ConstLabels: constLabels,
 			},
-			[]string{"method", "path"},
+			[]string{"method", "path", "status"},
 		),
 		HTTPRequestSize: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
@@ -220,7 +220,7 @@ func New(namespace string) *Metrics {
 				Help:        "Total number of database queries",
 				ConstLabels: constLabels,
 			},
-			[]string{"operation"},
+			[]string{"operation", "status", "table"},
 		),
 		DBQueryDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
@@ -229,7 +229,7 @@ func New(namespace string) *Metrics {
 				Help:        "Database query duration in seconds",
 				ConstLabels: constLabels,
 			},
-			[]string{"operation"},
+			[]string{"operation", "status", "table"},
 		),
 	}
 }

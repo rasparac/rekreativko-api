@@ -18,13 +18,15 @@ const (
 	EventActivityGroupVisibilityChanged = "activity.group.visibility_changed"
 
 	// Activity Member events
-	EventActivityGroupMemberJoinRequested = "activity.member.join_requested"
-	EventActivityGroupMemberJoined        = "activity.member.joined"
-	EventActivityGroupMemberLeft          = "activity.member.left"
-	EventActivityGroupMemberApproved      = "activity.member.approved"
-	EventActivityGroupMemberRejected      = "activity.member.rejected"
-	EventActivityGroupMemberRemoved       = "activity.member.removed"
-	EventActivityGroupMemberRoleChanged   = "activity.member.role_changed"
+	EventActivityGroupMemberJoinRequested  = "activity.member.join_requested"
+	EventActivityGroupMemberJoined         = "activity.member.joined"
+	EventActivityGroupMemberLeft           = "activity.member.left"
+	EventActivityGroupMemberApproved       = "activity.member.approved"
+	EventActivityGroupMemberRejected       = "activity.member.rejected"
+	EventActivityGroupMemberRemoved        = "activity.member.removed"
+	EventActivityGroupMemberRoleChanged    = "activity.member.role_changed"
+	EventActivityGroupMemberPrioritySet    = "activity.member.priority_set"
+	EventActivityGroupMemberPriorityRemoved = "activity.member.priority_removed"
 
 	// Activity invite events
 	EventActivityInviteSent     = "activity.invite.sent"
@@ -389,6 +391,54 @@ func NewMemberRoleChangedEvent(
 		UserID:     Member.UserID(),
 		NewRole:    newRole.String(),
 		OldRole:    oldRole.String(),
+	}
+}
+
+type MemberPrioritySetEvent struct {
+	domainevent.BaseEvent
+	ActivityID uuid.UUID `json:"activity_id"`
+	SetBy      uuid.UUID `json:"set_by"`
+	UserID     uuid.UUID `json:"user_id"`
+}
+
+func NewMemberPrioritySetEvent(
+	Member *Member,
+	setBy uuid.UUID,
+) *MemberPrioritySetEvent {
+	return &MemberPrioritySetEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivityGroupMemberPrioritySet,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: Member.ActivityGroupID(),
+		},
+		ActivityID: Member.ActivityGroupID(),
+		SetBy:      setBy,
+		UserID:     Member.UserID(),
+	}
+}
+
+type MemberPriorityRemovedEvent struct {
+	domainevent.BaseEvent
+	ActivityID uuid.UUID `json:"activity_id"`
+	RemovedBy  uuid.UUID `json:"removed_by"`
+	UserID     uuid.UUID `json:"user_id"`
+}
+
+func NewMemberPriorityRemovedEvent(
+	Member *Member,
+	removedBy uuid.UUID,
+) *MemberPriorityRemovedEvent {
+	return &MemberPriorityRemovedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivityGroupMemberPriorityRemoved,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: Member.ActivityGroupID(),
+		},
+		ActivityID: Member.ActivityGroupID(),
+		RemovedBy:  removedBy,
+		UserID:     Member.UserID(),
 	}
 }
 

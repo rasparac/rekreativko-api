@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
@@ -19,30 +18,15 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const activitySchema = "activity"
-
-type (
-	// SessionTemplateRepository defines the interface for session template persistence
-	SessionTemplateRepository interface {
-		CreateSessionTemplate(ctx context.Context, template *domain.SessionTemplate) error
-		UpdateSessionTemplate(ctx context.Context, template *domain.SessionTemplate) error
-		UpdateGeneratedUpTo(ctx context.Context, templateID uuid.UUID, generatedUpTo time.Time) error
-		DeleteSessionTemplate(ctx context.Context, templateID uuid.UUID) error
-		GetSessionTemplateByID(ctx context.Context, templateID uuid.UUID) (*domain.SessionTemplate, error)
-		ListSessionTemplates(ctx context.Context, filter persistence.SessionTemplateFilter) ([]*domain.SessionTemplate, error)
-		FindRecurringTemplatesToGenerate(ctx context.Context, lookaheadWindow time.Duration) ([]*domain.SessionTemplate, error)
-	}
-
-	// SessionTemplateService handles business logic for session templates
-	SessionTemplateService struct {
-		logger            *logger.Logger
-		txManager         *postgres.TransactionManager
-		templateRepo      SessionTemplateRepository
-		eventWriter       domainevent.EventWriter
-		tracer            trace.Tracer
-		metrics           *metrics.Metrics
-	}
-)
+// SessionTemplateService handles business logic for session templates
+type SessionTemplateService struct {
+	logger       *logger.Logger
+	txManager    *postgres.TransactionManager
+	templateRepo SessionTemplateRepository
+	eventWriter  domainevent.EventWriter
+	tracer       trace.Tracer
+	metrics      *metrics.Metrics
+}
 
 // NewSessionTemplateService creates a new session template service
 func NewSessionTemplateService(

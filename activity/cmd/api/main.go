@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -23,8 +24,23 @@ import (
 	metricstracer "github.com/rasparac/rekreativko-api/shared/store/metrics_tracer"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
 	"github.com/rasparac/rekreativko-api/shared/telemetry"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
+	_ "github.com/rasparac/rekreativko-api/activity/docs" // swagger docs
 )
 
+//	@title			Activity Service API
+//	@version		1.0
+
+//	@securityDefinitions.apikey	GatewayKeyAuth
+//	@in								header
+//	@name							X-Gateway-Key
+//	@description					Key added automatically by the gateway when proxying requests; required directly here only when bypassing the gateway.
+
+//	@securityDefinitions.apikey	BearerAuth
+//	@in								header
+//	@name							Authorization
+
+//	@security		GatewayKeyAuth
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -101,6 +117,22 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		txManager,
 		log,
 	)
+	activityGroupRepo := persistence.NewActivityGroupRepository(
+		txManager,
+		log,
+	)
+	sessionRepo := persistence.NewSessionManager(
+		txManager,
+		log,
+	)
+	memberRepo := persistence.NewMemberRepository(
+		txManager,
+		log,
+	)
+	attendeeRepo := persistence.NewAttendeeRepository(
+		txManager,
+		log,
+	)
 
 	// Initialize services
 	sessionTemplateService := application.NewSessionTemplateService(
@@ -110,16 +142,51 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		domainEventMgr,
 		appMetrics,
 	)
+	activityGroupService := application.NewActivityGroupService(
+		log,
+		txManager,
+		activityGroupRepo,
+		domainEventMgr,
+		appMetrics,
+	)
+	sessionService := application.NewSessionService(
+		log,
+		txManager,
+		sessionRepo,
+		domainEventMgr,
+		appMetrics,
+	)
+	memberService := application.NewMemberService(
+		log,
+		txManager,
+		memberRepo,
+		domainEventMgr,
+		appMetrics,
+	)
+	attendeeService := application.NewAttendeeService(
+		log,
+		txManager,
+		attendeeRepo,
+		memberRepo,
+		sessionRepo,
+		domainEventMgr,
+		appMetrics,
+	)
 
 	mux := http.NewServeMux()
 
 	// Initialize HTTP handler
 	activityHandler := activityHttp.NewHandler(
 		sessionTemplateService,
+		activityGroupService,
+		sessionService,
+		memberService,
+		attendeeService,
 		log,
 	)
 
 	middlewaresChain := middleware.NewChain(
+		middleware.Recover(log),
 		middleware.RequestID,
 		middleware.CheckGatewayKey(
 			log,
@@ -140,6 +207,11 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		log.Info(r.Context(), "checking status", "method", r.Method, "path", r.URL.Path)
 		w.WriteHeader(http.StatusOK)
 	}))
+
+	if cfg.IsDevMode() {
+		mux.Handle("GET /swagger/", httpSwagger.WrapHandler)
+		log.Info(ctx, "swagger UI enabled", "url", fmt.Sprintf("%s/swagger/index.html", cfg.Server.Address()))
+	}
 
 	activityHandler.RegisterRoutes(mux, middlewaresChain)
 

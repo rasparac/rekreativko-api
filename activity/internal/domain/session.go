@@ -155,6 +155,7 @@ type SessionInput struct {
 	Capacity        *int
 	Note            string
 	IsRecurring     bool
+	OpenAt          *time.Time  // When regular members can start RSVPing (nil = immediately open)
 	AutoAttendeeIDs []uuid.UUID
 }
 
@@ -176,6 +177,7 @@ func NewSession(
 		status:          SessionStatusScheduled,
 		isRecurring:     input.IsRecurring,
 		note:            input.Note,
+		openAt:          input.OpenAt,
 		createdAt:       time.Now().UTC(),
 	}
 
@@ -264,8 +266,8 @@ func (s *Session) Events() []domainevent.Event {
 }
 
 type SessionUpdateInput struct {
-	requesterID   uuid.UUID
-	requesterRole MemberRole
+	RequesterID   uuid.UUID
+	RequesterRole MemberRole
 	Location      SessionLocation
 	Schedule      SessionSchedule
 	Capacity      *int
@@ -280,8 +282,8 @@ func (s *Session) Update(
 	}
 
 	if !s.canManageSession(
-		input.requesterID,
-		input.requesterRole,
+		input.RequesterID,
+		input.RequesterRole,
 	) {
 		return ErrUnauthorized
 	}
@@ -296,7 +298,7 @@ func (s *Session) Update(
 	s.note = input.Note
 	s.updatedAt = time.Now().UTC()
 
-	s.addEvent(NewSessionUpdatedEvent(s, input.requesterID))
+	s.addEvent(NewSessionUpdatedEvent(s, input.RequesterID))
 
 	return nil
 }
@@ -415,6 +417,29 @@ func (s *Session) canManageSession(userID uuid.UUID, userRole MemberRole) bool {
 	}
 
 	return s.createdByID == userID
+}
+
+// CanRSVP checks if a member can RSVP to this session based on priority status and opening time
+func (s *Session) CanRSVP(isPriorityMember bool) error {
+	// Check session status
+	if s.status != SessionStatusScheduled {
+		return ErrSessionNotScheduled
+	}
+
+	// Priority members can always RSVP (no time restriction)
+	if isPriorityMember {
+		return nil
+	}
+
+	// Regular members must wait until openAt time
+	if s.openAt != nil {
+		now := time.Now().UTC()
+		if now.Before(*s.openAt) {
+			return ErrSessionNotOpen
+		}
+	}
+
+	return nil
 }
 
 func (s *Session) isCanceled() bool {

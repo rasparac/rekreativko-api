@@ -23,15 +23,17 @@ var (
 
 // Member errors
 var (
-	ErrMemberNotFound       = errors.New("member not found")
-	ErrMemberAlreadyAdmin   = errors.New("member is already an admin")
-	ErrMemberNotAdmin       = errors.New("member is not an admin")
-	ErrAlreadyParticipating = errors.New("user is already participating in this activity")
-	ErrCreatorCannotLeave   = errors.New("creator cannot leave their own activity")
-	ErrNotConfirmed         = errors.New("member is not confirmed")
-	ErrNotPendingStatus     = errors.New("member status is not pending")
-	ErrCannotRemoveCreator  = errors.New("cannot remove the creator from the activity")
-	ErrCannotDemoteCreator  = errors.New("cannot demote the creator to a regular member")
+	ErrMemberNotFound         = errors.New("member not found")
+	ErrMemberAlreadyAdmin     = errors.New("member is already an admin")
+	ErrMemberNotAdmin         = errors.New("member is not an admin")
+	ErrAlreadyParticipating   = errors.New("user is already participating in this activity")
+	ErrCreatorCannotLeave     = errors.New("creator cannot leave their own activity")
+	ErrNotConfirmed           = errors.New("member is not confirmed")
+	ErrNotPendingStatus       = errors.New("member status is not pending")
+	ErrCannotRemoveCreator    = errors.New("cannot remove the creator from the activity")
+	ErrCannotDemoteCreator    = errors.New("cannot demote the creator to a regular member")
+	ErrMemberAlreadyPriority  = errors.New("member is already a priority member")
+	ErrMemberNotPriority      = errors.New("member is not a priority member")
 )
 
 // Invite errors
@@ -59,6 +61,7 @@ var (
 	ErrSessionLocationCountryRequired  = errors.New("session location country is required")
 	ErrSessionLocationLatitudeInvalid  = errors.New("session location latitude must be between -90 and 90")
 	ErrSessionLocationLongitudeInvalid = errors.New("session location longitude must be between -180 and 180")
+	ErrSessionNotOpen                  = errors.New("session is not open for regular members yet")
 )
 
 // Attendee errors

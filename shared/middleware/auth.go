@@ -47,9 +47,6 @@ func NewAuthMiddleware(auth auth, logger *logger.Logger, publicPaths []string) *
 }
 
 func (m *AuthMiddleware) isPublicPath(path string) bool {
-
-	m.logger.Info(context.Background(), "checking if path is public", "path", path)
-
 	for _, re := range m.publicPaths {
 		if re.MatchString(path) {
 			return true

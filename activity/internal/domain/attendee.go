@@ -300,3 +300,28 @@ func (a *Attendee) Events() []domainevent.Event {
 func (a *Attendee) ClearEvents() {
 	a.events = make([]domainevent.Event, 0)
 }
+
+// ReconstructAttendee reconstitutes an Attendee from persistence without running creation validations
+// This is used by the repository layer to load existing attendees from the database
+func ReconstructAttendee(
+	id uuid.UUID,
+	sessionID uuid.UUID,
+	activityID uuid.UUID,
+	userID uuid.UUID,
+	status AttendeeStatus,
+	source AttendeeSource,
+	createdAt time.Time,
+	updatedAt time.Time,
+) *Attendee {
+	return &Attendee{
+		id:         id,
+		sessionID:  sessionID,
+		activityID: activityID,
+		userID:     userID,
+		status:     status,
+		source:     source,
+		createdAt:  createdAt,
+		updatedAt:  updatedAt,
+		events:     make([]domainevent.Event, 0),
+	}
+}

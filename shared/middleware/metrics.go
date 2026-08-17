@@ -22,10 +22,7 @@ func Metrics(m httpMetrics) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 
-			rw := &responseWriter{
-				ResponseWriter: w,
-				statusCode:     http.StatusOK,
-			}
+			rw := newResponseWriter(w)
 
 			if r.ContentLength > 0 {
 				m.RequestSize().WithLabelValues(

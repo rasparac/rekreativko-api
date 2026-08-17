@@ -77,6 +77,10 @@ func main() {
 			URL:     cfg.AccountProfileServiceConfig.URL,
 			Timeout: cfg.AccountProfileServiceConfig.Timeout,
 		},
+		"activity": {
+			URL:     cfg.ActivityServiceConfig.URL,
+			Timeout: cfg.ActivityServiceConfig.Timeout,
+		},
 	}
 
 	proxy, err := gateway.NewReverseProxy(serviceConfig, log)

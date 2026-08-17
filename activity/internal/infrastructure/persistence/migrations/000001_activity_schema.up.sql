@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS activity.activity_group(
     default_capacity int DEFAULT NULL, -- NULL means no limit
     created_at timestamptz NOT NULL DEFAULT NOW(),
     updated_at timestamptz NOT NULL DEFAULT NOW(),
+    cancelled_at timestamptz DEFAULT NULL,
     deleted_at timestamptz DEFAULT NULL
 );
 
@@ -52,6 +53,7 @@ CREATE TABLE IF NOT EXISTS activity.member(
     account_id uuid NOT NULL,
     status varchar(100) NOT NULL DEFAULT 'pending',
     role varchar(100) NOT NULL DEFAULT 'member',
+    is_priority boolean NOT NULL DEFAULT FALSE,
     joined_at timestamptz NOT NULL DEFAULT NOW(),
     decided_at timestamptz DEFAULT NULL,
     left_at timestamptz DEFAULT NULL,
@@ -74,6 +76,10 @@ WHERE (deleted_at IS NULL);
 -- find pending members
 CREATE INDEX idx_members_pending ON activity.member(activity_group_id, joined_at)
 WHERE (status = 'pending') AND (deleted_at IS NULL);
+
+-- find priority members in a group (for early RSVP access)
+CREATE INDEX idx_member_priority ON activity.member(activity_group_id, is_priority)
+WHERE (is_priority = TRUE) AND (deleted_at IS NULL);
 
 -- group invites (direct - specific user)
 CREATE TABLE IF NOT EXISTS activity.group_invites(
@@ -134,23 +140,6 @@ CREATE TABLE IF NOT EXISTS activity.group_invite_link_usage(
 -- find usage by link (check if already used)
 CREATE INDEX idx_group_invite_link_usage_link ON activity.group_invite_link_usage(group_invite_link_id, status)
 WHERE (status = 'used');
-
--- ============================================================
--- recurrence_rule table
--- ============================================================
-CREATE TABLE activity.recurrence_rule(
-    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-    frequency varchar(50) NOT NULL, -- 'daily','weekly','monthly','yearly'
-    interval smallint NOT NULL DEFAULT 1,
-    days_of_week smallint[] DEFAULT NULL, -- [1,4] = Mon+Thu
-    day_of_month smallint DEFAULT NULL,
-    week_of_month smallint DEFAULT NULL, -- e.g. last = -1
-    time_hour smallint NOT NULL CHECK (time_hour BETWEEN 0 AND 23),
-    time_minute smallint NOT NULL DEFAULT 0,
-    ends_at timestamptz DEFAULT NULL,
-    max_occurrences int DEFAULT NULL,
-    created_at timestamptz NOT NULL DEFAULT NOW()
-);
 
 -- ============================================================
 -- session_template table
@@ -216,6 +205,9 @@ CREATE TABLE IF NOT EXISTS activity.session(
     status varchar(100) NOT NULL DEFAULT 'scheduled',
     is_recurring boolean NOT NULL DEFAULT FALSE,
     note text DEFAULT NULL,
+    -- open_at: when regular members can start RSVPing (NULL = immediately open)
+    -- priority members can RSVP anytime regardless of this timestamp
+    open_at timestamptz DEFAULT NULL,
     created_at timestamptz NOT NULL DEFAULT NOW(),
     updated_at timestamptz NOT NULL DEFAULT NOW(),
     cancelled_at timestamptz DEFAULT NULL,
@@ -247,6 +239,10 @@ WHERE (status = 'scheduled');
 -- find all sessions generated from a template
 CREATE INDEX idx_sessions_template ON activity.session(session_template_id)
 WHERE (session_template_id IS NOT NULL);
+
+-- find sessions opening soon (for notifications to regular members)
+CREATE INDEX idx_session_open_at ON activity.session(open_at)
+WHERE (open_at IS NOT NULL) AND (status = 'scheduled');
 
 -- session attendees
 CREATE TABLE IF NOT EXISTS activity.session_attendee(

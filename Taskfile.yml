@@ -131,49 +131,49 @@ tasks:
 
   migrate:activity:up:
     desc: Run activity migrations
-    deps: [docker:up]
+    deps: [docker:run:local]
     cmds:
       - echo "Running activity migrations..."
-      - migrate -path ./activity/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}" up
+      - migrate -path ./activity/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}&x-migrations-table=activity_schema_migrations" up
 
   migrate:activity:down:
     desc: Rollback activity migration
-    deps: [docker:up]
+    deps: [docker:run:local]
     cmds:
       - echo "Rolling back activity migration..."
-      - migrate -path ./activity/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}" down 1
+      - migrate -path ./activity/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}&x-migrations-table=activity_schema_migrations" down 1
 
   migrate:identity:up:
     desc: Run identity migrations
-    deps: [docker:up]
+    deps: [docker:run:local]
     cmds:
       - echo "Running identity migrations..."
-      - migrate -path ./identity/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}" up
+      - migrate -path ./identity/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}&x-migrations-table=identity_schema_migrations" up
 
   migrate:identity:down:
     desc: Rollback identity migration
-    deps: [docker:up]
+    deps: [docker:run:local]
     cmds:
       - echo "Rolling back identity migration..."
-      - migrate -path ./identity/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}" down 1
+      - migrate -path ./identity/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}&x-migrations-table=identity_schema_migrations" down 1
 
   migrate:account-profile:up:
     desc: Run account-profile migrations
-    deps: [docker:up]
+    deps: [docker:run:local]
     cmds:
       - echo "Running account-profile migrations..."
-      - migrate -path ./account-profile/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}" up
+      - migrate -path ./account-profile/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}&x-migrations-table=account_profile_schema_migrations" up
 
   migrate:account-profile:down:
     desc: Rollback account-profile migration
-    deps: [docker:up]
+    deps: [docker:run:local]
     cmds:
       - echo "Rolling back account-profile migration..."
-      - migrate -path ./account-profile/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}" down 1
+      - migrate -path ./account-profile/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}&x-migrations-table=account_profile_schema_migrations" down 1
 
   migrate:all:up:
     desc: Run all service migrations
-    deps: [docker:up]
+    deps: [docker:run:local]
     cmds:
       - echo "Running all migrations..."
       - task: migrate:activity:up
@@ -383,12 +383,35 @@ tasks:
   # Swagger documentation
   # ============================================================================
 
-  docs:swagger:
-    desc: Generate swagger docs
+  docs:swagger:all:
+    desc: Generate swagger docs for all services
     cmds:
-      - echo "Generating swagger docs..."
-      - swag init -g gateway/cmd/api/main.go -o docs --parseDependency --parseInternal
-      - echo "✓ Swagger docs generated successfully"
+      - echo "Generating swagger docs for all services..."
+      - task: docs:swagger:activity
+      - task: docs:swagger:identity
+      - task: docs:swagger:account-profile
+      - echo "✓ All swagger docs generated successfully"
+
+  docs:swagger:activity:
+    desc: Generate swagger docs for activity service
+    cmds:
+      - echo "Generating swagger docs for activity service..."
+      - GOFLAGS="-mod=mod" swag init -g cmd/api/main.go -o ./activity/docs --parseDependency --parseInternal -d ./activity
+      - echo "✓ Activity swagger docs generated"
+
+  docs:swagger:identity:
+    desc: Generate swagger docs for identity service
+    cmds:
+      - echo "Generating swagger docs for identity service..."
+      - GOFLAGS="-mod=mod" swag init -g cmd/api/main.go -o ./identity/docs --parseDependency --parseInternal -d ./identity
+      - echo "✓ Identity swagger docs generated"
+
+  docs:swagger:account-profile:
+    desc: Generate swagger docs for account-profile service
+    cmds:
+      - echo "Generating swagger docs for account-profile service..."
+      - GOFLAGS="-mod=mod" swag init -g cmd/api/main.go -o ./account-profile/docs --parseDependency --parseInternal -d ./account-profile
+      - echo "✓ Account-profile swagger docs generated"
 
   docs:fmt:
     desc: Format swagger docs

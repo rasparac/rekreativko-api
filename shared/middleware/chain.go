@@ -33,7 +33,3 @@ func (c *Chain) Append(middlewares ...func(http.Handler) http.Handler) *Chain {
 		middlewares: newMiddlewares,
 	}
 }
-
-func (c *Chain) Extend(middlewares ...func(http.Handler) http.Handler) *Chain {
-	return c.Append(middlewares...)
-}

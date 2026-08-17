@@ -88,3 +88,18 @@ CREATE TRIGGER update_updated_at_column
     FOR EACH ROW
     EXECUTE PROCEDURE identity.update_updated_at_column();
 
+-- identity event outbox table
+CREATE TABLE IF NOT EXISTS identity.event_outbox(
+    event_id uuid PRIMARY KEY NOT NULL,
+    event_type text NOT NULL,
+    aggregate_id uuid NOT NULL,
+    payload jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT NOW(),
+    published_at timestamptz DEFAULT NULL
+);
+
+CREATE UNIQUE INDEX idx_identity_event_outbox_event_id ON identity.event_outbox(event_id);
+
+CREATE INDEX idx_identity_event_outbox_created_at ON identity.event_outbox(created_at);
+
+CREATE INDEX idx_identity_event_outbox_published_at ON identity.event_outbox(published_at);

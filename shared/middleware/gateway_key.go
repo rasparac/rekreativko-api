@@ -1,8 +1,8 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"net/http"
-	"slices"
 	"strings"
 
 	"github.com/rasparac/rekreativko-api/shared/logger"
@@ -12,7 +12,7 @@ const (
 	gatewayKey = "X-Gateway-Key"
 )
 
-func CheckGatewayKey(logger *logger.Logger, value string) func(http.Handler) http.Handler {
+func CheckGatewayKey(logger *logger.Logger, expectedKey string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
@@ -23,10 +23,14 @@ func CheckGatewayKey(logger *logger.Logger, value string) func(http.Handler) htt
 				return
 			}
 
-			splittedKey := strings.Split(keys, ",")
-			if slices.Contains(splittedKey, value) {
-				next.ServeHTTP(w, r)
-				return
+			// Check each key using constant-time comparison to prevent timing attacks
+			for key := range strings.SplitSeq(keys, ",") {
+				key = strings.TrimSpace(key)
+				// subtle.ConstantTimeCompare returns 1 if equal, 0 otherwise
+				if subtle.ConstantTimeCompare([]byte(key), []byte(expectedKey)) == 1 {
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
 
 			logger.Warn(ctx, "invalid gateway key")

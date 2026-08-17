@@ -1,0 +1,503 @@
+definitions:
+  api.APIError:
+    properties:
+      code:
+        example: invalid_request
+        type: string
+      details:
+        additionalProperties: {}
+        type: object
+      message:
+        example: Invalid request
+        type: string
+    type: object
+  api.Response-any:
+    properties:
+      data:
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos_AccountResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.AccountResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos_EmptyResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.EmptyResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos_RegisterAccountResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.RegisterAccountResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos_TokenPairResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.TokenPairResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  api.Response-github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos_VerifyAccountResponse:
+    properties:
+      data:
+        allOf:
+        - $ref: '#/definitions/github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.VerifyAccountResponse'
+        description: only on success
+      error:
+        allOf:
+        - $ref: '#/definitions/api.APIError'
+        description: only on error
+      message:
+        example: Operation completed successfully
+        type: string
+      status:
+        example: success
+        type: string
+      timestamp:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.AccountResponse:
+    properties:
+      account_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      created_at:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+      email:
+        example: user@example
+        type: string
+      phone_number:
+        example: "+1234567890"
+        type: string
+      status:
+        example: active
+        type: string
+      updated_at:
+        example: "2020-01-01T00:00:00Z"
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.EmptyResponse:
+    type: object
+  github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.LoginRequest:
+    properties:
+      email:
+        example: user@gmail.com
+        type: string
+      password:
+        example: StrongPassw0rd!
+        type: string
+      phone_number:
+        example: "+1234567890"
+        type: string
+    required:
+    - password
+    type: object
+  github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.LogoutRequest:
+    properties:
+      account_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+      refresh_token:
+        example: ey12344fwbfwbefiuwgfiiAA==
+        type: string
+    required:
+    - account_id
+    - refresh_token
+    type: object
+  github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.RefreshTokenRequest:
+    properties:
+      refresh_token:
+        example: ey12344fwbfwbefiuwgfiiAA==
+        type: string
+    required:
+    - refresh_token
+    type: object
+  github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.RegisterAccountRequest:
+    properties:
+      email:
+        example: user@gmail.com
+        type: string
+      password:
+        example: StrongPassw0rd!
+        minLength: 8
+        type: string
+      phone_number:
+        example: "+1234567890"
+        type: string
+    required:
+    - password
+    type: object
+  github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.RegisterAccountResponse:
+    properties:
+      account_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.ResendVerificationCodeRequest:
+    properties:
+      identity:
+        example: +1234567890,user@gmail.com
+        type: string
+      type:
+        enum:
+        - email
+        - phone
+        example: email
+        type: string
+    required:
+    - identity
+    - type
+    type: object
+  github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.TokenPairResponse:
+    properties:
+      access_token:
+        example: ey12344fwbfwbefiuwgfiiAA...
+        type: string
+      expires_in:
+        example: 3600
+        type: integer
+      refresh_token:
+        example: ey12344fwbfwbefiuwgfiiAA==
+        type: string
+      token_type:
+        example: Bearer
+        type: string
+    type: object
+  github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.VerifyAccountRequest:
+    properties:
+      code:
+        example: "123456"
+        minLength: 6
+        type: string
+    required:
+    - code
+    type: object
+  github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.VerifyAccountResponse:
+    properties:
+      account_id:
+        example: 123e4567-e89b-12d3-a456-426655440000
+        type: string
+    type: object
+info:
+  contact: {}
+  title: Identity Service API
+  version: "1.0"
+paths:
+  /api/v1/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Logs out the account and invalidates all refresh tokens
+      parameters:
+      - description: Logout request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.LogoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully logged out
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos_EmptyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Logout
+      tags:
+      - Authentication
+  /api/v1/auth/me:
+    get:
+      consumes:
+      - application/json
+      description: Get currently logged in account
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Account retrieved successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos_AccountResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      security:
+      - BearerAuth: []
+        GatewayKeyAuth: []
+      summary: Get current account
+      tags:
+      - Authentication
+  /api/v1/auth/refresh-token:
+    post:
+      consumes:
+      - application/json
+      description: Refreshes a token pair based on the given refresh token
+      parameters:
+      - description: Refresh token request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully refreshed token
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos_TokenPairResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      summary: Refresh token
+      tags:
+      - Authentication
+  /api/v1/auth/resend-verification-code:
+    post:
+      consumes:
+      - application/json
+      description: Resends a verification code to the given phone number
+      parameters:
+      - description: Resend verification code request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.ResendVerificationCodeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Verification code resent
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos_EmptyResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      summary: Resend verification code
+      tags:
+      - Authentication
+  /api/v1/auth/verify-account:
+    post:
+      consumes:
+      - application/json
+      description: Verifies an account by sending a verification code to the given
+        phone number
+      parameters:
+      - description: Verify account request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.VerifyAccountRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Account verified
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos_VerifyAccountResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      summary: Verify account
+      tags:
+      - Authentication
+  /api/v1/login:
+    post:
+      consumes:
+      - application/json
+      description: Login with email or phone number
+      parameters:
+      - description: Account Login Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Account logged in successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos_TokenPairResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      summary: Login
+      tags:
+      - Authentication
+  /api/v1/register:
+    post:
+      consumes:
+      - application/json
+      description: Creates new account with email or phone number
+      parameters:
+      - description: Account Registration Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos.RegisterAccountRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Account created successfully
+          schema:
+            $ref: '#/definitions/api.Response-github_com_rasparac_rekreativko-api_identity_internal_interfaces_http_dtos_RegisterAccountResponse'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/api.Response-any'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/api.Response-any'
+      summary: Register a new account
+      tags:
+      - Authentication
+security:
+- GatewayKeyAuth: []
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+  GatewayKeyAuth:
+    description: Key added automatically by the gateway when proxying requests; required
+      directly here only when bypassing the gateway.
+    in: header
+    name: X-Gateway-Key
+    type: apiKey
+swagger: "2.0"

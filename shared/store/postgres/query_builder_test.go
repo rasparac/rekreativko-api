@@ -134,3 +134,127 @@ func TestQueryBuilder_EmptyBuilder(t *testing.T) {
 		assert.Len(t, args, 0)
 	})
 }
+
+func TestEscapeLikePattern(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "escapes percent sign",
+			input:    "50%",
+			expected: "50\\%",
+		},
+		{
+			name:     "escapes underscore",
+			input:    "test_db",
+			expected: "test\\_db",
+		},
+		{
+			name:     "escapes backslash",
+			input:    "a\\b",
+			expected: "a\\\\b",
+		},
+		{
+			name:     "escapes all special characters",
+			input:    "100%_off\\sale",
+			expected: "100\\%\\_off\\\\sale",
+		},
+		{
+			name:     "handles multiple occurrences",
+			input:    "%%%",
+			expected: "\\%\\%\\%",
+		},
+		{
+			name:     "handles normal text without special chars",
+			input:    "New York",
+			expected: "New York",
+		},
+		{
+			name:     "handles empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "real world attack: match everything",
+			input:    "%",
+			expected: "\\%",
+		},
+		{
+			name:     "real world attack: performance DoS",
+			input:    "%%%%%%%%%%",
+			expected: "\\%\\%\\%\\%\\%\\%\\%\\%\\%\\%",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EscapeLikePattern(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestQueryBuilder_AddLikeCondition(t *testing.T) {
+	t.Run("escapes wildcards and wraps with percent", func(t *testing.T) {
+		qb := &QueryBuilder{
+			BaseQuery: "SELECT * FROM cities WHERE 1=1",
+			Args:      make([]any, 0),
+		}
+
+		qb.AddLikeCondition("name ILIKE ", "New%York")
+
+		query, args := qb.Build()
+
+		assert.Contains(t, query, "AND name ILIKE $1")
+		assert.Equal(t, []any{"%New\\%York%"}, args)
+	})
+
+	t.Run("prevents wildcard injection attack", func(t *testing.T) {
+		qb := &QueryBuilder{
+			BaseQuery: "SELECT * FROM cities WHERE 1=1",
+			Args:      make([]any, 0),
+		}
+
+		// User tries to match everything by sending "%"
+		qb.AddLikeCondition("name ILIKE ", "%")
+
+		_, args := qb.Build()
+
+		// Should search for literal "%" character, not wildcard
+		assert.Equal(t, []any{"%\\%%"}, args)
+	})
+
+	t.Run("multiple like conditions with proper parameter numbering", func(t *testing.T) {
+		qb := &QueryBuilder{
+			BaseQuery: "SELECT * FROM activity_groups WHERE status = 'active'",
+			Args:      make([]any, 0),
+		}
+
+		qb.AddLikeCondition("city ILIKE ", "San_Francisco")
+		qb.AddLikeCondition("country ILIKE ", "USA")
+		qb.AddCondition("capacity > ", 10)
+
+		query, args := qb.Build()
+
+		assert.Contains(t, query, "AND city ILIKE $1")
+		assert.Contains(t, query, "AND country ILIKE $2")
+		assert.Contains(t, query, "AND capacity > $3")
+		assert.Equal(t, []any{"%San\\_Francisco%", "%USA%", 10}, args)
+	})
+
+	t.Run("normal search works as expected", func(t *testing.T) {
+		qb := &QueryBuilder{
+			BaseQuery: "SELECT * FROM cities WHERE 1=1",
+			Args:      make([]any, 0),
+		}
+
+		qb.AddLikeCondition("name ILIKE ", "Paris")
+
+		query, args := qb.Build()
+
+		assert.Contains(t, query, "AND name ILIKE $1")
+		assert.Equal(t, []any{"%Paris%"}, args)
+	})
+}

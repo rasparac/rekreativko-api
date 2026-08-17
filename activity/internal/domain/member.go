@@ -75,6 +75,7 @@ type Member struct {
 	userID          uuid.UUID
 	role            MemberRole
 	status          MemberStatus
+	isPriority      bool // VIP member with early session access
 
 	joinedAt  time.Time
 	decidedAt *time.Time // Time when the Member accepted or rejected the invitation
@@ -116,6 +117,10 @@ func (p *Member) IsPending() bool {
 
 func (p *Member) IsConfirmed() bool {
 	return p.status == MemberStatusConfirmed
+}
+
+func (p *Member) IsPriority() bool {
+	return p.isPriority
 }
 
 func NewCreatorMember(activityGroupID, userID uuid.UUID) *Member {
@@ -313,6 +318,52 @@ func (p *Member) CanReJoin() bool {
 	return p.status == MemberStatusLeft || p.status == MemberStatusRemoved
 }
 
+func (p *Member) SetPriority(
+	requesterID uuid.UUID,
+	requesterRole MemberRole,
+) error {
+	if !requesterRole.CanManageMembers() {
+		return ErrUnauthorized
+	}
+
+	if p.Status() != MemberStatusConfirmed {
+		return ErrNotConfirmed
+	}
+
+	if p.isPriority {
+		return ErrMemberAlreadyPriority
+	}
+
+	p.isPriority = true
+
+	p.addEvent(NewMemberPrioritySetEvent(p, requesterID))
+
+	return nil
+}
+
+func (p *Member) RemovePriority(
+	requesterID uuid.UUID,
+	requesterRole MemberRole,
+) error {
+	if !requesterRole.CanManageMembers() {
+		return ErrUnauthorized
+	}
+
+	if p.Status() != MemberStatusConfirmed {
+		return ErrNotConfirmed
+	}
+
+	if !p.isPriority {
+		return ErrMemberNotPriority
+	}
+
+	p.isPriority = false
+
+	p.addEvent(NewMemberPriorityRemovedEvent(p, requesterID))
+
+	return nil
+}
+
 func (p *Member) addEvent(event domainevent.Event) {
 	p.events = append(p.events, event)
 }
@@ -323,4 +374,31 @@ func (p *Member) ClearEvents() {
 
 func (p *Member) Events() []domainevent.Event {
 	return p.events
+}
+
+// ReconstructMember reconstitutes a Member from persistence without running creation validations
+// This is used by the repository layer to load existing members from the database
+func ReconstructMember(
+	id uuid.UUID,
+	activityGroupID uuid.UUID,
+	userID uuid.UUID,
+	role MemberRole,
+	status MemberStatus,
+	isPriority bool,
+	joinedAt time.Time,
+	decidedAt *time.Time,
+	leftAt *time.Time,
+) *Member {
+	return &Member{
+		id:              id,
+		activityGroupID: activityGroupID,
+		userID:          userID,
+		role:            role,
+		status:          status,
+		isPriority:      isPriority,
+		joinedAt:        joinedAt,
+		decidedAt:       decidedAt,
+		leftAt:          leftAt,
+		events:          make([]domainevent.Event, 0),
+	}
 }

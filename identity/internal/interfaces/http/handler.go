@@ -85,8 +85,8 @@ func (h *Handler) RegisterRoutes(
 //	@Tags			Authentication
 //	@Accept			json
 //	@Produce		json
-//	@Param			request	body		RegisterAccountRequest					true	"Account Registration Data"
-//	@Success		201		{object}	api.Response[RegisterAccountResponse]	"Account created successfully"
+//	@Param			request	body		dtos.RegisterAccountRequest					true	"Account Registration Data"
+//	@Success		201		{object}	api.Response[dtos.RegisterAccountResponse]	"Account created successfully"
 //	@Failure		400		{object}	api.Response[any]						"Invalid request"
 //	@Failure		500		{object}	api.Response[any]						"Internal server error"
 //	@Router			/api/v1/register [post]
@@ -129,8 +129,8 @@ func (h *Handler) RegisterAccountHandler(
 //	@Tags			Authentication
 //	@Accept			json
 //	@Produce		json
-//	@Param			request	body		LoginRequest					true	"Account Login Data"
-//	@Success		200		{object}	api.Response[TokenPairResponse]	"Account logged in successfully"
+//	@Param			request	body		dtos.LoginRequest					true	"Account Login Data"
+//	@Success		200		{object}	api.Response[dtos.TokenPairResponse]	"Account logged in successfully"
 //	@Failure		400		{object}	api.Response[any]				"Invalid request"
 //	@Failure		500		{object}	api.Response[any]				"Internal server error"
 //	@Router			/api/v1/login [post]
@@ -173,8 +173,8 @@ func (h *Handler) LoginHandler(
 //	@Tags			Authentication
 //	@Accept			json
 //	@Produce		json
-//	@Security		BearerAuth
-//	@Success		200	{object}	api.Response[AccountResponse]	"Account retrieved successfully"
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Success		200	{object}	api.Response[dtos.AccountResponse]	"Account retrieved successfully"
 //	@Failure		400	{object}	api.Response[any]				"Invalid request"
 //	@Failure		401	{object}	api.Response[any]				"Unauthorized"
 //	@Failure		500	{object}	api.Response[any]				"Internal server error"
@@ -208,9 +208,9 @@ func (h *Handler) GetCurrentAccount(
 //	@Tags			Authentication
 //	@Accept			json
 //	@Produce		json
-//	@Security		BearerAuth
-//	@Param			request	body		LogoutRequest				true	"Logout request"
-//	@Success		200		{object}	api.Response[EmptyResponse]	"Successfully logged out"
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			request	body		dtos.LogoutRequest				true	"Logout request"
+//	@Success		200		{object}	api.Response[dtos.EmptyResponse]	"Successfully logged out"
 //	@Failure		400		{object}	api.Response[any]			"Invalid request"
 //	@Failure		401		{object}	api.Response[any]			"Unauthorized"
 //	@Failure		500		{object}	api.Response[any]			"Internal server error"
@@ -251,8 +251,8 @@ func (h *Handler) LogoutHandler(
 //	@Tags			Authentication
 //	@Accept			json
 //	@Produce		json
-//	@Param			request	body		RefreshTokenRequest				true	"Refresh token request"
-//	@Success		200		{object}	api.Response[TokenPairResponse]	"Successfully refreshed token"
+//	@Param			request	body		dtos.RefreshTokenRequest				true	"Refresh token request"
+//	@Success		200		{object}	api.Response[dtos.TokenPairResponse]	"Successfully refreshed token"
 //	@Failure		400		{object}	api.Response[any]				"Invalid request"
 //	@Failure		401		{object}	api.Response[any]				"Unauthorized"
 //	@Failure		500		{object}	api.Response[any]				"Internal server error"
@@ -293,8 +293,8 @@ func (h *Handler) RefreshTokenHandler(
 //	@Tags			Authentication
 //	@Accept			json
 //	@Produce		json
-//	@Param			request	body		VerifyAccountRequest				true	"Verify account request"
-//	@Success		200		{object}	api.Response[VerifyAccountResponse]	"Account verified"
+//	@Param			request	body		dtos.VerifyAccountRequest				true	"Verify account request"
+//	@Success		200		{object}	api.Response[dtos.VerifyAccountResponse]	"Account verified"
 //	@Failure		400		{object}	api.Response[any]					"Invalid request"
 //	@Failure		401		{object}	api.Response[any]					"Unauthorized"
 //	@Failure		500		{object}	api.Response[any]					"Internal server error"
@@ -331,8 +331,8 @@ func (h *Handler) VerifyAccountHandler(
 //	@Tags			Authentication
 //	@Accept			json
 //	@Produce		json
-//	@Param			request	body		ResendVerificationCodeRequest	true	"Resend verification code request"
-//	@Success		200		{object}	api.Response[EmptyResponse]		"Verification code resent"
+//	@Param			request	body		dtos.ResendVerificationCodeRequest	true	"Resend verification code request"
+//	@Success		200		{object}	api.Response[dtos.EmptyResponse]		"Verification code resent"
 //	@Failure		400		{object}	api.Response[any]				"Invalid request"
 //	@Failure		401		{object}	api.Response[any]				"Unauthorized"
 //	@Failure		500		{object}	api.Response[any]				"Internal server error"

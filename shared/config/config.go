@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
@@ -24,6 +25,7 @@ type (
 		GatewayServiceConfig        GatewayServiceConfig
 		IdentityServiceConfig       IdentityServiceConfig
 		AccountProfileServiceConfig AccountProfileServiceConfig
+		ActivityServiceConfig       ActivityServiceConfig
 	}
 
 	Logger struct {
@@ -98,6 +100,7 @@ type (
 	OutboxConfig struct {
 		PollIntervalS time.Duration `envconfig:"OUTBOX_POLL_INTERVAL" default:"5s"`
 		ReadLimit     int           `envconfig:"OUTBOX_READ_LIMIT" default:"100"`
+		Schemas       string        `envconfig:"OUTBOX_SCHEMAS" required:"true"`
 	}
 
 	NatsConfig struct {
@@ -141,4 +144,19 @@ func (c Config) IsDevMode() bool {
 
 func (c Config) IsProdMode() bool {
 	return c.Service.Environment == "production"
+}
+
+func (oc *OutboxConfig) GetSchemas() []string {
+	if oc.Schemas == "" {
+		return []string{}
+	}
+
+	schemas := make([]string, 0)
+	for _, schema := range strings.Split(oc.Schemas, ",") {
+		schema = strings.TrimSpace(schema)
+		if schema != "" {
+			schemas = append(schemas, schema)
+		}
+	}
+	return schemas
 }
