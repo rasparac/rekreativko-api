@@ -6,6 +6,9 @@
 *.dylib
 bin/
 
+# Delve debug binaries (e.g. __debug_bin2115136243) left behind by VS Code's Go debugger
+__debug_bin*
+
 # Test binary, build with `go test -c`
 *.test
 
@@ -22,9 +25,10 @@ vendor/
 
 .env
 
-docs/docs.go
-docs/swagger.json
-docs/swagger.yaml
+# generated swagger docs (root and per-service, e.g. identity/docs/docs.go)
+**/docs/docs.go
+**/docs/swagger.json
+**/docs/swagger.yaml
 
 observability/grafana/data
 prometheus-data
