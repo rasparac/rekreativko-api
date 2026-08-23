@@ -40,6 +40,17 @@ func NewReverseProxy(
 		services: make(map[string]*SerivceProxy, len(services)),
 	}
 
+	// DisableKeepAlives avoids reusing a pooled connection to a backend that
+	// has since restarted (common during local debugging, but equally
+	// possible in production during a rolling deploy). A stale pooled
+	// connection fails with "connection reset by peer" before the request
+	// ever reaches the backend's handler - and unlike GET, a POST/PUT/DELETE
+	// on a dead connection is never safely auto-retried by net/http. Always
+	// dialing fresh trades a bit of per-request latency for correctness.
+	transport := &http.Transport{
+		DisableKeepAlives: true,
+	}
+
 	for name, cfg := range services {
 		target, err := url.Parse(cfg.URL)
 		if err != nil {
@@ -61,7 +72,7 @@ func NewReverseProxy(
 				resp.Header.Set("X-Service-Name", name)
 				return nil
 			},
-			Transport: otelhttp.NewTransport(http.DefaultTransport, otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string {
+			Transport: otelhttp.NewTransport(transport, otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string {
 				return fmt.Sprintf("HTTP %s %s", r.Method, r.URL.Path)
 			})),
 		}

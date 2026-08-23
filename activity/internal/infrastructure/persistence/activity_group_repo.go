@@ -51,6 +51,7 @@ type (
 		CreatedAt       time.Time
 		UpdatedAt       time.Time
 		CancelledAt     sql.NullTime
+		DeletedAt       sql.NullTime
 	}
 )
 
@@ -205,7 +206,8 @@ func (agm *activityGroupManager) GetActivityGroupByID(
 			default_capacity,
 			created_at,
 			updated_at,
-			cancelled_at
+			cancelled_at,
+			deleted_at
 		FROM activity.activity_group
 		WHERE id = $1
 	`
@@ -239,6 +241,34 @@ func (agm *activityGroupManager) CancelActivityGroup(
 		query,
 		ag.Status(),
 		ag.CancelledAt(),
+		ag.UpdatedAt(),
+		ag.ID(),
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (agm *activityGroupManager) DeleteActivityGroup(
+	ctx context.Context,
+	ag *domain.ActivityGroup,
+) error {
+	var (
+		q     = agm.tx.Querier(ctx)
+		query = `
+		UPDATE activity.activity_group
+		SET
+			deleted_at = $1,
+			updated_at = $2
+		WHERE id = $3
+	`
+	)
+	_, err := q.Exec(
+		ctx,
+		query,
+		ag.DeletedAt(),
 		ag.UpdatedAt(),
 		ag.ID(),
 	)
@@ -327,9 +357,10 @@ func buildActivityGroupQuery(filter ActivityGroupFilter) (string, []interface{})
 			default_capacity,
 			created_at,
 			updated_at,
-			cancelled_at
+			cancelled_at,
+			deleted_at
 		FROM activity.activity_group
-		WHERE 1=1`,
+		WHERE deleted_at IS NULL`,
 		Args: make([]any, 0),
 	}
 
@@ -384,9 +415,10 @@ func buildDiscoveryQuery(filter DiscoveryFilter) (string, []interface{}) {
 			default_capacity,
 			created_at,
 			updated_at,
-			cancelled_at
+			cancelled_at,
+			deleted_at
 		FROM activity.activity_group
-		WHERE visibility = 'public' AND status = 'active'`,
+		WHERE visibility = 'public' AND status = 'active' AND deleted_at IS NULL`,
 		Args: make([]any, 0),
 	}
 
@@ -449,6 +481,11 @@ func mapActivityGroupModelToDomain(
 		cancelledAt = &model.CancelledAt.Time
 	}
 
+	var deletedAt *time.Time
+	if model.DeletedAt.Valid {
+		deletedAt = &model.DeletedAt.Time
+	}
+
 	return domain.ReconstructActivityGroup(
 		model.ID,
 		model.CreatorID,
@@ -464,6 +501,7 @@ func mapActivityGroupModelToDomain(
 		model.CreatedAt,
 		model.UpdatedAt,
 		cancelledAt,
+		deletedAt,
 	), nil
 }
 
@@ -495,6 +533,18 @@ func mapDomainActivityGroupToModel(
 		}
 	}
 
+	var deletedAt sql.NullTime
+	if domain.DeletedAt() != nil {
+		deletedAt = sql.NullTime{
+			Time:  *domain.DeletedAt(),
+			Valid: true,
+		}
+	} else {
+		deletedAt = sql.NullTime{
+			Valid: false,
+		}
+	}
+
 	return &activityGroupModel{
 		ID:              domain.ID(),
 		CreatorID:       domain.CreatorID(),
@@ -511,6 +561,7 @@ func mapDomainActivityGroupToModel(
 		CreatedAt:       domain.CreatedAt(),
 		UpdatedAt:       domain.UpdatedAt(),
 		CancelledAt:     cancelledAt,
+		DeletedAt:       deletedAt,
 	}
 }
 
@@ -538,6 +589,7 @@ func scanActivityGroupModel(
 		&model.CreatedAt,
 		&model.UpdatedAt,
 		&model.CancelledAt,
+		&model.DeletedAt,
 	)
 	return &model, err
 }

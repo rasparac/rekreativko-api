@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -424,12 +425,72 @@ func sessionModelFromDomain(s *domain.Session) *sessionModel {
 }
 
 func sessionModelToDomain(model *sessionModel) (*domain.Session, error) {
-	// TODO: This function needs a proper domain hydration method
-	// The current approach uses NewSession which runs creation validations
-	// (e.g., start time must be in future) which fails for historical sessions.
-	// For now, we'll return an error and note that this needs to be implemented
-	// when we need to read sessions from the database.
-	// The session generator only creates new sessions, so this limitation doesn't affect it.
+	location, err := domain.NewSessionLocation(
+		model.locationCity,
+		model.locationCountry,
+		model.locationLat,
+		model.locationLng,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build session location: %w", err)
+	}
 
-	return nil, fmt.Errorf("session reconstruction from database not yet implemented - needs domain hydration method")
+	var endTime *time.Time
+	if model.endTime.Valid {
+		endTime = &model.endTime.Time
+	}
+
+	schedule, err := domain.ReconstructSessionSchedule(model.startTime.Time, endTime)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build session schedule: %w", err)
+	}
+
+	var templateID *uuid.UUID
+	if model.sessionTemplateID.Valid {
+		parsed, err := uuid.Parse(model.sessionTemplateID.String)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse session template ID: %w", err)
+		}
+		templateID = &parsed
+	}
+
+	var capacity *int
+	if model.capacity.Valid {
+		c := int(model.capacity.Int32)
+		capacity = &c
+	}
+
+	var cancelledAt *time.Time
+	if model.cancelledAt.Valid {
+		cancelledAt = &model.cancelledAt.Time
+	}
+
+	var startedAt *time.Time
+	if model.startedAt.Valid {
+		startedAt = &model.startedAt.Time
+	}
+
+	var completedAt *time.Time
+	if model.completedAt.Valid {
+		completedAt = &model.completedAt.Time
+	}
+
+	return domain.ReconstructSession(
+		model.id,
+		model.activityGroupID,
+		model.createdByID,
+		templateID,
+		location,
+		schedule,
+		capacity,
+		domain.SessionStatus(model.status),
+		model.isRecurring,
+		model.note.String,
+		nil, // openAt is not persisted yet
+		model.createdAt.Time,
+		model.updatedAt.Time,
+		cancelledAt,
+		startedAt,
+		completedAt,
+	), nil
 }

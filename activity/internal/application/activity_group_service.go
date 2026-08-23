@@ -22,6 +22,7 @@ type ActivityGroupService struct {
 	logger      *logger.Logger
 	txManager   *postgres.TransactionManager
 	groupRepo   ActivityGroupRepository
+	memberRepo  MemberRepository
 	eventWriter domainevent.EventWriter
 	tracer      trace.Tracer
 	metrics     *metrics.Metrics
@@ -32,6 +33,7 @@ func NewActivityGroupService(
 	logger *logger.Logger,
 	txManager *postgres.TransactionManager,
 	groupRepo ActivityGroupRepository,
+	memberRepo MemberRepository,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *ActivityGroupService {
@@ -39,6 +41,7 @@ func NewActivityGroupService(
 		logger:      logger.WithName("activity.activity_group_service"),
 		txManager:   txManager,
 		groupRepo:   groupRepo,
+		memberRepo:  memberRepo,
 		eventWriter: eventWriter,
 		tracer:      telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:     metrics,
@@ -141,6 +144,13 @@ func (s *ActivityGroupService) CreateActivityGroup(
 		err = s.groupRepo.CreateActivityGroup(tCtx, group)
 		if err != nil {
 			return fmt.Errorf("persist activity group: %w", err)
+		}
+
+		// Add the creator as a confirmed member so they can immediately
+		// manage the group (invite others, etc.) without a separate join step
+		creatorMember := domain.NewCreatorMember(group.ID(), params.CreatorID)
+		if err := s.memberRepo.CreateMember(tCtx, creatorMember); err != nil {
+			return fmt.Errorf("persist creator membership: %w", err)
 		}
 
 		// Publish domain events
@@ -432,6 +442,70 @@ func (s *ActivityGroupService) CancelActivityGroup(
 
 	span.SetStatus(codes.Ok, "activity group cancelled")
 	log.Info(ctx, "activity group cancelled")
+
+	return nil
+}
+
+// DeleteActivityGroup soft-deletes an activity group
+func (s *ActivityGroupService) DeleteActivityGroup(
+	ctx context.Context,
+	groupID uuid.UUID,
+	requesterID uuid.UUID,
+) error {
+	ctx, span := s.tracer.Start(
+		ctx,
+		"activity.service.DeleteActivityGroup",
+	)
+	defer span.End()
+
+	log := s.logger.WithValues(
+		"method", "DeleteActivityGroup",
+		"group_id", groupID,
+		"requester_id", requesterID,
+	)
+
+	span.SetAttributes(
+		attribute.String("group_id", groupID.String()),
+		attribute.String("requester_id", requesterID.String()),
+	)
+
+	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		group, err := s.groupRepo.GetActivityGroupByID(tCtx, groupID)
+		if err != nil {
+			return fmt.Errorf("get activity group: %w", err)
+		}
+
+		err = group.Delete(requesterID)
+		if err != nil {
+			return fmt.Errorf("delete activity group: %w", err)
+		}
+
+		err = s.groupRepo.DeleteActivityGroup(tCtx, group)
+		if err != nil {
+			return fmt.Errorf("persist deletion: %w", err)
+		}
+
+		err = s.eventWriter.InsertEvents(
+			tCtx,
+			activitySchema,
+			group.Events(),
+		)
+		if err != nil {
+			return fmt.Errorf("insert domain events: %w", err)
+		}
+
+		group.ClearEvents()
+
+		return nil
+	})
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to delete activity group", "error", err)
+		return mapToAppErr(err)
+	}
+
+	span.SetStatus(codes.Ok, "activity group deleted")
+	log.Info(ctx, "activity group deleted")
 
 	return nil
 }

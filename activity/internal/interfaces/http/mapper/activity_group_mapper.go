@@ -75,6 +75,11 @@ func ActivityGroupToResponse(group *domain.ActivityGroup) *dtos.ActivityGroupRes
 		resp.CancelledAt = cancelledAt
 	}
 
+	// Deleted at (optional)
+	if deletedAt := group.DeletedAt(); deletedAt != nil {
+		resp.DeletedAt = deletedAt
+	}
+
 	return resp
 }
 

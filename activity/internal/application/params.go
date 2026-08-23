@@ -14,13 +14,13 @@ type CreateSessionTemplateParams struct {
 	Description     string
 
 	// Recurrence configuration (all nil if not recurring)
-	RecurrenceFrequency  *string        // "daily", "weekly", "monthly"
-	RecurrenceInterval   *int           // Every N frequencies
-	RecurrenceDayOfWeek  *time.Weekday  // For weekly: 0=Sun, 1=Mon, etc.
-	RecurrenceDayOfMonth *int           // For monthly: 1-31
-	RecurrenceTimeHour   int            // 0-23
-	RecurrenceTimeMinute int            // 0-59
-	RecurrenceEndsAt     *time.Time     // When recurrence ends (optional)
+	RecurrenceFrequency  *string       // "daily", "weekly", "monthly"
+	RecurrenceInterval   *int          // Every N frequencies
+	RecurrenceDayOfWeek  *time.Weekday // For weekly: 0=Sun, 1=Mon, etc.
+	RecurrenceDayOfMonth *int          // For monthly: 1-31
+	RecurrenceTimeHour   int           // 0-23
+	RecurrenceTimeMinute int           // 0-59
+	RecurrenceEndsAt     *time.Time    // When recurrence ends (optional)
 
 	// Default session settings
 	DefaultCapacity *int    // nil = unlimited
@@ -34,13 +34,13 @@ type UpdateSessionTemplateParams struct {
 	Description string
 
 	// Recurrence configuration (all nil if not recurring)
-	RecurrenceFrequency  *string        // "daily", "weekly", "monthly"
-	RecurrenceInterval   *int           // Every N frequencies
-	RecurrenceDayOfWeek  *time.Weekday  // For weekly: 0=Sun, 1=Mon, etc.
-	RecurrenceDayOfMonth *int           // For monthly: 1-31
-	RecurrenceTimeHour   int            // 0-23
-	RecurrenceTimeMinute int            // 0-59
-	RecurrenceEndsAt     *time.Time     // When recurrence ends (optional)
+	RecurrenceFrequency  *string       // "daily", "weekly", "monthly"
+	RecurrenceInterval   *int          // Every N frequencies
+	RecurrenceDayOfWeek  *time.Weekday // For weekly: 0=Sun, 1=Mon, etc.
+	RecurrenceDayOfMonth *int          // For monthly: 1-31
+	RecurrenceTimeHour   int           // 0-23
+	RecurrenceTimeMinute int           // 0-59
+	RecurrenceEndsAt     *time.Time    // When recurrence ends (optional)
 
 	// Default session settings
 	DefaultCapacity *int    // nil = unlimited
@@ -155,6 +155,14 @@ type InviteMemberParams struct {
 	RequesterID     uuid.UUID
 	RequesterRole   string // "creator", "admin"
 	UserID          uuid.UUID
+}
+
+// SendInviteParams contains parameters for sending a group invite
+type SendInviteParams struct {
+	ActivityGroupID uuid.UUID
+	RequesterID     uuid.UUID
+	RequesterRole   string // "creator", "admin"
+	InvitedUserID   uuid.UUID
 }
 
 // RemoveMemberParams contains parameters for removing a member from a group

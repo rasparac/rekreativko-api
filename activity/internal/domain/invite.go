@@ -75,6 +75,31 @@ func NewInvite(
 	return invite, nil
 }
 
+// ReconstructGroupInvite rebuilds a GroupInvite from persisted data without
+// running creation-time validations (e.g. permission checks), which only
+// apply when an invite is first sent, not when loading an existing one.
+func ReconstructGroupInvite(
+	id uuid.UUID,
+	activityGroupID uuid.UUID,
+	invitedUserID uuid.UUID,
+	invitedByID uuid.UUID,
+	status InviteStatus,
+	createdAt time.Time,
+	expiresAt time.Time,
+	respondedAt *time.Time,
+) *GroupInvite {
+	return &GroupInvite{
+		id:              id,
+		activityGroupID: activityGroupID,
+		invitedUserID:   invitedUserID,
+		invitedByID:     invitedByID,
+		status:          status,
+		createdAt:       createdAt,
+		expiresAt:       expiresAt,
+		respondedAt:     respondedAt,
+	}
+}
+
 func (i *GroupInvite) ID() uuid.UUID {
 	return i.id
 }

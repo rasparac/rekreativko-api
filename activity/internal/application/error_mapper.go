@@ -71,6 +71,22 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.Unauthorized("unauthorized", "Unauthorized to perform this action", err)
 	}
 
+	// Invite errors
+	switch {
+	case errors.Is(err, domain.ErrInviteNotFound):
+		return domainerror.NotFound("invite_not_found", "Invite not found", err)
+	case errors.Is(err, domain.ErrUserAlreadyMember):
+		return domainerror.Conflict("user_already_member", "User is already a member of this activity group", err)
+	case errors.Is(err, domain.ErrAlreadyInvited):
+		return domainerror.Conflict("already_invited", "User has already been invited to this activity group", err)
+	case errors.Is(err, domain.ErrInviteAlreadyProcessed):
+		return domainerror.Conflict("invite_already_processed", "Invite has already been accepted or declined", err)
+	case errors.Is(err, domain.ErrInviteExpired):
+		return domainerror.Conflict("invite_expired", "Invite has expired", err)
+	case errors.Is(err, domain.ErrCannotInviteCreator):
+		return domainerror.ValidationError("cannot_invite_self", "Cannot invite yourself", err)
+	}
+
 	// Default to internal error with wrapped error for debugging
 	return domainerror.InternalWithErr(err)
 }

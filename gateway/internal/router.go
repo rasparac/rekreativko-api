@@ -141,7 +141,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (r *Router) matchRoute(path string) *Route {
 	for i := range r.routes {
-		if strings.HasPrefix(path, r.routes[i].Prefix) {
+		prefix := r.routes[i].Prefix
+		if path == prefix || strings.HasPrefix(path, prefix+"/") {
 			return &r.routes[i]
 		}
 	}

@@ -108,6 +108,21 @@ func NewSessionSchedule(startTime time.Time, endTime *time.Time) (SessionSchedul
 	}, nil
 }
 
+// ReconstructSessionSchedule rebuilds a schedule from persisted data. Unlike
+// NewSessionSchedule, it does not require startTime to be in the future, since
+// historical sessions loaded from the database will always have a start time
+// in the past once they've occurred.
+func ReconstructSessionSchedule(startTime time.Time, endTime *time.Time) (SessionSchedule, error) {
+	if endTime != nil && !endTime.After(startTime) {
+		return SessionSchedule{}, ErrInvalidScheduleTime
+	}
+
+	return SessionSchedule{
+		startTime: startTime,
+		endTime:   endTime,
+	}, nil
+}
+
 func (ss SessionSchedule) StartTime() time.Time {
 	return ss.startTime
 }
@@ -150,12 +165,13 @@ type Session struct {
 type SessionInput struct {
 	ActivityGroupID uuid.UUID
 	CreatedByID     uuid.UUID
+	TemplateID      *uuid.UUID // nil for manual one-off sessions, set for sessions generated from a template
 	Location        SessionLocation
 	Schedule        SessionSchedule
 	Capacity        *int
 	Note            string
 	IsRecurring     bool
-	OpenAt          *time.Time  // When regular members can start RSVPing (nil = immediately open)
+	OpenAt          *time.Time // When regular members can start RSVPing (nil = immediately open)
 	AutoAttendeeIDs []uuid.UUID
 }
 
@@ -171,6 +187,7 @@ func NewSession(
 		id:              uuid.New(),
 		activityGroupID: input.ActivityGroupID,
 		createdByID:     input.CreatedByID,
+		templateID:      input.TemplateID,
 		location:        input.Location,
 		schedule:        input.Schedule,
 		capacity:        input.Capacity,
@@ -187,6 +204,47 @@ func NewSession(
 	s.addEvent(NewSessionCreatedEvent(s, input.CreatedByID))
 
 	return s, attendees, nil
+}
+
+// ReconstructSession rebuilds a Session from persisted data without running
+// creation-time validations (e.g. NewSession's future-start-time check), which
+// would otherwise reject any already-occurred session loaded from the database.
+func ReconstructSession(
+	id uuid.UUID,
+	activityGroupID uuid.UUID,
+	createdByID uuid.UUID,
+	templateID *uuid.UUID,
+	location SessionLocation,
+	schedule SessionSchedule,
+	capacity *int,
+	status SessionStatus,
+	isRecurring bool,
+	note string,
+	openAt *time.Time,
+	createdAt time.Time,
+	updatedAt time.Time,
+	cancelledAt *time.Time,
+	startedAt *time.Time,
+	completedAt *time.Time,
+) *Session {
+	return &Session{
+		id:              id,
+		activityGroupID: activityGroupID,
+		createdByID:     createdByID,
+		templateID:      templateID,
+		location:        location,
+		schedule:        schedule,
+		capacity:        capacity,
+		status:          status,
+		isRecurring:     isRecurring,
+		note:            note,
+		openAt:          openAt,
+		createdAt:       createdAt,
+		updatedAt:       updatedAt,
+		cancelledAt:     cancelledAt,
+		startedAt:       startedAt,
+		completedAt:     completedAt,
+	}
 }
 
 func (s *Session) ID() uuid.UUID {

@@ -30,6 +30,7 @@ type (
 		UpdateActivityGroup(ctx context.Context, groupID uuid.UUID, params application.UpdateActivityGroupParams) error
 		ActivateActivityGroup(ctx context.Context, groupID uuid.UUID, requesterID uuid.UUID) error
 		CancelActivityGroup(ctx context.Context, groupID uuid.UUID, requesterID uuid.UUID, reason string) error
+		DeleteActivityGroup(ctx context.Context, groupID uuid.UUID, requesterID uuid.UUID) error
 		ListActivityGroups(ctx context.Context, params application.ListActivityGroupsParams) ([]*domain.ActivityGroup, error)
 		DiscoverActivityGroups(ctx context.Context, params application.DiscoverActivityGroupsParams) ([]*domain.ActivityGroup, error)
 	}
@@ -67,6 +68,14 @@ type (
 		ListRSVPs(ctx context.Context, params application.ListRSVPsParams) ([]*domain.Attendee, error)
 	}
 
+	// inviteService defines the interface for group invite operations
+	inviteService interface {
+		SendInvite(ctx context.Context, params application.SendInviteParams) (*domain.GroupInvite, error)
+		AcceptInvite(ctx context.Context, inviteID uuid.UUID, userID uuid.UUID) (*domain.Member, error)
+		DeclineInvite(ctx context.Context, inviteID uuid.UUID, userID uuid.UUID) error
+		ListMyInvites(ctx context.Context, userID uuid.UUID) ([]*domain.GroupInvite, error)
+	}
+
 	// Handler handles HTTP requests for the activity module
 	Handler struct {
 		sessionTemplateService sessionTemplateService
@@ -74,6 +83,7 @@ type (
 		sessionService         sessionService
 		memberService          memberService
 		attendeeService        attendeeService
+		inviteService          inviteService
 		logger                 *logger.Logger
 	}
 )
@@ -85,6 +95,7 @@ func NewHandler(
 	sessionService sessionService,
 	memberService memberService,
 	attendeeService attendeeService,
+	inviteService inviteService,
 	logger *logger.Logger,
 ) *Handler {
 	return &Handler{
@@ -93,6 +104,7 @@ func NewHandler(
 		sessionService:         sessionService,
 		memberService:          memberService,
 		attendeeService:        attendeeService,
+		inviteService:          inviteService,
 		logger:                 logger.WithName("activity.http.handler"),
 	}
 }
@@ -129,7 +141,7 @@ func (h *Handler) RegisterRoutes(
 	)
 	mux.Handle(
 		"DELETE /api/v1/activity-groups/{id}",
-		middlewares.ThenFunc(h.CancelActivityGroup),
+		middlewares.ThenFunc(h.DeleteActivityGroup),
 	)
 
 	// Session Template routes
@@ -224,6 +236,24 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"POST /api/v1/activity-groups/{groupId}/leave",
 		middlewares.ThenFunc(h.LeaveMember),
+	)
+
+	// Invite routes
+	mux.Handle(
+		"POST /api/v1/activity-groups/{groupId}/invites",
+		middlewares.ThenFunc(h.SendInvite),
+	)
+	mux.Handle(
+		"GET /api/v1/invites",
+		middlewares.ThenFunc(h.ListMyInvites),
+	)
+	mux.Handle(
+		"POST /api/v1/invites/{id}/accept",
+		middlewares.ThenFunc(h.AcceptInvite),
+	)
+	mux.Handle(
+		"POST /api/v1/invites/{id}/decline",
+		middlewares.ThenFunc(h.DeclineInvite),
 	)
 
 	// RSVP/Attendee routes

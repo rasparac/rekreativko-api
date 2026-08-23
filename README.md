@@ -98,7 +98,7 @@ This installs:
    ```bash
    task docker:run:local
    ```
-   This starts PostgreSQL, Redis, NATS, Jaeger, Prometheus, and Grafana.
+   This starts PostgreSQL, Redis, NATS, Jaeger, Prometheus, Grafana, and Swagger UI.
 
 3. **Run migrations**
    ```bash
@@ -226,16 +226,25 @@ OTEL_TRACES_SAMPLE_RATE=1.0
 
 ## API Documentation
 
-When running in development mode, Swagger UI is available at:
+Swagger/OpenAPI docs are generated from annotations on the HTTP handlers (`identity`, `account-profile`, `activity`) and served by a standalone **Swagger UI container** — the services themselves have no swagger code or dependencies at all, in any build (dev or production).
 
-```
-http://localhost:8080/swagger/index.html
-```
-
-Generate/update Swagger docs:
+**Generate the docs and start Swagger UI in one step:**
 ```bash
-task docs:swagger
+task docs:ui
 ```
+Then open **http://localhost:8090** and use the dropdown in the top-left to switch between Identity, Account Profile, and Activity.
+
+If you're already running `task docker:run:local`, the `swagger-ui` container starts automatically alongside the other infra (Postgres, Redis, NATS, Jaeger, Prometheus, Grafana) — you just need to (re)generate the docs whenever you change handler annotations:
+```bash
+task docs:swagger:all           # regenerate docs for all three services
+task docs:swagger:identity      # or a single service
+task docs:swagger:account-profile
+task docs:swagger:activity
+
+docker compose up -d --force-recreate swagger-ui   # pick up the new files
+```
+
+The generated `docs.go`/`swagger.json`/`swagger.yaml` files are build artifacts and are gitignored — don't commit them. `task docs:ui` handles generating them and refreshing the container together.
 
 ## Testing
 

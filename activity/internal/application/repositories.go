@@ -16,6 +16,7 @@ type ActivityGroupRepository interface {
 	CreateActivityGroup(ctx context.Context, group *domain.ActivityGroup) error
 	UpdateActivityGroup(ctx context.Context, group *domain.ActivityGroup) error
 	CancelActivityGroup(ctx context.Context, group *domain.ActivityGroup) error
+	DeleteActivityGroup(ctx context.Context, group *domain.ActivityGroup) error
 	GetActivityGroupByID(ctx context.Context, id uuid.UUID) (*domain.ActivityGroup, error)
 	ListActivityGroups(ctx context.Context, filter persistence.ActivityGroupFilter) ([]*domain.ActivityGroup, error)
 	DiscoverGroups(ctx context.Context, filter persistence.DiscoveryFilter) ([]*domain.ActivityGroup, error)
@@ -29,6 +30,15 @@ type MemberRepository interface {
 	GetMemberByGroupAndUser(ctx context.Context, activityGroupID, userID uuid.UUID) (*domain.Member, error)
 	ListMembers(ctx context.Context, filter persistence.MemberFilter) ([]*domain.Member, error)
 	DeleteMember(ctx context.Context, id uuid.UUID) error
+}
+
+// GroupInviteRepository defines the interface for group invite persistence
+type GroupInviteRepository interface {
+	CreateInvite(ctx context.Context, invite *domain.GroupInvite) error
+	UpdateInvite(ctx context.Context, invite *domain.GroupInvite) error
+	GetInviteByID(ctx context.Context, id uuid.UUID) (*domain.GroupInvite, error)
+	GetPendingInviteByGroupAndUser(ctx context.Context, activityGroupID, invitedUserID uuid.UUID) (*domain.GroupInvite, error)
+	ListPendingInvitesForUser(ctx context.Context, invitedUserID uuid.UUID) ([]*domain.GroupInvite, error)
 }
 
 // SessionRepository defines the interface for session persistence

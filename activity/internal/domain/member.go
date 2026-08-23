@@ -126,6 +126,7 @@ func (p *Member) IsPriority() bool {
 func NewCreatorMember(activityGroupID, userID uuid.UUID) *Member {
 	now := time.Now().UTC()
 	p := &Member{
+		id:              uuid.New(),
 		activityGroupID: activityGroupID,
 		userID:          userID,
 		role:            MemberRoleCreator,
@@ -139,6 +140,7 @@ func NewCreatorMember(activityGroupID, userID uuid.UUID) *Member {
 
 func NewJoinRequest(activityGroupID, userID uuid.UUID) *Member {
 	m := &Member{
+		id:              uuid.New(),
 		activityGroupID: activityGroupID,
 		userID:          userID,
 		role:            MemberRoleMember,
@@ -153,6 +155,7 @@ func NewJoinRequest(activityGroupID, userID uuid.UUID) *Member {
 
 func NewMemberFromInvite(activityGroupID, userID uuid.UUID) *Member {
 	m := &Member{
+		id:              uuid.New(),
 		activityGroupID: activityGroupID,
 		userID:          userID,
 		role:            MemberRoleMember,
@@ -167,6 +170,7 @@ func NewMemberFromInvite(activityGroupID, userID uuid.UUID) *Member {
 
 func NewMemberFromInviteLink(activityGroupID, userID uuid.UUID) *Member {
 	m := &Member{
+		id:              uuid.New(),
 		activityGroupID: activityGroupID,
 		userID:          userID,
 		role:            MemberRoleMember,

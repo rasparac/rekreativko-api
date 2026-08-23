@@ -128,6 +128,21 @@ services:
     networks:
       - rekreativko
 
+  swagger-ui:
+    image: swaggerapi/swagger-ui:latest
+    container_name: swagger-ui
+    ports:
+      - "8090:8080"
+    environment:
+      URLS: '[{ url: "/specs/identity.json", name: "Identity" }, { url: "/specs/account-profile.json", name: "Account Profile" }, { url: "/specs/activity.json", name: "Activity" }]'
+    volumes:
+      - ./identity/docs/swagger.json:/usr/share/nginx/html/specs/identity.json:ro
+      - ./account-profile/docs/swagger.json:/usr/share/nginx/html/specs/account-profile.json:ro
+      - ./activity/docs/swagger.json:/usr/share/nginx/html/specs/activity.json:ro
+    networks:
+      - rekreativko
+    restart: unless-stopped
+
   jaeger:
     image: jaegertracing/all-in-one:latest
     container_name: jaeger

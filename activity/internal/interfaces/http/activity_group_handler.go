@@ -178,21 +178,21 @@ func (h *Handler) ActivateActivityGroup(w http.ResponseWriter, r *http.Request) 
 	api.WriteOkResponse(w, dtos.EmptyResponse{}, "Activity group activated successfully")
 }
 
-// CancelActivityGroup handles DELETE /api/v1/activity-groups/{id}
+// DeleteActivityGroup handles DELETE /api/v1/activity-groups/{id}
 //
-//	@Summary		Cancel an activity group
-//	@Description	Cancels (soft-deletes) an activity group
+//	@Summary		Delete an activity group
+//	@Description	Soft-deletes an activity group
 //	@Tags			Activity Groups
 //	@Accept			json
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
 //	@Param			id	path		string							true	"Activity Group ID"
-//	@Success		200	{object}	api.Response[dtos.EmptyResponse]	"Group cancelled successfully"
+//	@Success		200	{object}	api.Response[dtos.EmptyResponse]	"Group deleted successfully"
 //	@Failure		400	{object}	api.Response[any]				"Invalid request"
 //	@Failure		404	{object}	api.Response[any]				"Group not found"
 //	@Failure		500	{object}	api.Response[any]				"Internal server error"
 //	@Router			/api/v1/activity-groups/{id} [delete]
-func (h *Handler) CancelActivityGroup(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) DeleteActivityGroup(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := authcontext.GetAccountID(ctx)
 
@@ -205,16 +205,14 @@ func (h *Handler) CancelActivityGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Cancel group with default reason
-	reason := "Cancelled by creator"
-	if err := h.activityGroupService.CancelActivityGroup(ctx, groupID, accountID, reason); err != nil {
+	if err := h.activityGroupService.DeleteActivityGroup(ctx, groupID, accountID); err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
 
-	h.logger.Info(ctx, "activity group cancelled", "group_id", groupID)
+	h.logger.Info(ctx, "activity group deleted", "group_id", groupID)
 
-	api.WriteOkResponse(w, dtos.EmptyResponse{}, "Activity group cancelled successfully")
+	api.WriteOkResponse(w, dtos.EmptyResponse{}, "Activity group deleted successfully")
 }
 
 // ListActivityGroups handles GET /api/v1/activity-groups

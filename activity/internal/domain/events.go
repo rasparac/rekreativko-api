@@ -12,20 +12,21 @@ const (
 	EventActivityGroupCreated           = "activity.group.created"
 	EventActivityGroupUpdated           = "activity.group.updated"
 	EventActivityGroupCancelled         = "activity.group.cancelled"
+	EventActivityGroupDeleted           = "activity.group.deleted"
 	EventActivityGroupStarted           = "activity.group.started"
 	EventActivityGroupCompleted         = "activity.group.completed"
 	EventActivityGroupRecurrenceUpdated = "activity.group.recurrence_updated"
 	EventActivityGroupVisibilityChanged = "activity.group.visibility_changed"
 
 	// Activity Member events
-	EventActivityGroupMemberJoinRequested  = "activity.member.join_requested"
-	EventActivityGroupMemberJoined         = "activity.member.joined"
-	EventActivityGroupMemberLeft           = "activity.member.left"
-	EventActivityGroupMemberApproved       = "activity.member.approved"
-	EventActivityGroupMemberRejected       = "activity.member.rejected"
-	EventActivityGroupMemberRemoved        = "activity.member.removed"
-	EventActivityGroupMemberRoleChanged    = "activity.member.role_changed"
-	EventActivityGroupMemberPrioritySet    = "activity.member.priority_set"
+	EventActivityGroupMemberJoinRequested   = "activity.member.join_requested"
+	EventActivityGroupMemberJoined          = "activity.member.joined"
+	EventActivityGroupMemberLeft            = "activity.member.left"
+	EventActivityGroupMemberApproved        = "activity.member.approved"
+	EventActivityGroupMemberRejected        = "activity.member.rejected"
+	EventActivityGroupMemberRemoved         = "activity.member.removed"
+	EventActivityGroupMemberRoleChanged     = "activity.member.role_changed"
+	EventActivityGroupMemberPrioritySet     = "activity.member.priority_set"
 	EventActivityGroupMemberPriorityRemoved = "activity.member.priority_removed"
 
 	// Activity invite events
@@ -191,6 +192,26 @@ func NewActivityCancelledEvent(
 		},
 		CancelledBy: cancelledBy,
 		Reason:      reason,
+	}
+}
+
+type ActivityDeletedEvent struct {
+	domainevent.BaseEvent
+	DeletedBy uuid.UUID `json:"deleted_by"`
+}
+
+func NewActivityGroupDeletedEvent(
+	activity *ActivityGroup,
+	deletedBy uuid.UUID,
+) *ActivityDeletedEvent {
+	return &ActivityDeletedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivityGroupDeleted,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: activity.ID(),
+		},
+		DeletedBy: deletedBy,
 	}
 }
 

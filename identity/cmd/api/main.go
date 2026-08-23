@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,8 +25,6 @@ import (
 	"github.com/rasparac/rekreativko-api/shared/token"
 
 	identityHttp "github.com/rasparac/rekreativko-api/identity/internal/interfaces/http"
-	httpSwagger "github.com/swaggo/http-swagger/v2"
-	_ "github.com/rasparac/rekreativko-api/identity/docs" // swagger docs
 )
 
 //	@title			Identity Service API
@@ -42,7 +39,7 @@ import (
 //	@in								header
 //	@name							Authorization
 
-//	@security		GatewayKeyAuth
+// @security		GatewayKeyAuth
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -183,11 +180,6 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		log.Info(r.Context(), "checking status", "method", r.Method, "path", r.URL.Path)
 		w.WriteHeader(http.StatusOK)
 	}))
-
-	if cfg.IsDevMode() {
-		mux.Handle("GET /swagger/", httpSwagger.WrapHandler)
-		log.Info(ctx, "swagger UI enabled", "url", fmt.Sprintf("%s/swagger/index.html", cfg.Server.Address()))
-	}
 
 	identityHandler.RegisterRoutes(mux, middlewaresChain)
 

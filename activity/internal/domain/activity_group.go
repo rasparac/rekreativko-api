@@ -234,6 +234,7 @@ type ActivityGroup struct {
 	createdAt   time.Time
 	updatedAt   time.Time
 	cancelledAt *time.Time
+	deletedAt   *time.Time
 
 	events []domainevent.Event
 }
@@ -310,6 +311,7 @@ func ReconstructActivityGroup(
 	createdAt time.Time,
 	updatedAt time.Time,
 	cancelledAt *time.Time,
+	deletedAt *time.Time,
 ) *ActivityGroup {
 	return &ActivityGroup{
 		id:              id,
@@ -325,6 +327,7 @@ func ReconstructActivityGroup(
 		createdAt:       createdAt,
 		updatedAt:       updatedAt,
 		cancelledAt:     cancelledAt,
+		deletedAt:       deletedAt,
 	}
 }
 
@@ -379,6 +382,10 @@ func (ag *ActivityGroup) CancelledAt() *time.Time {
 	return ag.cancelledAt
 }
 
+func (ag *ActivityGroup) DeletedAt() *time.Time {
+	return ag.deletedAt
+}
+
 func (ag *ActivityGroup) Visibility() ActivityGroupVisibility {
 	return ag.visibility
 }
@@ -388,7 +395,7 @@ func (ag *ActivityGroup) Timezone() string {
 }
 
 func (ag *ActivityGroup) IsDeleted() bool {
-	return ag.cancelledAt != nil
+	return ag.deletedAt != nil
 }
 
 func (ag *ActivityGroup) IsActive() bool {
@@ -478,6 +485,10 @@ func (ag *ActivityGroup) Activate(
 		return ErrActivityGroupNotDraft
 	}
 
+	if ag.IsDeleted() {
+		return ErrActivityGroupDeleted
+	}
+
 	if ag.CreatorID() != requesterID {
 		return ErrUnauthorized
 	}
@@ -498,6 +509,10 @@ func (ag *ActivityGroup) Cancel(
 		return ErrActivityGroupCancelled
 	}
 
+	if ag.IsDeleted() {
+		return ErrActivityGroupDeleted
+	}
+
 	if ag.creatorID != requesterID {
 		return ErrUnauthorized
 	}
@@ -509,6 +524,28 @@ func (ag *ActivityGroup) Cancel(
 	ag.touch()
 
 	ag.addEvent(NewActivityCancelledEvent(ag, requesterID, reason))
+
+	return nil
+}
+
+// Delete soft-deletes the activity group. Unlike Cancel, which marks the
+// group as called off while keeping it visible to members, Delete removes
+// it from listings entirely (deleted_at is checked by list/discover queries).
+func (ag *ActivityGroup) Delete(requesterID uuid.UUID) error {
+	if ag.IsDeleted() {
+		return ErrActivityGroupDeleted
+	}
+
+	if ag.creatorID != requesterID {
+		return ErrUnauthorized
+	}
+
+	now := time.Now().UTC()
+
+	ag.deletedAt = &now
+	ag.touch()
+
+	ag.addEvent(NewActivityGroupDeletedEvent(ag, requesterID))
 
 	return nil
 }

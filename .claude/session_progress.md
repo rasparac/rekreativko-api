@@ -791,3 +791,147 @@ Potential future enhancements (not required for MVP):
 
 **Domain**:
 - `activity/internal/domain/activity_group.go` (removed dead code - recurrenceRule parameter)
+
+---
+
+## Local Dev Debugging, Gateway Wiring, Panic Hardening & Soft-Delete Fixes (2026-08-16 – 2026-08-18)
+
+Wide-ranging debugging session working through the actual local dev setup (VS Code debugger, gateway routing, Postgres pool exhaustion, swagger, distributed tracing) down to several real application bugs uncovered along the way. Ordered roughly as encountered.
+
+### ✅ Local dev environment fixes
+
+#### 1. Postgres "too many clients already"
+- **Root cause**: `shared/store/postgres/postgres.go` sets `pgxpool.MinConns = cfg.MaxIdleConn`. Unlike `MaxOpenConn`, `MinConns` is **eager** — pgxpool opens that many connections on startup regardless of load. With 5 services (`identity`, `account-profile`, `activity`, `activity-cron`, `outbox-publisher`) each defaulting to `MaxIdleConn=25`, running the full stack requested ~125 connections against Postgres's default `max_connections=100`.
+- **Fix**: `dev/.env` — added `POSTGRES_MAX_OPEN_CONN=10` / `POSTGRES_MAX_IDLE_CONN=2` (previously had no Postgres pool settings at all, so it silently used the 25/25 defaults).
+- **Bonus fix**: root `.env` (used by docker-compose) had these same settings under the **wrong key names** — `POSTGRES_MAX_OPEN_CONNS`/`POSTGRES_MAX_IDLE_CONNS` (trailing `S`) vs. the actual `envconfig` tags `POSTGRES_MAX_OPEN_CONN`/`POSTGRES_MAX_IDLE_CONN`. They were silently ignored; fixed the key names and lowered the values to 10/2.
+
+#### 2. Gateway ↔ backend port mismatch in `.vscode/launch.json`
+- **Discovery**: debug ports are Gateway=8080, Identity=8082, Account Profile=8083, Activity=8081. But `shared/config/context_service.go`'s defaults are `IDENTITY_SERVICE_URL=http://localhost:8081`, `ACCOUNT_PROFILE_SERVICE_URL=http://localhost:8082` — i.e. gateway was silently proxying `/identity/*` to the **Activity** service and `/account-profile/*` to **Identity** in debug mode.
+- **Fix**: `dev/.env` — added explicit overrides matching the actual debug ports:
+  ```
+  IDENTITY_SERVICE_URL=http://localhost:8082
+  ACCOUNT_PROFILE_SERVICE_URL=http://localhost:8083
+  ACTIVITY_SERVICE_URL=http://localhost:8081
+  ```
+
+#### 3. Activity service was never wired into the gateway
+- Gateway's router (`gateway/internal/router.go`) and service map (`gateway/cmd/api/main.go`) only had `identity` and `account-profile` — Activity had no route at all.
+- **Added**:
+  - `shared/config/context_service.go` — new `ActivityServiceConfig` (`ACTIVITY_SERVICE_URL`, default `http://localhost:8084` — deliberately *not* 8081, since that's already Identity's canonical default; picked the next free canonical port).
+  - `shared/config/config.go` — registered `ActivityServiceConfig` on `Config`.
+  - `gateway/cmd/api/main.go` — added `"activity"` to the `serviceConfig` map.
+  - `gateway/internal/router.go` — new `/activity` route, `RequireAuth: true` on all `/activity/api/v1/*` (no public activity endpoints), no `Methods` restriction (activity uses GET/POST/PUT/DELETE, unlike account-profile's GET/POST/PUT-only route).
+- **Not done / still open**: `docker-compose.yaml` has no `activity` service block at all (only present in `docker-compose.build.yml`) — gateway routing works locally but not yet in the docker-compose stack.
+
+#### 4. Swagger UI, gateway key & `@BasePath` bug
+- `localhost:8080/swagger/index.html` (gateway's own swagger) 500s on `doc.json` — gateway mounts `httpSwagger.WrapHandler` but never generates/imports its own `docs` package (unlike identity/account-profile/activity). **Not fixed** — decided against in favor of item below.
+- "gateway key header is missing" warnings are **expected**: `CheckGatewayKey` middleware requires `X-Gateway-Key` on identity/account-profile/activity, added by the gateway when proxying. Testing directly against a service's own swagger UI (e.g. `localhost:8082/swagger`) bypasses the gateway and thus the header.
+- **Fix implemented**: declared `GatewayKeyAuth` (header `X-Gateway-Key`) and `BearerAuth` as proper `@securityDefinitions.apikey` in each service's `main.go`, set `GatewayKeyAuth` as the global default security, and upgraded every existing `@Security BearerAuth` annotation to `@Security GatewayKeyAuth && BearerAuth` (AND semantics — swag supports `&&` for combined requirements). This also fixed a latent bug where `BearerAuth` was referenced via `@Security` but never actually declared via `@securityDefinitions`, so it silently did nothing.
+- **Regression found & fixed**: initially also added `@BasePath /api/v1` to each service's general annotations — but `@Router` annotations on every handler already include the full `/api/v1/...` path, so this doubled the prefix (`/api/v1/api/v1/register`) and broke every "Try it out" call with 404. Removed `@BasePath`.
+- **Real, separate bug found & fixed**: `Taskfile.yml`'s `docs:swagger:{activity,identity,account-profile}` tasks used `-o docs` (relative to Task's cwd = repo root) instead of `-o ./<service>/docs`. Every regeneration was silently writing to a top-level `./docs/` that nothing imports, while the actual `identity/docs/`, `activity/docs/`, `account-profile/docs/` folders were stale leftovers from someone manually running `swag init` from inside each service dir. Fixed to `-o ./identity/docs` etc.
+
+#### 5. `.gitignore`
+- Added `__debug_bin*` (Delve debug binaries VS Code leaves behind, e.g. `__debug_bin2115136243`) — matches at any depth.
+- Fixed `docs/docs.go` / `docs/swagger.json` / `docs/swagger.yaml` → `**/docs/docs.go` etc. so the pattern actually matches the per-service generated doc folders, not just a root `./docs/`.
+- **Important gotcha discovered**: the 9 generated doc files under `identity/docs/`, `activity/docs/`, `account-profile/docs/` were **already committed to git**. `.gitignore` has zero effect on already-tracked files (confirmed empirically: `git check-ignore` reports "not ignored" for a tracked path even when the pattern matches, until the path is untracked). Ran `git rm -r --cached identity/docs activity/docs account-profile/docs` (kept on disk) so the ignore rule actually takes effect; user committed the removal.
+
+### ✅ Real application bugs found & fixed
+
+#### 6. `shared/events/nats_broker.go` — malformed structured log
+- `Publish()` called `b.logger.Info(ctx, "subject", subject, "stream", ack.Stream, "sequence", ack.Sequence)` — missing the required `msg` argument, so `"subject"` was consumed as the message and every subsequent pair shifted by one, leaving the last value (`ack.Sequence`) orphaned as `"!BADKEY"` in the log output.
+- **Fix**: added `"published message"` as the actual log message.
+
+#### 7. Panic recovery missing on backend services
+- Only the gateway had `middleware.Recover(log)` in its chain. `identity`, `account-profile`, `activity` had none — any unhandled panic killed the connection with a raw goroutine dump in the log instead of a clean `500`.
+- **Fix**: added `middleware.Recover(log)` as the first middleware in all three services' chains (`*/cmd/api/main.go`).
+
+#### 8. Prometheus label-cardinality panics in `activity` (found via the above Recover fix actually catching them)
+- `activity/internal/metrics/metrics.go`: `HTTPRequestDuration` / `HTTPResponseSize` were registered with `["method","path"]` (2 labels) but `shared/middleware/metrics.go` calls `.WithLabelValues(method, path, status)` (3 values) uniformly — `identity`/`account-profile` had the correct 3-label (`method,path,status`) definitions, only `activity`'s copy was wrong. **Fixed**: added `"status"`.
+- Same class of bug for `DBQueryTotal` / `DBQueryDuration`: declared with `["operation"]` (1 label) but `shared/store/metrics_tracer/metrics_tracer.go`'s `TraceQueryEnd` calls `.WithLabelValues(operation, status, table)` (3 values). **Fixed**: `["operation","status","table"]`, matching identity/account-profile.
+
+#### 9. `activity.activity_group` missing `cancelled_at` column
+- Repo/domain code (`GetActivityGroupByID`, `ListActivityGroups`, `DiscoverGroups`, `CancelActivityGroup`) always referenced `cancelled_at`, but the migration's `CREATE TABLE` never defined it → `column "cancelled_at" does not exist (SQLSTATE 42703)` on any list/get call.
+- **Fix**: added `cancelled_at timestamptz DEFAULT NULL` to `activity/internal/infrastructure/persistence/migrations/000001_activity_schema.up.sql` (safe to edit directly since unshipped/uncommitted). User needs to re-run `task migrate:activity:down && task migrate:activity:up` locally.
+
+#### 10. Gateway reverse proxy overwriting the `Host` header
+- `gateway/internal/proxy.go`'s `Rewrite` func did `pr.Out.Host = pr.In.Host` right after `pr.SetURL(target)` (which already clears `Out.Host` so the transport uses the real target host). This forwarded the **client's original `Host: localhost:8080`** to every backend service, so `otelhttp`'s server-side instrumentation on Identity/Account-Profile/Activity mislabeled `server.port` as the gateway's port (8080) instead of their own — discovered while explaining a Jaeger trace to the user (the trace itself — 2 gateway spans + 2 activity spans — was correct distributed-tracing behavior: client+server span pair per hop, not a bug).
+- **Fix**: removed the `pr.Out.Host = pr.In.Host` line.
+
+### ✅ Refactor: split `activity` HTTP handler by route group
+`activity/internal/interfaces/http/handler.go` (1956 lines, all endpoints in one file) split into, same `Handler` struct/receiver throughout, no behavior change:
+- `handler.go` — service interfaces, `Handler` struct, `NewHandler`, `RegisterRoutes` only
+- `activity_group_handler.go`, `session_template_handler.go`, `session_handler.go`, `member_handler.go`, `attendee_handler.go`
+- `helpers.go` — shared private `getUserRole` / `handleServiceError`
+
+### ✅ Activity group DELETE: soft-cancel → real soft-delete
+Discussed why `DELETE /api/v1/activity-groups/{id}` only *cancelled* (status + `cancelled_at`) rather than deleting — found `deleted_at` was a **fully dead column** (existed in the original schema, never read/written anywhere; `IsDeleted()` was just aliasing `cancelledAt != nil`). Decision: keep `cancelled_at` for a possible future distinct "cancel" action, wire `deleted_at` to actual deletion.
+
+**Domain** (`activity_group.go`):
+- New `deletedAt *time.Time` field, `DeletedAt()` getter, `IsDeleted()` now checks `deletedAt` (not `cancelledAt`).
+- New `Delete(requesterID) error` method (separate from `Cancel`), fires new `activity.group.deleted` event.
+- Added `IsDeleted()` guards to `Activate()`/`Cancel()` for consistency with `Update()`'s existing guard.
+- `ReconstructActivityGroup` gained a `deletedAt *time.Time` param (only caller updated).
+
+**Events** (`events.go`): `EventActivityGroupDeleted`, `ActivityDeletedEvent`, `NewActivityGroupDeletedEvent`.
+
+**Application**: `ActivityGroupRepository.DeleteActivityGroup`, `ActivityGroupService.DeleteActivityGroup` (mirrors `CancelActivityGroup`).
+
+**Persistence** (`activity_group_repo.go`): `deleted_at` added to model + all SELECT queries + scan/map functions; new `DeleteActivityGroup` repo method (`UPDATE ... SET deleted_at, updated_at`); `ListActivityGroups`/`DiscoverGroups` now exclude soft-deleted rows (`AND deleted_at IS NULL`).
+
+**HTTP**: handler method renamed `CancelActivityGroup` → `DeleteActivityGroup`, calls the new service method (dropped the `reason` param), route registration updated, swagger regenerated. Response DTO (`ActivityGroupResponse`) and mapper gained `deleted_at`.
+
+No migration needed — `deleted_at` already existed in the schema from day one, just unused.
+
+### ✅ Session template → session linkage bugs (found while answering "can a group have multiple session templates?")
+Yes, confirmed (list/create both group-scoped, no uniqueness constraint). Investigating whether `template_id` belonged in the session *routes* surfaced two real bugs instead — the filter (`GET /api/v1/sessions?session_template_id=`) already existed, but:
+
+1. **`session_template_id` was never populated anywhere.** `domain.Session.templateID` had a getter but no setter path: `SessionInput` (used by manual creation) had no `TemplateID` field, and `session_generator_service.go` (the cron job that expands recurring templates into concrete sessions) never set one either.
+   - **Fix**: added `TemplateID *uuid.UUID` to `domain.SessionInput`, wired into `NewSession`. `session_generator_service.go` now passes `template.ID()` through when generating recurring sessions. Manual/HTTP creation intentionally still leaves it `nil` (one-off sessions have no template, by design).
+
+2. **`sessionModelToDomain()` was an explicit unimplemented stub** (`session_repo.go`) — unconditionally `return nil, fmt.Errorf("session reconstruction from database not yet implemented...")`. Called from both `GetSessionByID` and the `ListSessions` scan loop, meaning `GET /api/v1/sessions/{id}` and `GET /api/v1/sessions` **always errored** on any real row.
+   - **Fix**: implemented it for real. Added `domain.ReconstructSessionSchedule` (same end-after-start check as `NewSessionSchedule`, but skips the "start time must be in the future" rule — was the reason for the stub, since any historical session's start time is in the past) and `domain.ReconstructSession` (mirrors the `ReconstructActivityGroup` pattern, builds a `*Session` directly without creation-time validation). `sessionModelToDomain` now hydrates location/schedule/template ID/capacity/timestamps from the scanned model.
+   - **Known residual gap**: `Session.openAt` is not persisted at all (no column in `sessionModel`/schema) — reconstruction passes `nil`. Not fixed, out of scope of this pass.
+
+**Verification**: `go build ./...`, `go vet ./activity/...`, `go test ./activity/...` all clean throughout. No live Postgres/NATS available in this environment, so nothing here has been exercised end-to-end — user is testing manually.
+
+### ⚠️ Known issues / not yet fixed (carried forward)
+- `docker-compose.yaml` has no `activity` service block (gateway now routes to it, but the docker-compose stack doesn't run it).
+- Gateway's own `localhost:8080/swagger` still 500s on `doc.json` (no generated docs for the gateway itself) — deliberately deprioritized in favor of the per-service `GatewayKeyAuth` security scheme fix.
+- `ReconstructActivityGroup` never assigns the `capacity` field on the returned struct (pre-existing bug, spotted but not fixed — `DefaultCapacity()` will read as `nil` on any group loaded from the DB).
+- `Session.openAt` is not persisted (see above).
+
+---
+
+## InviteMember Investigation: Gateway Routing, Panic Semantics & Member Creation Bugs (2026-08-19)
+
+Triggered by a panic while testing `POST /activity-groups/{groupId}/members`. Turned into a chain of increasingly specific root causes, ending in two real data-integrity bugs in member creation.
+
+### ✅ `http.ErrAbortHandler` mishandled as a real error
+`shared/middleware/recover.go`'s `Recover` logged **every** panic as an ERROR with a full stack trace, including `http.ErrAbortHandler` — the sentinel value `httputil.ReverseProxy` (and Go's own `net/http.Server`) intentionally panics with to silently abort a response whose connection is already broken (client disconnected, or request context cancelled/timed out). Go's own server special-cases this value and skips logging it for exactly this reason.
+- **Fix**: `Recover` now checks `if err == http.ErrAbortHandler { panic(err) }` before logging, re-panicking so `net/http`'s own machinery handles it the same way it would for any other panicking handler.
+- Explained the two real triggers for this panic: the gateway's per-service proxy timeout (`context.WithTimeout(r.Context(), srv.timeout)` in `gateway/internal/proxy.go`, defaults 30s via `*_SERVICE_TIMEOUT`) elapsing — very easy to hit while paused on a debugger breakpoint — or the original client (Postman/browser) disconnecting/timing out.
+
+### ✅ Gateway reverse proxy connection pooling → stale connections after backend restarts
+`gateway/internal/proxy.go` wrapped the shared `http.DefaultTransport`, which pools/reuses keep-alive connections. Restarting a backend's debug session (very common while iterating) leaves the gateway holding dead pooled connections; the next proxied request picks one, gets a raw `connection reset by peer` on write/read, and — critically for `POST`/`PUT`/`DELETE` — `net/http` never auto-retries a non-idempotent request on a stale connection.
+- **Fix**: gateway now builds a dedicated `*http.Transport{DisableKeepAlives: true}` instead of reusing `http.DefaultTransport`, so every proxied request dials fresh. Small latency cost (extra local TCP handshake), fully avoids reusing a connection to a backend that's since restarted — relevant in production too (rolling deploys), not just local debugging.
+
+### ✅ Real router bug: `matchRoute` used substring prefix matching, not path-segment matching
+The actual root cause of "request never reaches `InviteMember`". User's Postman request was missing the `/activity` + `/api/v1` prefix segments — sent `{{baseURL}}/activity-groups/{groupId}/members` instead of `{{baseURL}}/activity/api/v1/activity-groups/{groupId}/members`. That alone should have been a clean 404, but `gateway/internal/router.go`'s `matchRoute` did:
+```go
+if strings.HasPrefix(path, r.routes[i].Prefix) { // Prefix = "/activity"
+```
+`"/activity-groups/..."` starts with the literal characters `"/activity"`, so it **incorrectly matched** the `/activity` service route. `StripPrefix` then chopped the first 9 characters off, producing the mangled path `-groups/{groupId}/members` (verified byte-for-byte against the logged path). That string doesn't start with `/`, so when proxied to Activity it became an invalid HTTP request line — Go's request-line parser (`url.ParseRequestURI`, which requires either an absolute URI or a path starting with `/`) rejected it *before* `http.ServeMux` ever got to route it, so Activity's own router never saw a well-formed request to return a normal 404 for. Go's server aborts the connection on an unparseable request rather than composing a response, and closing a connection with unread/unparsed data commonly triggers a TCP **RST** instead of a graceful FIN — which is exactly the `connection reset by peer` observed. (Both `connection reset by peer` incidents in this session were very likely this same cause, not two separate bugs.)
+- **Fix**: `matchRoute` now requires a real path-segment boundary: `path == prefix || strings.HasPrefix(path, prefix+"/")`. A future URL mistake like this now gets a clean `404` straight from the gateway.
+
+### ✅ Two real bugs found while explaining `getUserRole`/`InviteMember` authorization
+Walking through why `getUserRole` didn't seem to make sense for "inviting a user who doesn't exist yet" (clarified: it checks the **inviter's** own membership/role via `authcontext.GetAccountID(ctx)`, completely separate from the invitee's `req.UserID` — a permission pre-check, not a lookup of the person being invited) surfaced a real, reproducible bug the user hit directly: **a group's creator was never added as a member of their own group**, so they could never pass `getUserRole` to invite anyone.
+
+1. **`ActivityGroupService.CreateActivityGroup` never created a `Member` row for the creator.** The domain layer already had the right tool sitting unused — `domain.NewCreatorMember(activityGroupID, userID)` (role=`creator`, status=`confirmed`) — just never called anywhere.
+   - **Fix**: `CreateActivityGroup` now calls `s.memberRepo.CreateMember(tCtx, domain.NewCreatorMember(group.ID(), params.CreatorID))` inside the same transaction as creating the group. Added a `MemberRepository` dependency to `ActivityGroupService` (constructor + `activity/cmd/api/main.go` wiring — `memberRepo` was already constructed there for other services, just not passed to this one).
+
+2. **Far more serious, found while checking why creator-membership wasn't already trivial to bolt on**: every `Member` domain constructor (`NewCreatorMember`, `NewJoinRequest`, `NewMemberFromInvite`, `NewMemberFromInviteLink`) never set the `id` field — it silently defaulted to the zero UUID (`00000000-0000-0000-0000-000000000000`). `member_repo.go`'s `CreateMember` uses `member.ID()` directly as the SQL `id` column (primary key). This meant **the first member ever created in the entire system would succeed, and every single one after that — any group, any user — would fail with a primary-key violation.** Hadn't surfaced yet purely because `getUserRole` was blocking every invite attempt before `CreateMember` ever ran.
+   - **Fix**: all four constructors in `domain/member.go` now set `id: uuid.New()`.
+
+**Note for the user**: the activity group created *before* this fix still has no creator membership row — needs a manual DB fix or just delete/recreate that group; everything created from now on gets it automatically.
+
+**Verification**: `go build ./...`, `go vet ./...`, `go test ./activity/...` all clean. No live DB in this environment — user is testing manually.

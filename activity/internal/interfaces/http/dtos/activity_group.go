@@ -47,6 +47,7 @@ type ActivityGroupResponse struct {
 	CreatedAt       time.Time  `json:"created_at" example:"2024-01-01T00:00:00Z"`
 	UpdatedAt       time.Time  `json:"updated_at" example:"2024-01-01T00:00:00Z"`
 	CancelledAt     *time.Time `json:"cancelled_at,omitempty" example:"2024-01-01T00:00:00Z"`
+	DeletedAt       *time.Time `json:"deleted_at,omitempty" example:"2024-01-01T00:00:00Z"`
 }
 
 // ActivityGroupListResponse is a response containing a list of activity groups

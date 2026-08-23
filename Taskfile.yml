@@ -235,7 +235,14 @@ tasks:
     desc: Run infrastructure services only (for local development)
     cmds:
       - echo "Starting infrastructure services..."
-      - docker compose up -d jaeger prometheus grafana db redis nats
+      - docker compose up -d jaeger prometheus grafana db redis nats swagger-ui
+
+  docs:ui:
+    desc: Regenerate swagger docs for all services and (re)start the swagger-ui container
+    cmds:
+      - task: docs:swagger:all
+      - docker compose up -d --force-recreate swagger-ui
+      - echo "✓ Swagger UI available at http://localhost:8090"
 
   docker:build:
     desc: Build all Docker images

@@ -23,17 +23,17 @@ var (
 
 // Member errors
 var (
-	ErrMemberNotFound         = errors.New("member not found")
-	ErrMemberAlreadyAdmin     = errors.New("member is already an admin")
-	ErrMemberNotAdmin         = errors.New("member is not an admin")
-	ErrAlreadyParticipating   = errors.New("user is already participating in this activity")
-	ErrCreatorCannotLeave     = errors.New("creator cannot leave their own activity")
-	ErrNotConfirmed           = errors.New("member is not confirmed")
-	ErrNotPendingStatus       = errors.New("member status is not pending")
-	ErrCannotRemoveCreator    = errors.New("cannot remove the creator from the activity")
-	ErrCannotDemoteCreator    = errors.New("cannot demote the creator to a regular member")
-	ErrMemberAlreadyPriority  = errors.New("member is already a priority member")
-	ErrMemberNotPriority      = errors.New("member is not a priority member")
+	ErrMemberNotFound        = errors.New("member not found")
+	ErrMemberAlreadyAdmin    = errors.New("member is already an admin")
+	ErrMemberNotAdmin        = errors.New("member is not an admin")
+	ErrAlreadyParticipating  = errors.New("user is already participating in this activity")
+	ErrCreatorCannotLeave    = errors.New("creator cannot leave their own activity")
+	ErrNotConfirmed          = errors.New("member is not confirmed")
+	ErrNotPendingStatus      = errors.New("member status is not pending")
+	ErrCannotRemoveCreator   = errors.New("cannot remove the creator from the activity")
+	ErrCannotDemoteCreator   = errors.New("cannot demote the creator to a regular member")
+	ErrMemberAlreadyPriority = errors.New("member is already a priority member")
+	ErrMemberNotPriority     = errors.New("member is not a priority member")
 )
 
 // Invite errors
@@ -44,6 +44,7 @@ var (
 	ErrInviteAlreadyProcessed = errors.New("invite has already been processed")
 	ErrAlreadyInvited         = errors.New("user has already been invited to this activity")
 	ErrCannotInviteCreator    = errors.New("cannot invite the creator of the activity")
+	ErrUserAlreadyMember      = errors.New("user is already a member of this activity group")
 )
 
 // Session errors

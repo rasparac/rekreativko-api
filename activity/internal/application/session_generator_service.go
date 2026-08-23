@@ -170,9 +170,11 @@ func (s *SessionGeneratorService) generateSessionsForTemplate(
 			}
 
 			// Create session
+			templateID := template.ID()
 			sessionInput := domain.SessionInput{
 				ActivityGroupID: template.ActivityGroupID(),
 				CreatedByID:     template.CreatedByID(),
+				TemplateID:      &templateID,
 				Location:        location,
 				Schedule:        schedule,
 				Capacity:        template.DefaultCapacity(),

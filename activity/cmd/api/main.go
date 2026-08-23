@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -24,8 +23,6 @@ import (
 	metricstracer "github.com/rasparac/rekreativko-api/shared/store/metrics_tracer"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
 	"github.com/rasparac/rekreativko-api/shared/telemetry"
-	httpSwagger "github.com/swaggo/http-swagger/v2"
-	_ "github.com/rasparac/rekreativko-api/activity/docs" // swagger docs
 )
 
 //	@title			Activity Service API
@@ -40,7 +37,7 @@ import (
 //	@in								header
 //	@name							Authorization
 
-//	@security		GatewayKeyAuth
+// @security		GatewayKeyAuth
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -133,6 +130,10 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		txManager,
 		log,
 	)
+	inviteRepo := persistence.NewGroupInviteRepository(
+		txManager,
+		log,
+	)
 
 	// Initialize services
 	sessionTemplateService := application.NewSessionTemplateService(
@@ -146,6 +147,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		log,
 		txManager,
 		activityGroupRepo,
+		memberRepo,
 		domainEventMgr,
 		appMetrics,
 	)
@@ -172,6 +174,14 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		domainEventMgr,
 		appMetrics,
 	)
+	inviteService := application.NewInviteService(
+		log,
+		txManager,
+		inviteRepo,
+		memberRepo,
+		domainEventMgr,
+		appMetrics,
+	)
 
 	mux := http.NewServeMux()
 
@@ -182,6 +192,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		sessionService,
 		memberService,
 		attendeeService,
+		inviteService,
 		log,
 	)
 
@@ -207,11 +218,6 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		log.Info(r.Context(), "checking status", "method", r.Method, "path", r.URL.Path)
 		w.WriteHeader(http.StatusOK)
 	}))
-
-	if cfg.IsDevMode() {
-		mux.Handle("GET /swagger/", httpSwagger.WrapHandler)
-		log.Info(ctx, "swagger UI enabled", "url", fmt.Sprintf("%s/swagger/index.html", cfg.Server.Address()))
-	}
 
 	activityHandler.RegisterRoutes(mux, middlewaresChain)
 
