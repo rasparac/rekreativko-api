@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "rekreativko_api",
+  "project_id": "5690ad1e-b2bb-4934-a2ac-2bf32fd9a1cb"
+}
