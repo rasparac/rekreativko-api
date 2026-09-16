@@ -111,7 +111,7 @@ func (b *SessionTemplateBuilder) WithMonthlyRecurrence(dayOfMonth, hour, minute 
 	rule, _ := domain.NewRecurrenceRule(
 		domain.RecurrenceFrequencyMonthly,
 		timeOfDay,
-		1, // every month
+		1,   // every month
 		nil, // no day of week for monthly
 		testutil.Ptr(dayOfMonth),
 		nil, // no end date
@@ -141,7 +141,7 @@ func (b *SessionTemplateBuilder) WithRecurrenceEndDate(endDate time.Time) *Sessi
 func (b *SessionTemplateBuilder) Build() *domain.SessionTemplate {
 	var location *domain.Location
 	if b.locationCity != nil && b.locationCountry != nil {
-		loc, _ := domain.NewLocation(*b.locationCity, *b.locationCountry, 0.0, 0.0)
+		loc, _ := domain.NewLocation(*b.locationCity, *b.locationCountry, "", 0.0, 0.0)
 		location = &loc
 	}
 

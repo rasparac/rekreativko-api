@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/mapper"
 	"github.com/rasparac/rekreativko-api/shared/api"
@@ -48,7 +49,7 @@ func (h *Handler) InviteMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get requester's role from membership
-	userRole, err := h.getUserRole(ctx, groupID, accountID)
+	userRole, err := h.getUserRole(ctx, &groupID, accountID)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
@@ -73,6 +74,55 @@ func (h *Handler) InviteMember(w http.ResponseWriter, r *http.Request) {
 	api.WriteCreatedResponse(w, dtos.InviteMemberResponse{
 		ID: member.ID(),
 	}, "Member invited successfully")
+}
+
+// RequestToJoinGroup handles POST /api/v1/activity-groups/{groupId}/join-requests
+//
+//	@Summary		Request to join an activity group
+//	@Description	Lets the authenticated user self-request to join a public activity group. Creates a pending membership - an admin or the creator must still approve it before it becomes confirmed.
+//	@Tags			Members
+//	@Produce		json
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			groupId	path		string											true	"Activity Group ID"
+//	@Success		201		{object}	api.Response[dtos.RequestToJoinGroupResponse]	"Join request created successfully"
+//	@Failure		400		{object}	api.Response[any]								"Invalid request"
+//	@Failure		401		{object}	api.Response[any]								"Unauthorized"
+//	@Failure		403		{object}	api.Response[any]								"Activity group is not open for join requests"
+//	@Failure		404		{object}	api.Response[any]								"Activity group not found"
+//	@Failure		409		{object}	api.Response[any]								"Already participating in this group, or the group is full"
+//	@Failure		500		{object}	api.Response[any]								"Internal server error"
+//	@Router			/api/v1/activity-groups/{groupId}/join-requests [post]
+func (h *Handler) RequestToJoinGroup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
+
+	// Get activity group ID from path
+	groupIDStr := r.PathValue("groupId")
+	groupID, err := uuid.Parse(groupIDStr)
+	if err != nil {
+		h.logger.Error(ctx, "invalid activity group ID", "error", err)
+		api.WriteValidationErrorResponse(w, err)
+		return
+	}
+
+	member, err := h.memberService.RequestToJoinGroup(ctx, application.RequestToJoinGroupParams{
+		ActivityGroupID: groupID,
+		UserID:          accountID,
+	})
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	h.logger.Info(ctx, "join request created",
+		"member_id", member.ID(),
+		"activity_group_id", groupID,
+		"user_id", accountID,
+	)
+
+	api.WriteCreatedResponse(w, dtos.RequestToJoinGroupResponse{
+		ID: member.ID(),
+	}, "Join request created successfully")
 }
 
 // RemoveMember handles DELETE /api/v1/activity-groups/{groupId}/members/{userId}
@@ -114,7 +164,7 @@ func (h *Handler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get requester's role from membership
-	userRole, err := h.getUserRole(ctx, groupID, accountID)
+	userRole, err := h.getUserRole(ctx, &groupID, accountID)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
@@ -186,9 +236,12 @@ func (h *Handler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Get requester's role from membership query
-	// For now, default to "creator" - the domain will validate permissions
-	userRole := "creator"
+	// Get requester's role from membership
+	userRole, err := h.getUserRole(ctx, &groupID, accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
 
 	// Convert to application params
 	params := mapper.UpdateMemberRoleRequestToParams(&req, groupID, userID, accountID, userRole)
@@ -253,7 +306,7 @@ func (h *Handler) ApproveMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get requester's role from membership
-	userRole, err := h.getUserRole(ctx, groupID, accountID)
+	userRole, err := h.getUserRole(ctx, &groupID, accountID)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
@@ -316,7 +369,7 @@ func (h *Handler) RejectMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get requester's role from membership
-	userRole, err := h.getUserRole(ctx, groupID, accountID)
+	userRole, err := h.getUserRole(ctx, &groupID, accountID)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
@@ -440,8 +493,8 @@ func (h *Handler) GetMember(w http.ResponseWriter, r *http.Request) {
 //	@Param			status	query		string								false	"Filter by status (pending, confirmed, rejected, left, removed)"
 //	@Param			role	query		string								false	"Filter by role (creator, admin, member)"
 //	@Param			limit	query		int									false	"Limit results"	default(20)
-//	@Param			offset	query		int									false	"Offset results"	default(0)
-//	@Success		200		{object}	api.Response[dtos.MemberListResponse]	"List of members"
+//	@Param			page_token	query	string								false	"Token from the previous response's next_page_token, to fetch the next page"
+//	@Success		200		{object}	api.Response[api.Page[dtos.MemberResponse]]	"List of members"
 //	@Failure		400		{object}	api.Response[any]					"Invalid request"
 //	@Failure		401		{object}	api.Response[any]					"Unauthorized"
 //	@Failure		500		{object}	api.Response[any]					"Internal server error"
@@ -470,7 +523,7 @@ func (h *Handler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	params.ActivityGroupID = &groupID
 
 	// List members
-	members, err := h.memberService.ListMembers(ctx, *params)
+	members, nextPageToken, err := h.memberService.ListMembers(ctx, *params)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
@@ -478,7 +531,7 @@ func (h *Handler) ListMembers(w http.ResponseWriter, r *http.Request) {
 
 	api.WriteOkResponse(
 		w,
-		mapper.MemberListToResponse(members, params.Limit, params.Offset),
+		api.NewPage(members, params.Limit, nextPageToken, mapper.MemberToResponse),
 		"",
 	)
 }

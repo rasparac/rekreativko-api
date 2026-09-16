@@ -1,0 +1,16 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: "default"
+  group_by: ["alertname", "service"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  # No integrations configured yet - firing alerts land here and are visible/manageable
+  # in the Alertmanager UI (http://localhost:9093), but nothing is notified externally.
+  # Add a slack_configs / email_configs / webhook_configs block here to wire up real
+  # notifications later.
+  - name: "default"

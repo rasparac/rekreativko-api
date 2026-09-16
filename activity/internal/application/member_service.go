@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -22,6 +23,7 @@ type MemberService struct {
 	logger      *logger.Logger
 	txManager   *postgres.TransactionManager
 	memberRepo  MemberRepository
+	groupRepo   ActivityGroupRepository
 	eventWriter domainevent.EventWriter
 	tracer      trace.Tracer
 	metrics     *metrics.Metrics
@@ -32,6 +34,7 @@ func NewMemberService(
 	logger *logger.Logger,
 	txManager *postgres.TransactionManager,
 	memberRepo MemberRepository,
+	groupRepo ActivityGroupRepository,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *MemberService {
@@ -39,6 +42,7 @@ func NewMemberService(
 		logger:      logger.WithName("activity.member_service"),
 		txManager:   txManager,
 		memberRepo:  memberRepo,
+		groupRepo:   groupRepo,
 		eventWriter: eventWriter,
 		tracer:      telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:     metrics,
@@ -127,7 +131,111 @@ func (s *MemberService) InviteMember(
 	}
 
 	span.SetStatus(codes.Ok, "member invited")
-	log.Info(ctx, "member invited", "member_id", member.ID())
+	log.Debug(ctx, "member invited", "member_id", member.ID())
+
+	return member, nil
+}
+
+// RequestToJoinGroup lets an authenticated user self-request to join a public,
+// active activity group. Creates a pending Member - an admin/creator still has
+// to approve it via ApproveMember before it becomes a confirmed membership.
+func (s *MemberService) RequestToJoinGroup(
+	ctx context.Context,
+	params RequestToJoinGroupParams,
+) (*domain.Member, error) {
+	ctx, span := s.tracer.Start(
+		ctx,
+		"activity.service.RequestToJoinGroup",
+	)
+	defer span.End()
+
+	log := s.logger.WithValues(
+		"method", "RequestToJoinGroup",
+		"activity_group_id", params.ActivityGroupID,
+		"user_id", params.UserID,
+	)
+
+	span.SetAttributes(
+		attribute.String("activity_group_id", params.ActivityGroupID.String()),
+		attribute.String("user_id", params.UserID.String()),
+	)
+
+	var member *domain.Member
+
+	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		group, err := s.groupRepo.GetActivityGroupByID(tCtx, params.ActivityGroupID)
+		if err != nil {
+			return fmt.Errorf("get activity group: %w", err)
+		}
+
+		if !group.CanRequestToJoin() {
+			return domain.ErrActivityGroupNotJoinable
+		}
+
+		// Reject if the user already has any relationship with this group
+		// (pending request, confirmed member, etc).
+		existingMember, err := s.memberRepo.GetMemberByGroupAndUser(
+			tCtx,
+			params.ActivityGroupID,
+			params.UserID,
+		)
+		if err == nil && existingMember != nil {
+			return domain.ErrAlreadyParticipating
+		}
+
+		// Enforce capacity up front so users aren't left waiting on a request
+		// that can never be approved. Re-checked again at approval time, since
+		// that's the moment a slot is actually consumed.
+		if capacity := group.DefaultCapacity(); capacity != nil {
+			confirmedCount, err := s.memberRepo.CountConfirmedMembers(tCtx, params.ActivityGroupID)
+			if err != nil {
+				return fmt.Errorf("count confirmed members: %w", err)
+			}
+			if confirmedCount >= capacity.Capacity() {
+				return domain.ErrActivityGroupFull
+			}
+		}
+
+		// Resolve who should be notified of this request - the group's
+		// confirmed admins and creator. Fetched here (rather than left for a
+		// downstream consumer to resolve) so nothing outside activity's own
+		// schema ever needs to query its membership data directly.
+		confirmedStatus := domain.MemberStatusConfirmed
+		confirmedMembers, _, err := s.memberRepo.ListMembers(tCtx, persistence.MemberFilter{
+			ActivityGroupID: &params.ActivityGroupID,
+			Status:          &confirmedStatus,
+		})
+		if err != nil {
+			return fmt.Errorf("list confirmed members: %w", err)
+		}
+		var managerUserIDs []uuid.UUID
+		for _, m := range confirmedMembers {
+			if m.Role().CanManageMembers() {
+				managerUserIDs = append(managerUserIDs, m.UserID())
+			}
+		}
+
+		member = domain.NewJoinRequest(params.ActivityGroupID, params.UserID, managerUserIDs)
+
+		if err := s.memberRepo.CreateMember(tCtx, member); err != nil {
+			return fmt.Errorf("persist member: %w", err)
+		}
+
+		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, member.Events()); err != nil {
+			return fmt.Errorf("insert domain events: %w", err)
+		}
+		member.ClearEvents()
+
+		return nil
+	})
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to request to join group", "error", err)
+		return nil, mapToAppErr(err)
+	}
+
+	span.SetStatus(codes.Ok, "join request created")
+	log.Debug(ctx, "join request created", "member_id", member.ID())
 
 	return member, nil
 }
@@ -208,7 +316,7 @@ func (s *MemberService) RemoveMember(
 	}
 
 	span.SetStatus(codes.Ok, "member removed")
-	log.Info(ctx, "member removed")
+	log.Debug(ctx, "member removed")
 
 	return nil
 }
@@ -289,7 +397,7 @@ func (s *MemberService) PromoteMember(
 	}
 
 	span.SetStatus(codes.Ok, "member promoted")
-	log.Info(ctx, "member promoted to admin")
+	log.Debug(ctx, "member promoted to admin")
 
 	return nil
 }
@@ -370,7 +478,7 @@ func (s *MemberService) DemoteMember(
 	}
 
 	span.SetStatus(codes.Ok, "member demoted")
-	log.Info(ctx, "member demoted to member role")
+	log.Debug(ctx, "member demoted to member role")
 
 	return nil
 }
@@ -418,6 +526,23 @@ func (s *MemberService) ApproveMember(
 			return fmt.Errorf("get member: %w", err)
 		}
 
+		// Re-check capacity here, not just at request time - approving is the
+		// moment a slot is actually consumed, and other approvals may have
+		// filled the group in the meantime.
+		group, err := s.groupRepo.GetActivityGroupByID(tCtx, params.ActivityGroupID)
+		if err != nil {
+			return fmt.Errorf("get activity group: %w", err)
+		}
+		if capacity := group.DefaultCapacity(); capacity != nil {
+			confirmedCount, err := s.memberRepo.CountConfirmedMembers(tCtx, params.ActivityGroupID)
+			if err != nil {
+				return fmt.Errorf("count confirmed members: %w", err)
+			}
+			if confirmedCount >= capacity.Capacity() {
+				return domain.ErrActivityGroupFull
+			}
+		}
+
 		// Approve the member (domain validates permissions)
 		err = member.Approve(params.RequesterID, requesterRole)
 		if err != nil {
@@ -451,7 +576,7 @@ func (s *MemberService) ApproveMember(
 	}
 
 	span.SetStatus(codes.Ok, "member approved")
-	log.Info(ctx, "member approved")
+	log.Debug(ctx, "member approved")
 
 	return nil
 }
@@ -532,7 +657,7 @@ func (s *MemberService) RejectMember(
 	}
 
 	span.SetStatus(codes.Ok, "member rejected")
-	log.Info(ctx, "member rejected")
+	log.Debug(ctx, "member rejected")
 
 	return nil
 }
@@ -604,7 +729,7 @@ func (s *MemberService) LeaveMember(
 	}
 
 	span.SetStatus(codes.Ok, "member left")
-	log.Info(ctx, "member left group")
+	log.Debug(ctx, "member left group")
 
 	return nil
 }
@@ -635,7 +760,11 @@ func (s *MemberService) GetMember(
 	member, err := s.memberRepo.GetMemberByGroupAndUser(ctx, activityGroupID, userID)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
-		log.Error(ctx, "failed to get member", "error", err)
+		// Not a member is the common, expected outcome of viewing a group
+		// you haven't joined - not a real error.
+		if !errors.Is(err, domain.ErrMemberNotFound) {
+			log.Error(ctx, "failed to get member", "error", err)
+		}
 		return nil, mapToAppErr(err)
 	}
 
@@ -649,7 +778,7 @@ func (s *MemberService) GetMember(
 func (s *MemberService) ListMembers(
 	ctx context.Context,
 	params ListMembersParams,
-) ([]*domain.Member, error) {
+) ([]*domain.Member, string, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
 		"activity.service.ListMembers",
@@ -683,18 +812,18 @@ func (s *MemberService) ListMembers(
 		Status:          status,
 		Role:            role,
 		Limit:           params.Limit,
-		Offset:          params.Offset,
+		PageToken:       params.PageToken,
 	}
 
-	members, err := s.memberRepo.ListMembers(ctx, filter)
+	members, nextPageToken, err := s.memberRepo.ListMembers(ctx, filter)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to list members", "error", err)
-		return nil, mapToAppErr(err)
+		return nil, "", mapToAppErr(err)
 	}
 
 	span.SetStatus(codes.Ok, "members listed")
 	log.Debug(ctx, "members listed", "count", len(members))
 
-	return members, nil
+	return members, nextPageToken, nil
 }

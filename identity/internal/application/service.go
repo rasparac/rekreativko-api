@@ -26,7 +26,6 @@ type (
 		CreateAccount(ctx context.Context, account *domain.Account) error
 		GetBy(ctx context.Context, filter persistence.AccountFilter) (*domain.Account, error)
 		UpdateAccount(ctx context.Context, account *domain.Account) error
-		DeleteAccount(ctx context.Context, UUID uuid.UUID) error
 	}
 
 	refreshTokenReaderWriter interface {
@@ -76,6 +75,8 @@ type Service struct {
 
 	tracer  trace.Tracer
 	metrics *metrics.Metrics
+
+	phoneRegistrationEnabled bool
 }
 
 func NewService(
@@ -89,6 +90,7 @@ func NewService(
 	codeGenerator *token.VerificationCodeGenerator,
 	passwordHasher *token.PasswordHasher,
 	metrics *metrics.Metrics,
+	phoneRegistrationEnabled bool,
 ) *Service {
 	return &Service{
 		accountRepository:          accountRepository,
@@ -102,6 +104,7 @@ func NewService(
 		passwordHasher:             passwordHasher,
 		tracer:                     telemetry.Tracer(telemetry.TracerIdentityService),
 		metrics:                    metrics,
+		phoneRegistrationEnabled:   phoneRegistrationEnabled,
 	}
 }
 
@@ -132,9 +135,71 @@ func (s *Service) GetAccount(ctx context.Context, accountID uuid.UUID) (*domain.
 
 	span.SetStatus(codes.Ok, "account found")
 
-	log.Info(ctx, "account found")
+	log.Debug(ctx, "account found")
 
 	return account, nil
+}
+
+func (s *Service) DeleteAccount(ctx context.Context, accountID uuid.UUID) error {
+	ctx, span := s.tracer.Start(
+		ctx,
+		"identity.service.DeleteAccount",
+	)
+	defer span.End()
+
+	log := s.logger.WithValues(
+		"method", "DeleteAccount",
+		"account_id", accountID,
+	)
+
+	span.SetAttributes(attribute.String(
+		"account_id", accountID.String(),
+	))
+
+	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		account, err := s.accountRepository.GetBy(tCtx, persistence.AccountFilter{
+			UUID: &accountID,
+		})
+		if err != nil {
+			return fmt.Errorf("get account: %w", err)
+		}
+
+		err = account.Delete()
+		if err != nil {
+			return err
+		}
+
+		err = s.accountRepository.UpdateAccount(tCtx, account)
+		if err != nil {
+			return fmt.Errorf("update account: %w", err)
+		}
+
+		err = s.refreshTokenRepository.RevokeAll(tCtx, accountID)
+		if err != nil {
+			return fmt.Errorf("revoke refresh tokens: %w", err)
+		}
+
+		events := account.Events()
+		err = s.domainWriter.InsertEvents(tCtx, schema, events)
+		if err != nil {
+			return fmt.Errorf("insert events: %w", err)
+		}
+
+		account.ClearEvents()
+
+		return nil
+	})
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to delete account", "error", err)
+		return mapToAppErr(err)
+	}
+
+	span.SetStatus(codes.Ok, "account deleted")
+
+	log.Debug(ctx, "account deleted")
+
+	return nil
 }
 
 func (s *Service) Register(ctx context.Context, req RegistrationParams) (uuid.UUID, error) {
@@ -155,6 +220,11 @@ func (s *Service) Register(ctx context.Context, req RegistrationParams) (uuid.UU
 	if req.Email == "" && req.PhoneNumber == "" {
 		log.Error(ctx, "no email or phone number provided")
 		return uuid.Nil, domainerror.BadRequest("email_or_phone_required", "Email or phone number is required", nil)
+	}
+
+	if req.PhoneNumber != "" && !s.phoneRegistrationEnabled {
+		log.Error(ctx, "phone registration attempted while feature is disabled")
+		return uuid.Nil, domainerror.BadRequest("phone_registration_disabled", "Phone number registration is not available yet, please register with an email", nil)
 	}
 
 	var (
@@ -271,7 +341,7 @@ func (s *Service) Register(ctx context.Context, req RegistrationParams) (uuid.UU
 
 	s.metrics.RegistrationsTotal.WithLabelValues(registrationMethod).Inc()
 
-	log.Info(ctx, "account created")
+	log.Debug(ctx, "account created")
 
 	return accountID, nil
 }
@@ -407,13 +477,12 @@ func (s *Service) Logout(ctx context.Context, req LogoutParams) (*EmptyResponse,
 	log := s.logger.WithValues(
 		"method", "Logout",
 		"account_id", req.AccountID,
-		"refresh_token", req.RefreshToken,
 	)
 
 	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
 		token, err := s.refreshTokenRepository.GetTokenBy(ctx, persistence.RefreshTokenFilter{
 			AccountID: req.AccountID,
-			Token:     req.RefreshToken,
+			TokenHash: s.tokenGenerator.HashRefreshToken(req.RefreshToken),
 		})
 		if err != nil {
 			return fmt.Errorf("get refresh token by accountID: %w", err)
@@ -447,7 +516,7 @@ func (s *Service) Logout(ctx context.Context, req LogoutParams) (*EmptyResponse,
 
 	span.SetStatus(codes.Ok, "logout successful")
 
-	log.Info(ctx, "logout successful")
+	log.Debug(ctx, "logout successful")
 
 	return nil, nil
 }
@@ -552,7 +621,7 @@ func (s *Service) VerifyAccount(ctx context.Context, req VerifyAccountParams) (u
 	span.SetStatus(codes.Ok, "account verified")
 	s.metrics.VerificationTotal.WithLabelValues("success").Inc()
 
-	log.Info(ctx, "account verified")
+	log.Debug(ctx, "account verified")
 
 	return accountID, nil
 }
@@ -566,7 +635,6 @@ func (s *Service) RefreshToken(ctx context.Context, req RefreshTokenParams) (*do
 
 	log := s.logger.WithValues(
 		"method", "RefreshToken",
-		"refresh_token", req.RefreshToken,
 	)
 
 	if req.RefreshToken == "" {
@@ -576,7 +644,7 @@ func (s *Service) RefreshToken(ctx context.Context, req RefreshTokenParams) (*do
 	var newToken *domain.RefreshToken
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
 		oldToken, err := s.refreshTokenRepository.GetTokenBy(tCtx, persistence.RefreshTokenFilter{
-			Token: req.RefreshToken,
+			TokenHash: s.tokenGenerator.HashRefreshToken(req.RefreshToken),
 		})
 		if err != nil {
 			return fmt.Errorf("get refresh token: %w", err)
@@ -630,7 +698,7 @@ func (s *Service) RefreshToken(ctx context.Context, req RefreshTokenParams) (*do
 
 	span.SetStatus(codes.Ok, "token refreshed")
 
-	log.Info(ctx, "token refreshed")
+	log.Debug(ctx, "token refreshed")
 
 	return newToken, nil
 }
@@ -713,7 +781,7 @@ func (s *Service) ResendVerificationCode(ctx context.Context, req ResendVerifica
 
 	span.SetStatus(codes.Ok, "verification code resent")
 
-	log.Info(ctx, "verification code resent")
+	log.Debug(ctx, "verification code resent")
 
 	return &EmptyResponse{}, nil
 }
@@ -741,6 +809,7 @@ func (s *Service) generateToken(ctx context.Context, accountID uuid.UUID) (*doma
 	refreshToken := domain.NewRefreshToken(
 		accountID,
 		refreshTokenValue,
+		s.tokenGenerator.HashRefreshToken(refreshTokenValue),
 		time.Now().UTC().Add(s.tokenGenerator.RefreshTokenDuration()),
 	)
 
@@ -762,7 +831,7 @@ func (s *Service) generateToken(ctx context.Context, accountID uuid.UUID) (*doma
 func mapToAppErr(err error) *domainerror.AppError {
 	pgErr := postgres.GetPgxError(err)
 	if pgErr != nil {
-		return MapPostgresError(pgErr)
+		return domainerror.MapPostgresError(pgErr)
 	}
 
 	return domain.MapErrToAppError(err)

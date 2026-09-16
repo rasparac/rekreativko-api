@@ -110,6 +110,26 @@ func TestSetLocation(t *testing.T) {
 	assert.Len(t, up.Events(), 2)
 }
 
+func TestSetLocation_CoordinatesOnlyChange(t *testing.T) {
+	up := NewAccountProfile(uuid.New())
+
+	lat1, lng1 := 44.8176, 20.4633
+	loc1, err := NewLocation("Belgrade", "Serbia", &lat1, &lng1)
+	require.NoError(t, err)
+	require.NoError(t, up.SetLocation(loc1))
+
+	lat2, lng2 := 52.5200, 13.4050
+	loc2, err := NewLocation("Belgrade", "Serbia", &lat2, &lng2)
+	require.NoError(t, err)
+
+	err = up.SetLocation(loc2)
+
+	require.NoError(t, err)
+	require.True(t, up.Location().HasCoordinates())
+	assert.Equal(t, lat2, up.Location().Coordinates().Latitude())
+	assert.Equal(t, lng2, up.Location().Coordinates().Longitude())
+}
+
 func TestAddActivityInterest(t *testing.T) {
 	up := NewAccountProfile(uuid.New())
 

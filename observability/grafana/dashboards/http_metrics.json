@@ -8,7 +8,7 @@
             "pluginName": "Prometheus"
         }
     ],
-    "description": "Generic HTTP metrics dashboard. Switch namespace to inspect any microservice.",
+    "description": "Generic HTTP metrics dashboard. Switch service to inspect any microservice.",
     "editable": true,
     "graphTooltip": 1,
     "id": null,
@@ -72,7 +72,7 @@
                         "type": "prometheus",
                         "uid": "Prometheus"
                     },
-                    "expr": "sum(rate(${namespace}_http_requests_total[$__rate_interval]))",
+                    "expr": "sum(rate(http_requests_total{service=\"$service\"}[$__rate_interval]))",
                     "legendFormat": "req/s",
                     "refId": "A"
                 }
@@ -132,7 +132,7 @@
                         "type": "prometheus",
                         "uid": "Prometheus"
                     },
-                    "expr": "sum(rate(${namespace}_http_requests_total{status=~\"5..\"}[$__rate_interval])) / sum(rate(${namespace}_http_requests_total[$__rate_interval]))",
+                    "expr": "sum(rate(http_requests_total{service=\"$service\", status=~\"5..\"}[$__rate_interval])) / sum(rate(http_requests_total{service=\"$service\"}[$__rate_interval]))",
                     "legendFormat": "error rate",
                     "refId": "A"
                 }
@@ -192,7 +192,7 @@
                         "type": "prometheus",
                         "uid": "Prometheus"
                     },
-                    "expr": "histogram_quantile(0.50, sum(rate(${namespace}_http_request_duration_seconds_bucket[$__rate_interval])) by (le))",
+                    "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{service=\"$service\"}[$__rate_interval])) by (le))",
                     "legendFormat": "p50",
                     "refId": "A"
                 }
@@ -252,7 +252,7 @@
                         "type": "prometheus",
                         "uid": "Prometheus"
                     },
-                    "expr": "histogram_quantile(0.95, sum(rate(${namespace}_http_request_duration_seconds_bucket[$__rate_interval])) by (le))",
+                    "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"$service\"}[$__rate_interval])) by (le))",
                     "legendFormat": "p95",
                     "refId": "A"
                 }
@@ -312,7 +312,7 @@
                         "type": "prometheus",
                         "uid": "Prometheus"
                     },
-                    "expr": "histogram_quantile(0.99, sum(rate(${namespace}_http_request_duration_seconds_bucket[$__rate_interval])) by (le))",
+                    "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service=\"$service\"}[$__rate_interval])) by (le))",
                     "legendFormat": "p99",
                     "refId": "A"
                 }
@@ -371,7 +371,7 @@
                         "type": "prometheus",
                         "uid": "Prometheus"
                     },
-                    "expr": "sum(rate(${namespace}_http_requests_total[$__rate_interval])) by (method, path)",
+                    "expr": "sum(rate(http_requests_total{service=\"$service\"}[$__rate_interval])) by (method, path)",
                     "legendFormat": "{{method}} {{path}}",
                     "refId": "A"
                 }
@@ -418,7 +418,7 @@
                         "type": "prometheus",
                         "uid": "Prometheus"
                     },
-                    "expr": "sum(rate(${namespace}_http_requests_total[$__rate_interval])) by (status)",
+                    "expr": "sum(rate(http_requests_total{service=\"$service\"}[$__rate_interval])) by (status)",
                     "legendFormat": "{{status}}",
                     "refId": "A"
                 }
@@ -477,7 +477,7 @@
                         "type": "prometheus",
                         "uid": "Prometheus"
                     },
-                    "expr": "histogram_quantile(0.50, sum(rate(${namespace}_http_request_duration_seconds_bucket[$__rate_interval])) by (le, path))",
+                    "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{service=\"$service\"}[$__rate_interval])) by (le, path))",
                     "legendFormat": "p50 {{path}}",
                     "refId": "A"
                 },
@@ -486,7 +486,7 @@
                         "type": "prometheus",
                         "uid": "Prometheus"
                     },
-                    "expr": "histogram_quantile(0.95, sum(rate(${namespace}_http_request_duration_seconds_bucket[$__rate_interval])) by (le, path))",
+                    "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"$service\"}[$__rate_interval])) by (le, path))",
                     "legendFormat": "p95 {{path}}",
                     "refId": "B"
                 },
@@ -495,7 +495,7 @@
                         "type": "prometheus",
                         "uid": "Prometheus"
                     },
-                    "expr": "histogram_quantile(0.99, sum(rate(${namespace}_http_request_duration_seconds_bucket[$__rate_interval])) by (le, path))",
+                    "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service=\"$service\"}[$__rate_interval])) by (le, path))",
                     "legendFormat": "p99 {{path}}",
                     "refId": "C"
                 }
@@ -554,7 +554,7 @@
                         "type": "prometheus",
                         "uid": "Prometheus"
                     },
-                    "expr": "histogram_quantile(0.95, sum(rate(${namespace}_http_response_size_bytes_bucket[$__rate_interval])) by (le, path))",
+                    "expr": "histogram_quantile(0.95, sum(rate(http_response_size_bytes_bucket{service=\"$service\"}[$__rate_interval])) by (le, path))",
                     "legendFormat": "p95 {{path}}",
                     "refId": "A"
                 }
@@ -601,7 +601,7 @@
                         "type": "prometheus",
                         "uid": "Prometheus"
                     },
-                    "expr": "histogram_quantile(0.95, sum(rate(${namespace}_http_request_size_bytes_bucket[$__rate_interval])) by (le, path))",
+                    "expr": "histogram_quantile(0.95, sum(rate(http_request_size_bytes_bucket{service=\"$service\"}[$__rate_interval])) by (le, path))",
                     "legendFormat": "p95 {{path}}",
                     "refId": "A"
                 }
@@ -622,7 +622,7 @@
                     "type": "prometheus",
                     "uid": "Prometheus"
                 },
-                "definition": "label_values(up, job)",
+                "definition": "label_values(up{job=\"rekreativko\"}, service)",
                 "hide": 0,
                 "includeAll": false,
                 "label": "Service",
@@ -630,40 +630,13 @@
                 "name": "service",
                 "options": [],
                 "query": {
-                    "query": "label_values(up, job)",
+                    "query": "label_values(up{job=\"rekreativko\"}, service)",
                     "refId": "StandardVariableQuery"
                 },
                 "refresh": 2,
                 "regex": "",
                 "sort": 1,
                 "type": "query"
-            },
-            {
-                "name": "namespace",
-                "label": "namespace",
-                "type": "custom",
-                "query": "gateway,identity,account_profile",
-                "current": {
-                    "value": "gateway",
-                    "text": "gateway"
-                },
-                "options": [
-                    {
-                        "text": "gateway",
-                        "value": "gateway"
-                    },
-                    {
-                        "text": "identity",
-                        "value": "identity"
-                    },
-                    {
-                        "text": "account_profile",
-                        "value": "account_profile"
-                    }
-                ],
-                "hide": 0,
-                "multi": false,
-                "includeAll": false
             }
         ]
     },

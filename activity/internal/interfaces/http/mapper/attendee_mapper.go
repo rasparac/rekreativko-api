@@ -2,26 +2,24 @@ package mapper
 
 import (
 	"net/url"
-	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
+	"github.com/rasparac/rekreativko-api/shared/api"
 )
 
 // CreateRSVPRequestToParams converts CreateRSVPRequest to application params
 func CreateRSVPRequestToParams(
 	req *dtos.CreateRSVPRequest,
 	sessionID uuid.UUID,
-	activityGroupID uuid.UUID,
 	userID uuid.UUID,
 ) *application.CreateRSVPParams {
 	return &application.CreateRSVPParams{
-		SessionID:       sessionID,
-		ActivityGroupID: activityGroupID,
-		UserID:          userID,
-		Status:          req.Status,
+		SessionID: sessionID,
+		UserID:    userID,
+		Status:    req.Status,
 	}
 }
 
@@ -29,14 +27,57 @@ func CreateRSVPRequestToParams(
 func UpdateRSVPRequestToParams(
 	req *dtos.UpdateRSVPRequest,
 	sessionID uuid.UUID,
-	activityGroupID uuid.UUID,
 	userID uuid.UUID,
 ) *application.UpdateRSVPParams {
 	return &application.UpdateRSVPParams{
-		SessionID:       sessionID,
-		ActivityGroupID: activityGroupID,
-		UserID:          userID,
-		NewStatus:       req.Status,
+		SessionID: sessionID,
+		UserID:    userID,
+		NewStatus: req.Status,
+	}
+}
+
+// ApproveAttendeeRequestToParams builds params for approving a pending join request
+func ApproveAttendeeRequestToParams(
+	sessionID uuid.UUID,
+	userID uuid.UUID,
+	requesterID uuid.UUID,
+	requesterRole string,
+) *application.ApproveAttendeeParams {
+	return &application.ApproveAttendeeParams{
+		SessionID:     sessionID,
+		UserID:        userID,
+		RequesterID:   requesterID,
+		RequesterRole: requesterRole,
+	}
+}
+
+// RejectAttendeeRequestToParams builds params for rejecting a pending join request
+func RejectAttendeeRequestToParams(
+	sessionID uuid.UUID,
+	userID uuid.UUID,
+	requesterID uuid.UUID,
+	requesterRole string,
+) *application.RejectAttendeeParams {
+	return &application.RejectAttendeeParams{
+		SessionID:     sessionID,
+		UserID:        userID,
+		RequesterID:   requesterID,
+		RequesterRole: requesterRole,
+	}
+}
+
+// RemoveAttendeeRequestToParams builds params for removing an already-confirmed attendee
+func RemoveAttendeeRequestToParams(
+	sessionID uuid.UUID,
+	userID uuid.UUID,
+	requesterID uuid.UUID,
+	requesterRole string,
+) *application.RemoveAttendeeParams {
+	return &application.RemoveAttendeeParams{
+		SessionID:     sessionID,
+		UserID:        userID,
+		RequesterID:   requesterID,
+		RequesterRole: requesterRole,
 	}
 }
 
@@ -54,30 +95,10 @@ func AttendeeToResponse(attendee *domain.Attendee) *dtos.AttendeeResponse {
 	}
 }
 
-// AttendeeListToResponse converts list of attendees to list response
-func AttendeeListToResponse(
-	attendees []*domain.Attendee,
-	limit int,
-	offset int,
-) *dtos.AttendeeListResponse {
-	responses := make([]dtos.AttendeeResponse, len(attendees))
-	for i, attendee := range attendees {
-		responses[i] = *AttendeeToResponse(attendee)
-	}
-
-	return &dtos.AttendeeListResponse{
-		Attendees: responses,
-		Total:     len(responses),
-		Limit:     limit,
-		Offset:    offset,
-	}
-}
-
 // QueryToListRSVPsParams parses query parameters for listing RSVPs
 func QueryToListRSVPsParams(query url.Values) (*application.ListRSVPsParams, error) {
 	params := &application.ListRSVPsParams{
-		Limit:  20, // default
-		Offset: 0,  // default
+		Limit: 20, // default
 	}
 
 	// Parse session_id filter
@@ -112,23 +133,12 @@ func QueryToListRSVPsParams(query url.Values) (*application.ListRSVPsParams, err
 		params.Status = &status
 	}
 
-	// Parse limit
-	if limitStr := query.Get("limit"); limitStr != "" {
-		limit, err := strconv.Atoi(limitStr)
-		if err != nil {
-			return nil, err
-		}
-		params.Limit = limit
+	limit, pageToken, err := api.ParsePageParams(query, params.Limit)
+	if err != nil {
+		return nil, err
 	}
-
-	// Parse offset
-	if offsetStr := query.Get("offset"); offsetStr != "" {
-		offset, err := strconv.Atoi(offsetStr)
-		if err != nil {
-			return nil, err
-		}
-		params.Offset = offset
-	}
+	params.Limit = limit
+	params.PageToken = pageToken
 
 	return params, nil
 }

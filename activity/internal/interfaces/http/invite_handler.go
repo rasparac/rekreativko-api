@@ -46,7 +46,7 @@ func (h *Handler) SendInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userRole, err := h.getUserRole(ctx, groupID, accountID)
+	userRole, err := h.getUserRole(ctx, &groupID, accountID)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
@@ -78,21 +78,30 @@ func (h *Handler) SendInvite(w http.ResponseWriter, r *http.Request) {
 //	@Tags			Invites
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
-//	@Success		200	{object}	api.Response[dtos.InviteListResponse]	"Invites retrieved successfully"
-//	@Failure		401	{object}	api.Response[any]						"Unauthorized"
-//	@Failure		500	{object}	api.Response[any]						"Internal server error"
+//	@Param			limit		query		int										false	"Limit number of results (default 20)"
+//	@Param			page_token	query		string									false	"Token from the previous response's next_page_token, to fetch the next page"
+//	@Success		200			{object}	api.Response[api.Page[dtos.InviteResponse]]	"Invites retrieved successfully"
+//	@Failure		401			{object}	api.Response[any]						"Unauthorized"
+//	@Failure		500			{object}	api.Response[any]						"Internal server error"
 //	@Router			/api/v1/invites [get]
 func (h *Handler) ListMyInvites(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := authcontext.GetAccountID(ctx)
 
-	invites, err := h.inviteService.ListMyInvites(ctx, accountID)
+	params, err := mapper.QueryToListMyInvitesParams(r.URL.Query())
+	if err != nil {
+		h.logger.Error(ctx, "failed to parse query parameters", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_params", "Invalid query parameters")
+		return
+	}
+
+	invites, nextPageToken, err := h.inviteService.ListMyInvites(ctx, accountID, *params)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
 
-	api.WriteOkResponse(w, mapper.InviteListToResponse(invites), "")
+	api.WriteOkResponse(w, api.NewPage(invites, params.Limit, nextPageToken, mapper.InviteToResponse), "")
 }
 
 // AcceptInvite handles POST /api/v1/invites/{id}/accept

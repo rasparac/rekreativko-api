@@ -9,6 +9,7 @@ import (
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
+	"github.com/rasparac/rekreativko-api/shared/api"
 )
 
 // CreateRequestToParams converts CreateSessionTemplateRequest to application params
@@ -29,6 +30,9 @@ func CreateRequestToParams(
 		DefaultCapacity:      req.DefaultCapacity,
 		LocationCity:         req.LocationCity,
 		LocationCountry:      req.LocationCountry,
+		LocationStreet:       req.LocationStreet,
+		LocationLat:          req.LocationLat,
+		LocationLng:          req.LocationLng,
 	}
 
 	// Convert day of week from int to time.Weekday if provided
@@ -55,8 +59,9 @@ func CreateRequestToParams(
 }
 
 // UpdateRequestToParams converts UpdateSessionTemplateRequest to application params
-func UpdateRequestToParams(req *dtos.UpdateSessionTemplateRequest) (*application.UpdateSessionTemplateParams, error) {
+func UpdateRequestToParams(req *dtos.UpdateSessionTemplateRequest, requesterID uuid.UUID) (*application.UpdateSessionTemplateParams, error) {
 	params := &application.UpdateSessionTemplateParams{
+		RequesterID:          requesterID,
 		Title:                req.Title,
 		Description:          req.Description,
 		RecurrenceFrequency:  req.RecurrenceFrequency,
@@ -66,6 +71,9 @@ func UpdateRequestToParams(req *dtos.UpdateSessionTemplateRequest) (*application
 		DefaultCapacity:      req.DefaultCapacity,
 		LocationCity:         req.LocationCity,
 		LocationCountry:      req.LocationCountry,
+		LocationStreet:       req.LocationStreet,
+		LocationLat:          req.LocationLat,
+		LocationLng:          req.LocationLng,
 	}
 
 	// Convert day of week from int to time.Weekday if provided
@@ -110,11 +118,12 @@ func DomainToResponse(template *domain.SessionTemplate) *dtos.SessionTemplateRes
 	}
 
 	// Location
-	if city := template.LocationCity(); city != "" {
-		resp.LocationCity = &city
-	}
-	if country := template.LocationCountry(); country != "" {
-		resp.LocationCountry = &country
+	resp.LocationCity = template.LocationCity()
+	resp.LocationCountry = template.LocationCountry()
+	if loc := template.DefaultLocation(); loc != nil {
+		resp.LocationLat = loc.Latitude()
+		resp.LocationLng = loc.Longitude()
+		resp.LocationStreet = loc.Street()
 	}
 
 	// Generated up to
@@ -170,30 +179,10 @@ func DomainToResponse(template *domain.SessionTemplate) *dtos.SessionTemplateRes
 	return resp
 }
 
-// DomainListToResponse converts list of domain SessionTemplates to response
-func DomainListToResponse(
-	templates []*domain.SessionTemplate,
-	limit, offset int,
-) *dtos.SessionTemplateListResponse {
-	resp := &dtos.SessionTemplateListResponse{
-		Templates: make([]dtos.SessionTemplateResponse, 0, len(templates)),
-		Total:     len(templates),
-		Limit:     limit,
-		Offset:    offset,
-	}
-
-	for _, template := range templates {
-		resp.Templates = append(resp.Templates, *DomainToResponse(template))
-	}
-
-	return resp
-}
-
 // QueryToListParams converts URL query parameters to ListSessionTemplatesParams
 func QueryToListParams(query url.Values) (*application.ListSessionTemplatesParams, error) {
 	params := &application.ListSessionTemplatesParams{
-		Limit:  20, // default
-		Offset: 0,  // default
+		Limit: 20, // default
 	}
 
 	// Activity group ID
@@ -228,23 +217,12 @@ func QueryToListParams(query url.Values) (*application.ListSessionTemplatesParam
 		params.IsRecurring = &isRecurring
 	}
 
-	// Limit
-	if limitStr := query.Get("limit"); limitStr != "" {
-		limit, err := strconv.Atoi(limitStr)
-		if err != nil {
-			return nil, err
-		}
-		params.Limit = limit
+	limit, pageToken, err := api.ParsePageParams(query, params.Limit)
+	if err != nil {
+		return nil, err
 	}
-
-	// Offset
-	if offsetStr := query.Get("offset"); offsetStr != "" {
-		offset, err := strconv.Atoi(offsetStr)
-		if err != nil {
-			return nil, err
-		}
-		params.Offset = offset
-	}
+	params.Limit = limit
+	params.PageToken = pageToken
 
 	return params, nil
 }

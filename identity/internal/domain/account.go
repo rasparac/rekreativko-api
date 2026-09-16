@@ -17,6 +17,7 @@ type Account struct {
 	lockedUntil         *time.Time
 	createdAt           time.Time
 	updatedAt           time.Time
+	deletedAt           *time.Time
 
 	events []domainevent.Event
 }
@@ -60,6 +61,7 @@ func ReconstructAccount(
 	lockedUntil *time.Time,
 	createdAt time.Time,
 	updatedAt time.Time,
+	deletedAt *time.Time,
 ) *Account {
 	return &Account{
 		id:                  id,
@@ -71,6 +73,7 @@ func ReconstructAccount(
 		lockedUntil:         lockedUntil,
 		createdAt:           createdAt,
 		updatedAt:           updatedAt,
+		deletedAt:           deletedAt,
 	}
 }
 
@@ -104,6 +107,10 @@ func (a *Account) CreatedAt() time.Time {
 
 func (a *Account) UpdatedAt() time.Time {
 	return a.updatedAt
+}
+
+func (a *Account) DeletedAt() *time.Time {
+	return a.deletedAt
 }
 
 func (a *Account) FailedLoginAttempts() int {
@@ -158,7 +165,10 @@ func (a *Account) Delete() error {
 		return ErrAccountDeleted
 	}
 
+	now := time.Now().UTC()
+
 	a.status = AccountStatusDeleted
+	a.deletedAt = &now
 	a.touch()
 	a.addEvent(NewAccountDeletedEvent(a))
 

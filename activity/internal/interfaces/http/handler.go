@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
+	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/middleware"
 )
@@ -17,38 +18,41 @@ type (
 		CreateSessionTemplate(ctx context.Context, params application.CreateSessionTemplateParams) (*domain.SessionTemplate, error)
 		GetSessionTemplate(ctx context.Context, templateID uuid.UUID) (*domain.SessionTemplate, error)
 		UpdateSessionTemplate(ctx context.Context, templateID uuid.UUID, params application.UpdateSessionTemplateParams) error
-		ActivateSessionTemplate(ctx context.Context, templateID uuid.UUID) error
-		DeactivateSessionTemplate(ctx context.Context, templateID uuid.UUID) error
-		DeleteSessionTemplate(ctx context.Context, templateID uuid.UUID) error
-		ListSessionTemplates(ctx context.Context, params application.ListSessionTemplatesParams) ([]*domain.SessionTemplate, error)
+		ActivateSessionTemplate(ctx context.Context, templateID uuid.UUID, requesterID uuid.UUID) error
+		DeactivateSessionTemplate(ctx context.Context, templateID uuid.UUID, requesterID uuid.UUID) error
+		DeleteSessionTemplate(ctx context.Context, templateID uuid.UUID, requesterID uuid.UUID) error
+		ListSessionTemplates(ctx context.Context, params application.ListSessionTemplatesParams) ([]*domain.SessionTemplate, string, error)
 	}
 
 	// activityGroupService defines the interface for activity group operations
 	activityGroupService interface {
 		CreateActivityGroup(ctx context.Context, params application.CreateActivityGroupParams) (*domain.ActivityGroup, error)
-		GetActivityGroup(ctx context.Context, groupID uuid.UUID) (*domain.ActivityGroup, error)
+		GetActivityGroup(ctx context.Context, groupID uuid.UUID, requesterID uuid.UUID) (*domain.ActivityGroup, error)
 		UpdateActivityGroup(ctx context.Context, groupID uuid.UUID, params application.UpdateActivityGroupParams) error
 		ActivateActivityGroup(ctx context.Context, groupID uuid.UUID, requesterID uuid.UUID) error
 		CancelActivityGroup(ctx context.Context, groupID uuid.UUID, requesterID uuid.UUID, reason string) error
 		DeleteActivityGroup(ctx context.Context, groupID uuid.UUID, requesterID uuid.UUID) error
-		ListActivityGroups(ctx context.Context, params application.ListActivityGroupsParams) ([]*domain.ActivityGroup, error)
-		DiscoverActivityGroups(ctx context.Context, params application.DiscoverActivityGroupsParams) ([]*domain.ActivityGroup, error)
+		ListActivityGroups(ctx context.Context, params application.ListActivityGroupsParams) ([]*domain.ActivityGroup, string, error)
+		DiscoverActivityGroups(ctx context.Context, params application.DiscoverActivityGroupsParams) ([]*domain.ActivityGroup, string, error)
 	}
 
 	// sessionService defines the interface for session operations
 	sessionService interface {
 		CreateSession(ctx context.Context, params application.CreateSessionParams) (*domain.Session, error)
-		GetSession(ctx context.Context, sessionID uuid.UUID) (*domain.Session, error)
+		GetSession(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID) (*domain.Session, error)
 		UpdateSession(ctx context.Context, sessionID uuid.UUID, params application.UpdateSessionParams) error
 		StartSession(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID, requesterRole string) error
 		CompleteSession(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID, requesterRole string) error
 		CancelSession(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID, requesterRole string, reason string) error
-		ListSessions(ctx context.Context, params application.ListSessionsParams) ([]*domain.Session, error)
+		SetSessionVisibility(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID, requesterRole string, visibility string) error
+		ListSessions(ctx context.Context, params application.ListSessionsParams, requesterID uuid.UUID) ([]*domain.Session, string, map[uuid.UUID]domain.AttendeeStatus, error)
+		DiscoverSessions(ctx context.Context, params application.DiscoverSessionsParams, requesterID uuid.UUID) ([]persistence.SessionWithDistance, string, map[uuid.UUID]domain.AttendeeStatus, error)
 	}
 
 	// memberService defines the interface for member operations
 	memberService interface {
 		InviteMember(ctx context.Context, params application.InviteMemberParams) (*domain.Member, error)
+		RequestToJoinGroup(ctx context.Context, params application.RequestToJoinGroupParams) (*domain.Member, error)
 		RemoveMember(ctx context.Context, params application.RemoveMemberParams) error
 		PromoteMember(ctx context.Context, params application.UpdateMemberRoleParams) error
 		DemoteMember(ctx context.Context, params application.UpdateMemberRoleParams) error
@@ -56,7 +60,7 @@ type (
 		RejectMember(ctx context.Context, params application.RejectMemberParams) error
 		LeaveMember(ctx context.Context, activityGroupID uuid.UUID, userID uuid.UUID) error
 		GetMember(ctx context.Context, activityGroupID uuid.UUID, userID uuid.UUID) (*domain.Member, error)
-		ListMembers(ctx context.Context, params application.ListMembersParams) ([]*domain.Member, error)
+		ListMembers(ctx context.Context, params application.ListMembersParams) ([]*domain.Member, string, error)
 	}
 
 	// attendeeService defines the interface for attendee/RSVP operations
@@ -65,7 +69,10 @@ type (
 		UpdateRSVP(ctx context.Context, params application.UpdateRSVPParams) (*domain.Attendee, error)
 		CancelRSVP(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID) error
 		GetRSVP(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID) (*domain.Attendee, error)
-		ListRSVPs(ctx context.Context, params application.ListRSVPsParams) ([]*domain.Attendee, error)
+		ListRSVPs(ctx context.Context, params application.ListRSVPsParams) ([]*domain.Attendee, string, error)
+		ApproveAttendee(ctx context.Context, params application.ApproveAttendeeParams) error
+		RejectAttendee(ctx context.Context, params application.RejectAttendeeParams) error
+		RemoveAttendee(ctx context.Context, params application.RemoveAttendeeParams) error
 	}
 
 	// inviteService defines the interface for group invite operations
@@ -73,7 +80,7 @@ type (
 		SendInvite(ctx context.Context, params application.SendInviteParams) (*domain.GroupInvite, error)
 		AcceptInvite(ctx context.Context, inviteID uuid.UUID, userID uuid.UUID) (*domain.Member, error)
 		DeclineInvite(ctx context.Context, inviteID uuid.UUID, userID uuid.UUID) error
-		ListMyInvites(ctx context.Context, userID uuid.UUID) ([]*domain.GroupInvite, error)
+		ListMyInvites(ctx context.Context, userID uuid.UUID, params application.ListMyInvitesParams) ([]*domain.GroupInvite, string, error)
 	}
 
 	// Handler handles HTTP requests for the activity module
@@ -184,6 +191,10 @@ func (h *Handler) RegisterRoutes(
 		middlewares.ThenFunc(h.ListSessions),
 	)
 	mux.Handle(
+		"GET /api/v1/sessions/discover",
+		middlewares.ThenFunc(h.DiscoverSessions),
+	)
+	mux.Handle(
 		"GET /api/v1/sessions/{id}",
 		middlewares.ThenFunc(h.GetSession),
 	)
@@ -202,6 +213,10 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"DELETE /api/v1/sessions/{id}",
 		middlewares.ThenFunc(h.CancelSession),
+	)
+	mux.Handle(
+		"PATCH /api/v1/sessions/{id}/visibility",
+		middlewares.ThenFunc(h.SetSessionVisibility),
 	)
 
 	// Member routes (ordered from most specific to least specific)
@@ -228,6 +243,10 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"POST /api/v1/activity-groups/{groupId}/members",
 		middlewares.ThenFunc(h.InviteMember),
+	)
+	mux.Handle(
+		"POST /api/v1/activity-groups/{groupId}/join-requests",
+		middlewares.ThenFunc(h.RequestToJoinGroup),
 	)
 	mux.Handle(
 		"GET /api/v1/activity-groups/{groupId}/members",
@@ -276,5 +295,17 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"GET /api/v1/sessions/{sessionId}/attendees",
 		middlewares.ThenFunc(h.ListAttendees),
+	)
+	mux.Handle(
+		"POST /api/v1/sessions/{sessionId}/rsvp/{userId}/approve",
+		middlewares.ThenFunc(h.ApproveAttendee),
+	)
+	mux.Handle(
+		"POST /api/v1/sessions/{sessionId}/rsvp/{userId}/reject",
+		middlewares.ThenFunc(h.RejectAttendee),
+	)
+	mux.Handle(
+		"DELETE /api/v1/sessions/{sessionId}/rsvp/{userId}",
+		middlewares.ThenFunc(h.RemoveAttendee),
 	)
 }

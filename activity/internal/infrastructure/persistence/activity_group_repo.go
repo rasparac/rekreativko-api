@@ -19,20 +19,45 @@ type activityGroupManager struct {
 
 type (
 	ActivityGroupFilter struct {
-		ID        uuid.UUID
-		CreatorID uuid.UUID
-		Title     string
-		Status    domain.ActivityGroupStatus
-		Limit     int
-		Offset    int
+		ID              uuid.UUID
+		CreatorID       uuid.UUID
+		Title           string
+		Status          domain.ActivityGroupStatus
+		ActivityType    domain.ActivityType
+		DifficultyLevel domain.DifficultyLevel
+		// MemberID filters to groups this account has a membership row in.
+		// MemberStatuses restricts which membership statuses count (e.g.
+		// "pending" for outstanding join requests); the application layer
+		// defaults it to ["confirmed"] when not otherwise specified, so
+		// MemberID alone means "groups this account is a confirmed member
+		// of" (includes ones they created, since the creator is auto-added
+		// as a confirmed member) - existing callers see no behavior change.
+		MemberID       uuid.UUID
+		MemberStatuses []domain.MemberStatus
+		// RequesterID scopes results to what this caller may actually see:
+		// public groups, plus any private group they created or are a
+		// confirmed member of. A private group they have no relationship to
+		// is excluded entirely, not just access-denied on direct fetch. Note
+		// this means a private group can still surface via someone else's
+		// MemberID/CreatorID if the requester happens to independently be a
+		// member of that same group too - Visibility below is the harder cap
+		// the application layer uses to rule that out for profile-view.
+		RequesterID uuid.UUID
+		// Visibility, when set, restricts to that visibility only - used by
+		// the application layer to force "public only" when MemberID or
+		// CreatorID points at someone other than the requester, the same cap
+		// SessionFilter applies for a session's AttendeeID/CreatedByID.
+		Visibility domain.ActivityGroupVisibility
+		Limit      int
+		PageToken  string
 	}
 
 	DiscoveryFilter struct {
-		City         string
-		Country      string
-		ActivityType domain.ActivityType
-		Limit        int
-		Offset       int
+		City      string
+		Country   string
+		Interests []postgres.InterestPair
+		Limit     int
+		PageToken string
 	}
 
 	activityGroupModel struct {
@@ -282,13 +307,16 @@ func (agm *activityGroupManager) DeleteActivityGroup(
 func (agm *activityGroupManager) ListActivityGroups(
 	ctx context.Context,
 	filter ActivityGroupFilter,
-) ([]*domain.ActivityGroup, error) {
-	query, args := buildActivityGroupQuery(filter)
+) ([]*domain.ActivityGroup, string, error) {
+	query, args, err := buildActivityGroupQuery(filter)
+	if err != nil {
+		return nil, "", err
+	}
 
 	q := agm.tx.Querier(ctx)
 	rows, err := q.Query(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer rows.Close()
 
@@ -296,29 +324,36 @@ func (agm *activityGroupManager) ListActivityGroups(
 	for rows.Next() {
 		model, err := scanActivityGroupModel(rows)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		ag, err := mapActivityGroupModelToDomain(model)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
 		activityGroups = append(activityGroups, ag)
 	}
 
-	return activityGroups, nil
+	page, nextPageToken := postgres.BuildPage(activityGroups, filter.Limit, func(ag *domain.ActivityGroup) (string, uuid.UUID) {
+		return ag.CreatedAt().UTC().Format(time.RFC3339Nano), ag.ID()
+	})
+
+	return page, nextPageToken, nil
 }
 
 func (agm *activityGroupManager) DiscoverGroups(
 	ctx context.Context,
 	filter DiscoveryFilter,
-) ([]*domain.ActivityGroup, error) {
-	query, args := buildDiscoveryQuery(filter)
+) ([]*domain.ActivityGroup, string, error) {
+	query, args, err := buildDiscoveryQuery(filter)
+	if err != nil {
+		return nil, "", err
+	}
 
 	q := agm.tx.Querier(ctx)
 	rows, err := q.Query(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer rows.Close()
 
@@ -326,20 +361,24 @@ func (agm *activityGroupManager) DiscoverGroups(
 	for rows.Next() {
 		model, err := scanActivityGroupModel(rows)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		ag, err := mapActivityGroupModelToDomain(model)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
 		activityGroups = append(activityGroups, ag)
 	}
 
-	return activityGroups, nil
+	page, nextPageToken := postgres.BuildPage(activityGroups, filter.Limit, func(ag *domain.ActivityGroup) (string, uuid.UUID) {
+		return ag.CreatedAt().UTC().Format(time.RFC3339Nano), ag.ID()
+	})
+
+	return page, nextPageToken, nil
 }
 
-func buildActivityGroupQuery(filter ActivityGroupFilter) (string, []interface{}) {
+func buildActivityGroupQuery(filter ActivityGroupFilter) (string, []interface{}, error) {
 	qb := &postgres.QueryBuilder{
 		BaseQuery: `
 		SELECT
@@ -380,24 +419,79 @@ func buildActivityGroupQuery(filter ActivityGroupFilter) (string, []interface{})
 		qb.AddCondition("status = ", filter.Status)
 	}
 
-	qb.BaseQuery += ` ORDER BY created_at DESC`
+	if filter.ActivityType != "" {
+		qb.AddCondition("activity_type = ", filter.ActivityType)
+	}
+
+	if filter.DifficultyLevel != "" {
+		qb.AddCondition("difficulty_level = ", filter.DifficultyLevel)
+	}
+
+	if filter.Visibility != "" {
+		qb.AddCondition("visibility = ", filter.Visibility)
+	}
+
+	if filter.MemberID != uuid.Nil {
+		qb.ParamCount++
+		memberParam := qb.ParamCount
+		condition := fmt.Sprintf(
+			" AND id IN (SELECT activity_group_id FROM activity.member WHERE account_id = $%d",
+			memberParam,
+		)
+		qb.Args = append(qb.Args, filter.MemberID)
+
+		if len(filter.MemberStatuses) > 0 {
+			statuses := make([]string, len(filter.MemberStatuses))
+			for i, st := range filter.MemberStatuses {
+				statuses[i] = string(st)
+			}
+			qb.ParamCount++
+			condition += fmt.Sprintf(" AND status = ANY($%d)", qb.ParamCount)
+			qb.Args = append(qb.Args, statuses)
+		}
+
+		condition += " AND deleted_at IS NULL)"
+		qb.BaseQuery += condition
+	}
+
+	if filter.RequesterID != uuid.Nil {
+		// Public groups are visible to everyone; a private group only to its
+		// creator or a confirmed member - anyone else must not see it in
+		// listings at all, not just be denied on direct fetch.
+		qb.ParamCount++
+		requesterParam := qb.ParamCount
+		qb.BaseQuery += fmt.Sprintf(
+			` AND (visibility = 'public' OR creator_id = $%d OR id IN (SELECT activity_group_id FROM activity.member WHERE account_id = $%d AND status = 'confirmed' AND deleted_at IS NULL))`,
+			requesterParam, requesterParam,
+		)
+		qb.Args = append(qb.Args, filter.RequesterID)
+	}
+
+	cursor, err := postgres.DecodePageToken(filter.PageToken)
+	if err != nil {
+		return "", nil, err
+	}
+	if cursor != nil {
+		sortValue, err := time.Parse(time.RFC3339Nano, cursor.SortValue)
+		if err != nil {
+			return "", nil, postgres.ErrInvalidPageToken
+		}
+		qb.AddKeysetCondition("created_at", "DESC", sortValue, cursor.ID)
+	}
+
+	qb.BaseQuery += ` ORDER BY created_at DESC, id DESC`
 
 	if filter.Limit > 0 {
 		qb.ParamCount++
 		qb.BaseQuery += fmt.Sprintf(" LIMIT $%d", qb.ParamCount)
-		qb.Args = append(qb.Args, filter.Limit)
+		qb.Args = append(qb.Args, filter.Limit+1)
 	}
 
-	if filter.Offset > 0 {
-		qb.ParamCount++
-		qb.BaseQuery += fmt.Sprintf(" OFFSET $%d", qb.ParamCount)
-		qb.Args = append(qb.Args, filter.Offset)
-	}
-
-	return qb.Build()
+	query, args := qb.Build()
+	return query, args, nil
 }
 
-func buildDiscoveryQuery(filter DiscoveryFilter) (string, []interface{}) {
+func buildDiscoveryQuery(filter DiscoveryFilter) (string, []interface{}, error) {
 	qb := &postgres.QueryBuilder{
 		BaseQuery: `
 		SELECT
@@ -430,25 +524,30 @@ func buildDiscoveryQuery(filter DiscoveryFilter) (string, []interface{}) {
 		qb.AddLikeCondition("location_country ILIKE ", filter.Country)
 	}
 
-	if filter.ActivityType != "" {
-		qb.AddCondition("activity_type = ", filter.ActivityType)
+	qb.AddInterestsCondition("activity_type", "difficulty_level", filter.Interests)
+
+	cursor, err := postgres.DecodePageToken(filter.PageToken)
+	if err != nil {
+		return "", nil, err
+	}
+	if cursor != nil {
+		sortValue, err := time.Parse(time.RFC3339Nano, cursor.SortValue)
+		if err != nil {
+			return "", nil, postgres.ErrInvalidPageToken
+		}
+		qb.AddKeysetCondition("created_at", "DESC", sortValue, cursor.ID)
 	}
 
-	qb.BaseQuery += ` ORDER BY created_at DESC`
+	qb.BaseQuery += ` ORDER BY created_at DESC, id DESC`
 
 	if filter.Limit > 0 {
 		qb.ParamCount++
 		qb.BaseQuery += fmt.Sprintf(" LIMIT $%d", qb.ParamCount)
-		qb.Args = append(qb.Args, filter.Limit)
+		qb.Args = append(qb.Args, filter.Limit+1)
 	}
 
-	if filter.Offset > 0 {
-		qb.ParamCount++
-		qb.BaseQuery += fmt.Sprintf(" OFFSET $%d", qb.ParamCount)
-		qb.Args = append(qb.Args, filter.Offset)
-	}
-
-	return qb.Build()
+	query, args := qb.Build()
+	return query, args, nil
 }
 
 func mapActivityGroupModelToDomain(

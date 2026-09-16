@@ -18,22 +18,14 @@ type UpdateRSVPRequest struct {
 
 // AttendeeResponse is a response containing attendee data
 type AttendeeResponse struct {
-	ID              uuid.UUID `json:"id" example:"123e4567-e89b-12d3-a456-426655440000"`
-	SessionID       uuid.UUID `json:"session_id" example:"123e4567-e89b-12d3-a456-426655440000"`
-	ActivityGroupID uuid.UUID `json:"activity_group_id" example:"123e4567-e89b-12d3-a456-426655440000"`
-	UserID          uuid.UUID `json:"user_id" example:"123e4567-e89b-12d3-a456-426655440000"`
-	Status          string    `json:"status" example:"going"`
-	Source          string    `json:"source" example:"rsvp_manual"`
-	CreatedAt       time.Time `json:"created_at" example:"2024-01-01T00:00:00Z"`
-	UpdatedAt       time.Time `json:"updated_at" example:"2024-01-01T00:00:00Z"`
-}
-
-// AttendeeListResponse is a response containing a list of attendees
-type AttendeeListResponse struct {
-	Attendees []AttendeeResponse `json:"attendees"`
-	Total     int                `json:"total"`
-	Limit     int                `json:"limit"`
-	Offset    int                `json:"offset"`
+	ID              uuid.UUID  `json:"id" example:"123e4567-e89b-12d3-a456-426655440000"`
+	SessionID       uuid.UUID  `json:"session_id" example:"123e4567-e89b-12d3-a456-426655440000"`
+	ActivityGroupID *uuid.UUID `json:"activity_group_id,omitempty" example:"123e4567-e89b-12d3-a456-426655440000"`
+	UserID          uuid.UUID  `json:"user_id" example:"123e4567-e89b-12d3-a456-426655440000"`
+	Status          string     `json:"status" example:"going"`
+	Source          string     `json:"source" example:"rsvp_manual"`
+	CreatedAt       time.Time  `json:"created_at" example:"2024-01-01T00:00:00Z"`
+	UpdatedAt       time.Time  `json:"updated_at" example:"2024-01-01T00:00:00Z"`
 }
 
 // CreateRSVPResponse is a response after creating an RSVP

@@ -2,11 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rasparac/rekreativko-api/shared/config"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/events"
@@ -39,7 +43,7 @@ func main() {
 		"environment", cfg.Service.Environment,
 	)
 
-	appMetrics := events.New(cfg.Service.Name)
+	appMetrics := events.New()
 
 	dbTracer := metricstracer.New(appMetrics)
 
@@ -95,16 +99,59 @@ func main() {
 		}
 	}()
 
-	// mux := http.NewServeMux()
+	mux := http.NewServeMux()
 
-	// mux.Handle("GET /health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	// 	w.WriteHeader(http.StatusOK)
-	// }))
+	mux.Handle("GET /metrics", promhttp.Handler())
 
-	singalCh := make(chan os.Signal, 1)
-	signal.Notify(singalCh, os.Interrupt, syscall.SIGTERM)
+	mux.Handle("GET /health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
 
-	<-singalCh
+	if err := startServer(cfg.Server.Address(), mux, log); err != nil {
+		log.Error(ctx, "server error", "error", err)
+		os.Exit(1)
+	}
 
 	log.Info(ctx, "shutting down rekreativko outbox publisher")
+}
+
+func startServer(
+	addr string,
+	handler http.Handler,
+	log *logger.Logger,
+) error {
+	srv := http.Server{
+		Addr:         addr,
+		Handler:      handler,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	serverErrors := make(chan error, 1)
+
+	go func() {
+		log.Info(context.Background(), "starting outbox publisher metrics server", "addr", addr)
+		err := srv.ListenAndServe()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErrors <- err
+		}
+	}()
+
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
+
+	select {
+	case err := <-serverErrors:
+		return err
+	case <-shutdown:
+		log.Info(context.Background(), "shutting down http server")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

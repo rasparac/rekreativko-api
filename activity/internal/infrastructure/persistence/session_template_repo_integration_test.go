@@ -251,7 +251,7 @@ func TestSessionTemplateRepository_Query(t *testing.T) {
 
 	t.Run("query by activity group", func(t *testing.T) {
 		// Act
-		templates, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
+		templates, _, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
 			ActivityGroupID: &groupID,
 		})
 
@@ -265,7 +265,7 @@ func TestSessionTemplateRepository_Query(t *testing.T) {
 		status := domain.SessionTemplateStatusActive
 
 		// Act
-		templates, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
+		templates, _, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
 			ActivityGroupID: &groupID,
 			Status:          &status,
 		})
@@ -283,7 +283,7 @@ func TestSessionTemplateRepository_Query(t *testing.T) {
 		isRecurring := true
 
 		// Act
-		templates, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
+		templates, _, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
 			ActivityGroupID: &groupID,
 			IsRecurring:     &isRecurring,
 		})
@@ -295,29 +295,30 @@ func TestSessionTemplateRepository_Query(t *testing.T) {
 	})
 
 	t.Run("query with pagination", func(t *testing.T) {
-		// Act
-		templates, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
+		// Act - first page
+		page1, nextPageToken, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
 			ActivityGroupID: &groupID,
 			Limit:           2,
-			Offset:          0,
 		})
 
 		// Assert
 		require.NoError(t, err)
-		assert.Len(t, templates, 2)
+		assert.Len(t, page1, 2)
+		assert.NotEmpty(t, nextPageToken)
 
 		// Get next page
-		templatesPage2, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
+		page2, nextPageToken2, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
 			ActivityGroupID: &groupID,
 			Limit:           2,
-			Offset:          2,
+			PageToken:       nextPageToken,
 		})
 
 		require.NoError(t, err)
-		assert.Len(t, templatesPage2, 1)
+		assert.Len(t, page2, 1)
+		assert.Empty(t, nextPageToken2)
 
 		// Ensure different results
-		assert.NotEqual(t, templates[0].ID(), templatesPage2[0].ID())
+		assert.NotEqual(t, page1[0].ID(), page2[0].ID())
 	})
 }
 
@@ -447,7 +448,7 @@ func TestSessionTemplateRepository_ConcurrentAccess(t *testing.T) {
 		}
 
 		// Assert - All templates should be created
-		templates, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
+		templates, _, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
 			ActivityGroupID: &groupID,
 		})
 		require.NoError(t, err)

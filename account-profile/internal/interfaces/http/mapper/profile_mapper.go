@@ -1,12 +1,16 @@
 package mapper
 
 import (
+	"time"
+
 	"github.com/rasparac/rekreativko-api/account-profile/internal/application"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/domain"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/interfaces/http/dtos"
 )
 
-func UpdateProfileRequestToParams(req *dtos.UpdateProfileRequest) application.UpdateProfileParams {
+const dateOfBirthLayout = "2006-01-02"
+
+func UpdateProfileRequestToParams(req *dtos.UpdateProfileRequest) (application.UpdateProfileParams, error) {
 	var updateProfileParams application.UpdateProfileParams
 
 	if req.Nickname != nil {
@@ -21,18 +25,29 @@ func UpdateProfileRequestToParams(req *dtos.UpdateProfileRequest) application.Up
 		updateProfileParams.Bio = req.Bio
 	}
 
-	// Map flattened location fields
+	// Omitting date_of_birth leaves the existing value untouched; an explicitly
+	// empty string clears it (parsed to time.Time{}, the service's clear sentinel).
+	if req.DateOfBirth != nil {
+		if *req.DateOfBirth == "" {
+			updateProfileParams.DateOfBirth = &time.Time{}
+		} else {
+			dob, err := time.Parse(dateOfBirthLayout, *req.DateOfBirth)
+			if err != nil {
+				return updateProfileParams, err
+			}
+			updateProfileParams.DateOfBirth = &dob
+		}
+	}
+
+	// Map flattened location fields. Omitting all four leaves the existing
+	// location untouched (handled in the service); an explicitly empty
+	// location_city clears it.
 	if req.LocationCity != nil || req.LocationCountry != nil || req.LocationLatitude != nil || req.LocationLongitude != nil {
-		updateProfileParams.Location = &application.Location{}
-		if req.LocationCity != nil {
-			updateProfileParams.Location.City = *req.LocationCity
-		}
-		if req.LocationCountry != nil {
-			updateProfileParams.Location.Country = *req.LocationCountry
-		}
-		if req.LocationLatitude != nil && req.LocationLongitude != nil {
-			updateProfileParams.Location.Latitude = req.LocationLatitude
-			updateProfileParams.Location.Longitude = req.LocationLongitude
+		updateProfileParams.Location = &application.Location{
+			City:      req.LocationCity,
+			Country:   req.LocationCountry,
+			Latitude:  req.LocationLatitude,
+			Longitude: req.LocationLongitude,
 		}
 	}
 
@@ -43,22 +58,18 @@ func UpdateProfileRequestToParams(req *dtos.UpdateProfileRequest) application.Up
 		}
 	}
 
-	// Map activity interests from string array format "Name:Level"
-	if req.ActivityInterests != nil && len(req.ActivityInterests) > 0 {
+	if len(req.ActivityInterests) > 0 {
 		ai := make([]application.ActivityInterest, 0, len(req.ActivityInterests))
 		for _, interest := range req.ActivityInterests {
-			// Parse "Name:Level" format (simple split on first colon)
-			// For MVP, we'll accept the full string as-is or implement parsing later
-			// TODO: Implement proper parsing of "Name:Level" format
 			ai = append(ai, application.ActivityInterest{
-				Name:  interest,
-				Level: "intermediate", // Default level for now
+				Name:  interest.Name,
+				Level: interest.Level,
 			})
 		}
 		updateProfileParams.ActivityInterest = ai
 	}
 
-	return updateProfileParams
+	return updateProfileParams, nil
 }
 
 func DomainProfileToResponse(p *domain.AccountProfile) dtos.AccountProfileResponse {
@@ -67,6 +78,11 @@ func DomainProfileToResponse(p *domain.AccountProfile) dtos.AccountProfileRespon
 		Bio:       p.Bio(),
 		CreatedAt: p.CreatedAt(),
 		UpdatedAt: p.UpdatedAt(),
+	}
+
+	if p.DateOfBirth() != nil {
+		dob := p.DateOfBirth().Value().Format(dateOfBirthLayout)
+		resp.DateOfBirth = &dob
 	}
 
 	if p.FullName() != nil {

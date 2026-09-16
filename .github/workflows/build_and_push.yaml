@@ -84,3 +84,60 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ env.VERSION }}
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
+
+      - name: Install yq
+        run: |
+          sudo wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Bump image tag in rekreativko-infra
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          declare -A DEPLOY_PATH=(
+            [identity]="k8s/base/identity/deployment.yaml"
+            [account-profile]="k8s/base/account-profile/deployment.yaml"
+            [gateway]="k8s/base/gateway/deployment.yaml"
+            [outbox-publisher]="k8s/base/outbox-publisher/deployment.yaml"
+            [activity]="k8s/base/activity/deployment.yaml"
+            [activity-cron]="k8s/base/activity/cronjob.yaml"
+          )
+
+          SVC="${{ matrix.service }}"
+          FILE="${DEPLOY_PATH[$SVC]}"
+          IMAGE="${{ env.IMAGE_PREFIX }}/${SVC}:${{ env.VERSION }}"
+
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/rasparac/rekreativko-infra.git" infra-repo
+          cd infra-repo
+          git config user.name "rekreativko-ci"
+          git config user.email "ci@rekreativko.local"
+
+          # activity-cron is a CronJob (image path is nested under jobTemplate); everything else is a Deployment
+          if [ "$SVC" = "activity-cron" ]; then
+            IMAGE_PATH=".spec.jobTemplate.spec.template.spec.containers[0].image"
+          else
+            IMAGE_PATH=".spec.template.spec.containers[0].image"
+          fi
+
+          for i in 1 2 3 4 5; do
+            yq -i "${IMAGE_PATH} = \"${IMAGE}\"" "$FILE"
+            git add "$FILE"
+
+            if git diff --cached --quiet; then
+              echo "image already up to date, nothing to commit"
+              break
+            fi
+
+            git commit -m "chore(${SVC}): bump image to ${{ env.VERSION }}"
+
+            if git push origin HEAD:main; then
+              break
+            fi
+
+            echo "push rejected (attempt $i), rebasing onto latest main and retrying..."
+            git fetch origin main
+            git reset --hard origin/main
+            sleep $((RANDOM % 5 + 1))
+          done

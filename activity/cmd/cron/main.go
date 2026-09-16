@@ -27,7 +27,7 @@ func main() {
 	ctx := context.Background()
 
 	logger := logger.New(cfg.Logger.Level, cfg.Logger.Format)
-	log := logger.WithName("activity-cron")
+	log := logger.WithName(cfg.Service.Name)
 
 	log.Info(ctx, "starting activity cron job", "version", cfg.Service.Version)
 
@@ -41,7 +41,7 @@ func main() {
 
 func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	// Initialize metrics
-	appMetrics := metrics.New(cfg.Service.Name)
+	appMetrics := metrics.New()
 	dbTracer := metricstracer.New(appMetrics)
 
 	// Initialize database
@@ -78,6 +78,10 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	// Initialize repositories
 	sessionTemplateRepo := persistence.NewSessionTemplateManager(txManager, log)
 	sessionRepo := persistence.NewSessionManager(txManager, log)
+	activityGroupRepo := persistence.NewActivityGroupRepository(txManager, log)
+	memberRepo := persistence.NewMemberRepository(txManager, log)
+	groupInviteRepo := persistence.NewGroupInviteRepository(txManager, log)
+	attendeeRepo := persistence.NewAttendeeRepository(txManager, log)
 
 	// Initialize session generator service
 	// Lookahead window: generate sessions for the next 14 days
@@ -87,6 +91,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		txManager,
 		sessionTemplateRepo,
 		sessionRepo,
+		activityGroupRepo,
 		domainEventMgr,
 		appMetrics,
 		lookaheadWindow,
@@ -95,6 +100,38 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	// Generate sessions from templates
 	log.Info(ctx, "generating sessions from recurring templates")
 	if err := sessionGenerator.GenerateSessionsFromTemplates(ctx); err != nil {
+		return err
+	}
+
+	// Expire group invites that have passed their expiry window
+	inviteService := application.NewInviteService(
+		log,
+		txManager,
+		groupInviteRepo,
+		memberRepo,
+		domainEventMgr,
+		appMetrics,
+	)
+
+	log.Info(ctx, "expiring stale group invites")
+	if _, err := inviteService.ExpireStaleInvites(ctx); err != nil {
+		return err
+	}
+
+	// Auto-complete sessions that have passed their end time
+	sessionService := application.NewSessionService(
+		log,
+		txManager,
+		sessionRepo,
+		memberRepo,
+		activityGroupRepo,
+		attendeeRepo,
+		domainEventMgr,
+		appMetrics,
+	)
+
+	log.Info(ctx, "expiring sessions past their end time")
+	if _, err := sessionService.ExpireCompletedSessions(ctx); err != nil {
 		return err
 	}
 

@@ -24,6 +24,7 @@ type service interface {
 	RefreshToken(ctx context.Context, req application.RefreshTokenParams) (*domain.RefreshToken, error)
 
 	GetAccount(ctx context.Context, accountID uuid.UUID) (*domain.Account, error)
+	DeleteAccount(ctx context.Context, accountID uuid.UUID) error
 	VerifyAccount(ctx context.Context, req application.VerifyAccountParams) (uuid.UUID, error)
 }
 
@@ -71,6 +72,10 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"GET /api/v1/me",
 		middlewares.ThenFunc(h.GetCurrentAccount),
+	)
+	mux.Handle(
+		"DELETE /api/v1/me",
+		middlewares.ThenFunc(h.DeleteCurrentAccount),
 	)
 	mux.Handle(
 		"POST /api/v1/logout",
@@ -178,7 +183,7 @@ func (h *Handler) LoginHandler(
 //	@Failure		400	{object}	api.Response[any]				"Invalid request"
 //	@Failure		401	{object}	api.Response[any]				"Unauthorized"
 //	@Failure		500	{object}	api.Response[any]				"Internal server error"
-//	@Router			/api/v1/auth/me [get]
+//	@Router			/api/v1/me [get]
 func (h *Handler) GetCurrentAccount(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -201,6 +206,40 @@ func (h *Handler) GetCurrentAccount(
 	)
 }
 
+// DeleteCurrentAccount
+//
+//	@Summary		Delete current account
+//	@Description	Marks the currently logged in account as deleted and revokes all refresh tokens
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Success		200	{object}	api.Response[dtos.EmptyResponse]	"Account deleted successfully"
+//	@Failure		401	{object}	api.Response[any]				"Unauthorized"
+//	@Failure		500	{object}	api.Response[any]				"Internal server error"
+//	@Router			/api/v1/me [delete]
+func (h *Handler) DeleteCurrentAccount(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	var (
+		ctx       = r.Context()
+		accountID = authcontext.GetAccountID(ctx)
+	)
+
+	err := h.service.DeleteAccount(ctx, accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	api.WriteOkResponse(
+		w,
+		dtos.EmptyResponse{},
+		"Account deleted successfully",
+	)
+}
+
 // LogoutHandler godoc
 //
 //	@Summary		Logout
@@ -214,7 +253,7 @@ func (h *Handler) GetCurrentAccount(
 //	@Failure		400		{object}	api.Response[any]			"Invalid request"
 //	@Failure		401		{object}	api.Response[any]			"Unauthorized"
 //	@Failure		500		{object}	api.Response[any]			"Internal server error"
-//	@Router			/api/v1/auth/logout [post]
+//	@Router			/api/v1/logout [post]
 func (h *Handler) LogoutHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -256,7 +295,7 @@ func (h *Handler) LogoutHandler(
 //	@Failure		400		{object}	api.Response[any]				"Invalid request"
 //	@Failure		401		{object}	api.Response[any]				"Unauthorized"
 //	@Failure		500		{object}	api.Response[any]				"Internal server error"
-//	@Router			/api/v1/auth/refresh-token [post]
+//	@Router			/api/v1/refresh-token [post]
 func (h *Handler) RefreshTokenHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -298,7 +337,7 @@ func (h *Handler) RefreshTokenHandler(
 //	@Failure		400		{object}	api.Response[any]					"Invalid request"
 //	@Failure		401		{object}	api.Response[any]					"Unauthorized"
 //	@Failure		500		{object}	api.Response[any]					"Internal server error"
-//	@Router			/api/v1/auth/verify-account [post]
+//	@Router			/api/v1/verify-account [post]
 func (h *Handler) VerifyAccountHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -336,7 +375,7 @@ func (h *Handler) VerifyAccountHandler(
 //	@Failure		400		{object}	api.Response[any]				"Invalid request"
 //	@Failure		401		{object}	api.Response[any]				"Unauthorized"
 //	@Failure		500		{object}	api.Response[any]				"Internal server error"
-//	@Router			/api/v1/auth/resend-verification-code [post]
+//	@Router			/api/v1/resend-verification-code [post]
 func (h *Handler) ResendVerificationCodeHandler(
 	w http.ResponseWriter,
 	r *http.Request,

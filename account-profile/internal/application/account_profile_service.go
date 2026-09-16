@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/domain"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/metrics"
@@ -96,7 +94,7 @@ func (s *service) CreateProfile(ctx context.Context, createProfile CreateProfile
 
 	s.metrics.ProfileCreated.Inc()
 
-	log.Info(ctx, "profile created")
+	log.Debug(ctx, "profile created")
 	span.SetStatus(codes.Ok, "profile created")
 
 	return newProfile, nil
@@ -129,7 +127,7 @@ func (s *service) GetProfile(ctx context.Context, filter ProfileFilter) (*domain
 
 	span.SetStatus(codes.Ok, "account found")
 
-	log.Info(ctx, "account found")
+	log.Debug(ctx, "account found")
 
 	return profile, nil
 }
@@ -205,24 +203,51 @@ func (s *service) UpdateProfile(ctx context.Context, accountID uuid.UUID, toUpda
 			}
 		}
 
+		// Location fields are omitted entirely (Location == nil) whenever the
+		// request doesn't touch location at all - leave the existing value
+		// untouched in that case, same as full_name/bio above. An explicitly
+		// empty location_city is the sentinel for "clear my location".
 		if toUpdateProfile.Location != nil {
-			newLocation, err := domain.NewLocation(
-				toUpdateProfile.Location.City,
-				toUpdateProfile.Location.Country,
-				toUpdateProfile.Location.Latitude,
-				toUpdateProfile.Location.Longitude,
-			)
-			if err != nil {
-				return fmt.Errorf("new location: %w", err)
-			}
-			err = profile.SetLocation(newLocation)
-			if err != nil {
-				return fmt.Errorf("set location: %w", err)
-			}
-		} else if toUpdateProfile.Location == nil {
-			err = profile.SetLocation(nil)
-			if err != nil {
-				return fmt.Errorf("set location: %w", err)
+			if toUpdateProfile.Location.City != nil && *toUpdateProfile.Location.City == "" {
+				if err := profile.SetLocation(nil); err != nil {
+					return fmt.Errorf("set location: %w", err)
+				}
+			} else {
+				existing := profile.Location()
+
+				city := ""
+				if toUpdateProfile.Location.City != nil {
+					city = *toUpdateProfile.Location.City
+				} else if existing != nil {
+					city = existing.City()
+				}
+
+				country := ""
+				if toUpdateProfile.Location.Country != nil {
+					country = *toUpdateProfile.Location.Country
+				} else if existing != nil {
+					country = existing.Country()
+				}
+
+				// A new pair is only applied when BOTH fields are sent; a lone
+				// field (or neither) falls back to the existing pair rather
+				// than dropping coordinates entirely.
+				lat := toUpdateProfile.Location.Latitude
+				lng := toUpdateProfile.Location.Longitude
+				if (lat == nil || lng == nil) && existing != nil && existing.HasCoordinates() {
+					existingLat := existing.Coordinates().Latitude()
+					existingLng := existing.Coordinates().Longitude()
+					lat = &existingLat
+					lng = &existingLng
+				}
+
+				newLocation, err := domain.NewLocation(city, country, lat, lng)
+				if err != nil {
+					return fmt.Errorf("new location: %w", err)
+				}
+				if err := profile.SetLocation(newLocation); err != nil {
+					return fmt.Errorf("set location: %w", err)
+				}
 			}
 		}
 
@@ -292,12 +317,12 @@ func (s *service) UpdateProfile(ctx context.Context, accountID uuid.UUID, toUpda
 
 	span.SetStatus(codes.Ok, "profile updated")
 
-	log.Info(ctx, "profile updated")
+	log.Debug(ctx, "profile updated")
 
 	return nil
 }
 
-func (s *service) GetProfiles(ctx context.Context, filter ProfilesFilter) ([]*domain.AccountProfile, error) {
+func (s *service) GetProfiles(ctx context.Context, filter ProfilesFilter) ([]*domain.AccountProfile, string, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
 		"account_profile.service.GetProfiles",
@@ -310,7 +335,7 @@ func (s *service) GetProfiles(ctx context.Context, filter ProfilesFilter) ([]*do
 		"nicknames", filter.Nicknames,
 	)
 
-	profiles, err := s.accountProfile.FindAllBy(ctx, persistence.AccountProfilesFilter{
+	profiles, nextPageToken, err := s.accountProfile.FindAllBy(ctx, persistence.AccountProfilesFilter{
 		ByAccounIDs:       filter.AccountIDs,
 		ByNicknames:       filter.Nicknames,
 		ByLocationCountry: filter.LocationCountry,
@@ -321,20 +346,20 @@ func (s *service) GetProfiles(ctx context.Context, filter ProfilesFilter) ([]*do
 		SortBy:            filter.SortBy,
 		SortOrder:         filter.SortOrder,
 
-		Limit:  &filter.Limit,
-		Offset: &filter.Offset,
+		Limit:     filter.Limit,
+		PageToken: filter.PageToken,
 	})
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "list account profiles", "error", err)
-		return nil, mapToAppErr(err)
+		return nil, "", mapToAppErr(err)
 	}
 
 	span.SetStatus(codes.Ok, "get profiles finished")
 
-	log.Info(ctx, "get profiles finished")
+	log.Debug(ctx, "get profiles finished")
 
-	return profiles, nil
+	return profiles, nextPageToken, nil
 }
 
 func (s *service) DeleteProfile(ctx context.Context, accountID uuid.UUID) error {
@@ -387,12 +412,8 @@ func (s *service) DeleteProfile(ctx context.Context, accountID uuid.UUID) error 
 
 	s.metrics.ProfileDeleted.Inc()
 
-	log.Info(ctx, "profile deleted")
+	log.Debug(ctx, "profile deleted")
 
-	return nil
-}
-
-func (s *service) UpdateSettings(ctx context.Context, accountID uuid.UUID, settings any) error {
 	return nil
 }
 
@@ -402,93 +423,8 @@ func mapToAppErr(err error) *domainerror.AppError {
 
 	pgErr := postgres.GetPgxError(err)
 	if pgErr != nil {
-		return MapPostgresError(pgErr)
+		return domainerror.MapPostgresError(pgErr)
 	}
 
 	return domain.MapErrToAppError(err)
-}
-
-// MapPostgresError maps Postgres errors to application errors with detailed constraint information
-func MapPostgresError(err *pgconn.PgError) *domainerror.AppError {
-	// Note: pgx.ErrNoRows is not a *pgconn.PgError, so it should be checked
-	// before calling this function (in domain.MapErrToAppError)
-
-	// Unique constraint violations
-	if err.Code == pgerrcode.UniqueViolation {
-		return domainerror.Conflict(
-			"unique_violation",
-			formatConstraintMessage(err, "already exists"),
-			err,
-		)
-	}
-
-	// Foreign key violations
-	if err.Code == pgerrcode.ForeignKeyViolation {
-		return domainerror.ValidationError(
-			"foreign_key_violation",
-			formatConstraintMessage(err, "references invalid or missing record"),
-			err,
-		)
-	}
-
-	// Not-null constraint violations
-	if err.Code == pgerrcode.NotNullViolation {
-		return domainerror.ValidationError(
-			"not_null_violation",
-			formatConstraintMessage(err, "is required"),
-			err,
-		)
-	}
-
-	// Check constraint violations
-	if err.Code == pgerrcode.CheckViolation {
-		return domainerror.ValidationError(
-			"check_violation",
-			formatConstraintMessage(err, "violates check constraint"),
-			err,
-		)
-	}
-
-	// Other integrity constraint violations
-	if pgerrcode.IsIntegrityConstraintViolation(err.Code) {
-		return domainerror.ValidationError(
-			"constraint_violation",
-			formatConstraintMessage(err, "violates database constraint"),
-			err,
-		)
-	}
-
-	// Catch-all for other Postgres errors
-	return domainerror.InternalWithErr(err)
-}
-
-// formatConstraintMessage creates a user-friendly message from Postgres error details
-func formatConstraintMessage(err *pgconn.PgError, defaultSuffix string) string {
-	// Try to extract column name from constraint name
-	// Common patterns: table_column_key, table_column_check, etc.
-	if err.ConstraintName != "" {
-		// Remove common suffixes to get a cleaner field name
-		fieldName := err.ConstraintName
-
-		// Try to extract meaningful field name from constraint
-		// Examples: "account_profiles_nickname_key" -> "nickname"
-		//           "account_profiles_account_id_fkey" -> "account_id"
-		if err.ColumnName != "" {
-			fieldName = err.ColumnName
-		}
-
-		return fieldName + " " + defaultSuffix
-	}
-
-	// Fallback to column name if available
-	if err.ColumnName != "" {
-		return err.ColumnName + " " + defaultSuffix
-	}
-
-	// Final fallback to generic message with detail if available
-	if err.Detail != "" {
-		return err.Detail
-	}
-
-	return "Database constraint violation"
 }

@@ -174,7 +174,7 @@ func (s *ActivityGroupService) CreateActivityGroup(
 	}
 
 	span.SetStatus(codes.Ok, "activity group created")
-	log.Info(ctx, "activity group created", "group_id", group.ID())
+	log.Debug(ctx, "activity group created", "group_id", group.ID())
 
 	return group, nil
 }
@@ -183,6 +183,7 @@ func (s *ActivityGroupService) CreateActivityGroup(
 func (s *ActivityGroupService) GetActivityGroup(
 	ctx context.Context,
 	groupID uuid.UUID,
+	requesterID uuid.UUID,
 ) (*domain.ActivityGroup, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
@@ -204,10 +205,32 @@ func (s *ActivityGroupService) GetActivityGroup(
 		return nil, mapToAppErr(err)
 	}
 
+	// Private groups don't exist as far as a non-member is concerned - not
+	// just access-denied, actually not found, so a stranger can't even
+	// confirm a private group's existence by ID.
+	if !group.IsVisibleTo(requesterID, s.isConfirmedMember(ctx, groupID, requesterID)) {
+		span.SetStatus(codes.Error, "not visible to requester")
+		log.Debug(ctx, "private group not visible to requester", "requester_id", requesterID)
+		return nil, MapErrToAppError(domain.ErrActivityGroupNotFound)
+	}
+
 	span.SetStatus(codes.Ok, "activity group found")
 	log.Debug(ctx, "activity group found")
 
 	return group, nil
+}
+
+// isConfirmedMember checks membership loosely, matching this file's existing
+// convention (e.g. RequestToJoinGroup's existing-member check): any error
+// (not-found or otherwise) is treated as "not a confirmed member" rather
+// than surfaced, since the caller only needs a yes/no visibility signal.
+func (s *ActivityGroupService) isConfirmedMember(ctx context.Context, groupID, userID uuid.UUID) bool {
+	member, err := s.memberRepo.GetMemberByGroupAndUser(ctx, groupID, userID)
+	if err != nil || member == nil {
+		return false
+	}
+
+	return member.Status() == domain.MemberStatusConfirmed
 }
 
 // UpdateActivityGroup updates an existing activity group
@@ -312,7 +335,7 @@ func (s *ActivityGroupService) UpdateActivityGroup(
 	}
 
 	span.SetStatus(codes.Ok, "activity group updated")
-	log.Info(ctx, "activity group updated")
+	log.Debug(ctx, "activity group updated")
 
 	return nil
 }
@@ -376,7 +399,7 @@ func (s *ActivityGroupService) ActivateActivityGroup(
 	}
 
 	span.SetStatus(codes.Ok, "activity group activated")
-	log.Info(ctx, "activity group activated")
+	log.Debug(ctx, "activity group activated")
 
 	return nil
 }
@@ -441,7 +464,7 @@ func (s *ActivityGroupService) CancelActivityGroup(
 	}
 
 	span.SetStatus(codes.Ok, "activity group cancelled")
-	log.Info(ctx, "activity group cancelled")
+	log.Debug(ctx, "activity group cancelled")
 
 	return nil
 }
@@ -505,7 +528,7 @@ func (s *ActivityGroupService) DeleteActivityGroup(
 	}
 
 	span.SetStatus(codes.Ok, "activity group deleted")
-	log.Info(ctx, "activity group deleted")
+	log.Debug(ctx, "activity group deleted")
 
 	return nil
 }
@@ -514,7 +537,7 @@ func (s *ActivityGroupService) DeleteActivityGroup(
 func (s *ActivityGroupService) ListActivityGroups(
 	ctx context.Context,
 	params ListActivityGroupsParams,
-) ([]*domain.ActivityGroup, error) {
+) ([]*domain.ActivityGroup, string, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
 		"activity.service.ListActivityGroups",
@@ -536,39 +559,82 @@ func (s *ActivityGroupService) ListActivityGroups(
 	}
 
 	filter := persistence.ActivityGroupFilter{
-		CreatorID: uuid.Nil,
-		Status:    status,
-		Title:     "",
-		Limit:     params.Limit,
-		Offset:    params.Offset,
+		CreatorID:   uuid.Nil,
+		Status:      status,
+		Title:       "",
+		RequesterID: params.RequesterID,
+		Limit:       params.Limit,
+		PageToken:   params.PageToken,
 	}
 
 	if params.CreatorID != nil {
 		filter.CreatorID = *params.CreatorID
 	}
 
+	// Browsing someone else's profile (?member_id=<not you> or
+	// ?creator_id=<not you>) is a harder cap than RequesterID's general
+	// scoping below: only their public groups show up here, even if you'd
+	// otherwise be able to see one of their private groups by being a
+	// confirmed member of it yourself. That broader access still works via
+	// direct fetch or browsing your own membership list - this only keeps
+	// the profile screen from being a shortcut to a private group you'd
+	// otherwise have to go find yourself. Mirrors the same cap ListSessions
+	// applies for AttendeeID/CreatedByID.
+	viewingSomeoneElsesMemberships := params.MemberID != nil && *params.MemberID != params.RequesterID
+	viewingSomeoneElsesCreations := params.CreatorID != nil && *params.CreatorID != params.RequesterID
+
+	if params.MemberID != nil {
+		filter.MemberID = *params.MemberID
+
+		// Non-"confirmed" statuses (pending, rejected, left, removed) are
+		// only honored for your own account - a pending join request is
+		// private, never surfaced on someone else's profile view, even
+		// though pending rows can only ever exist on a public group anyway
+		// (self-serve join requests require the group be public+active).
+		if len(params.MemberStatus) > 0 && !viewingSomeoneElsesMemberships {
+			filter.MemberStatuses = make([]domain.MemberStatus, len(params.MemberStatus))
+			for i, st := range params.MemberStatus {
+				filter.MemberStatuses[i] = domain.MemberStatus(st)
+			}
+		} else {
+			filter.MemberStatuses = []domain.MemberStatus{domain.MemberStatusConfirmed}
+		}
+	}
+
 	if params.Title != nil {
 		filter.Title = *params.Title
 	}
 
-	groups, err := s.groupRepo.ListActivityGroups(ctx, filter)
+	if params.ActivityType != nil {
+		filter.ActivityType = domain.ActivityType(*params.ActivityType)
+	}
+
+	if params.DifficultyLevel != nil {
+		filter.DifficultyLevel = domain.DifficultyLevel(*params.DifficultyLevel)
+	}
+
+	if viewingSomeoneElsesMemberships || viewingSomeoneElsesCreations {
+		filter.Visibility = domain.ActivityGroupVisibilityPublic
+	}
+
+	groups, nextPageToken, err := s.groupRepo.ListActivityGroups(ctx, filter)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to list activity groups", "error", err)
-		return nil, mapToAppErr(err)
+		return nil, "", mapToAppErr(err)
 	}
 
 	span.SetStatus(codes.Ok, "activity groups listed")
 	log.Debug(ctx, "activity groups listed", "count", len(groups))
 
-	return groups, nil
+	return groups, nextPageToken, nil
 }
 
 // DiscoverActivityGroups retrieves public activity groups for discovery
 func (s *ActivityGroupService) DiscoverActivityGroups(
 	ctx context.Context,
 	params DiscoverActivityGroupsParams,
-) ([]*domain.ActivityGroup, error) {
+) ([]*domain.ActivityGroup, string, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
 		"activity.service.DiscoverActivityGroups",
@@ -581,8 +647,8 @@ func (s *ActivityGroupService) DiscoverActivityGroups(
 
 	// Convert params to repository filter
 	filter := persistence.DiscoveryFilter{
-		Limit:  params.Limit,
-		Offset: params.Offset,
+		Limit:     params.Limit,
+		PageToken: params.PageToken,
 	}
 
 	if params.City != nil {
@@ -595,27 +661,35 @@ func (s *ActivityGroupService) DiscoverActivityGroups(
 		span.SetAttributes(attribute.String("country", *params.Country))
 	}
 
-	if params.ActivityType != nil {
-		activityType := domain.ActivityType(*params.ActivityType)
-		if !activityType.IsValid() {
-			err := fmt.Errorf("invalid activity type: %s", *params.ActivityType)
+	for _, interest := range params.Interests {
+		if interest.ActivityType != "" && !domain.ActivityType(interest.ActivityType).IsValid() {
+			err := fmt.Errorf("invalid activity type: %s", interest.ActivityType)
 			span.SetStatus(codes.Error, err.Error())
 			log.Error(ctx, "invalid activity type", "error", err)
-			return nil, MapErrToAppError(err)
+			return nil, "", MapErrToAppError(err)
 		}
-		filter.ActivityType = activityType
-		span.SetAttributes(attribute.String("activity_type", *params.ActivityType))
+		if interest.DifficultyLevel != "" && !domain.DifficultyLevel(interest.DifficultyLevel).IsValid() {
+			err := fmt.Errorf("invalid difficulty level: %s", interest.DifficultyLevel)
+			span.SetStatus(codes.Error, err.Error())
+			log.Error(ctx, "invalid difficulty level", "error", err)
+			return nil, "", MapErrToAppError(err)
+		}
+		filter.Interests = append(filter.Interests, postgres.InterestPair{
+			ActivityType:    interest.ActivityType,
+			DifficultyLevel: interest.DifficultyLevel,
+		})
 	}
+	span.SetAttributes(attribute.Int("interests_count", len(params.Interests)))
 
-	groups, err := s.groupRepo.DiscoverGroups(ctx, filter)
+	groups, nextPageToken, err := s.groupRepo.DiscoverGroups(ctx, filter)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to discover activity groups", "error", err)
-		return nil, mapToAppErr(err)
+		return nil, "", mapToAppErr(err)
 	}
 
 	span.SetStatus(codes.Ok, "activity groups discovered")
 	log.Debug(ctx, "activity groups discovered", "count", len(groups))
 
-	return groups, nil
+	return groups, nextPageToken, nil
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/rasparac/rekreativko-api/shared/api"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 )
@@ -21,6 +22,7 @@ func (s *service) HandleVerificationCodeGenerated(ctx context.Context, payload [
 		span.SetStatus(codes.Error, "failed to parse event")
 		return fmt.Errorf("decode payload: %w", err)
 	}
+	ctx = api.WithEventID(ctx, event.EventID.String())
 
 	span.SetAttributes(
 		attribute.String("event.id", event.EventID.String()),
@@ -65,6 +67,7 @@ func (s *service) HandleAccountVerified(ctx context.Context, payload []byte) err
 		span.SetStatus(codes.Error, "failed to parse event")
 		return fmt.Errorf("decode payload: %w", err)
 	}
+	ctx = api.WithEventID(ctx, event.EventID.String())
 
 	span.SetAttributes(
 		attribute.String("event.id", event.EventID.String()),
@@ -102,6 +105,7 @@ func (s *service) HandlePasswordChanged(ctx context.Context, payload []byte) err
 		span.SetStatus(codes.Error, "failed to parse event")
 		return fmt.Errorf("decode payload: %w", err)
 	}
+	ctx = api.WithEventID(ctx, event.EventID.String())
 
 	span.SetAttributes(
 		attribute.String("event.id", event.EventID.String()),
@@ -145,6 +149,7 @@ func (s *service) HandleAccountLocked(ctx context.Context, payload []byte) error
 		span.SetStatus(codes.Error, "failed to parse event")
 		return fmt.Errorf("decode payload: %w", err)
 	}
+	ctx = api.WithEventID(ctx, event.EventID.String())
 
 	span.SetAttributes(
 		attribute.String("event.id", event.EventID.String()),

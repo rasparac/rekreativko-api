@@ -11,7 +11,16 @@ type UpdateProfileRequest struct {
 	Nickname *string `json:"nickname" example:"JD"`
 	Bio      *string `json:"bio" example:"I love playing basketball and soccer"`
 
-	// Location fields (flattened for swagger compatibility)
+	// DateOfBirth, format YYYY-MM-DD. Omit to leave the existing value untouched;
+	// send an empty string to clear it. Must be in the past and at least 13 years ago.
+	DateOfBirth *string `json:"date_of_birth,omitempty" example:"1990-05-15"`
+
+	// Location fields (flattened for swagger compatibility). Omit all four to
+	// leave the existing location untouched. Send location_city as an empty
+	// string to clear the location entirely. Otherwise, any field you omit
+	// keeps its previously saved value (e.g. sending only updated coordinates
+	// keeps the existing city/country). location_latitude/location_longitude
+	// are only applied together - if you send just one, it's ignored.
 	LocationCity      *string  `json:"location_city" example:"Belgrade"`
 	LocationCountry   *string  `json:"location_country" example:"Serbia"`
 	LocationLatitude  *float64 `json:"location_latitude" example:"44.8176"`
@@ -20,9 +29,8 @@ type UpdateProfileRequest struct {
 	// Profile picture
 	ProfilePictureURL *string `json:"profile_picture_url" example:"https://example.com/avatar.jpg"`
 
-	// Activity interests - simplified as array of strings
-	// Format: "ActivityName:Level" e.g. "Basketball:intermediate"
-	ActivityInterests []string `json:"activity_interests"`
+	// Activity interests
+	ActivityInterests []ActivityInterest `json:"activity_interests"`
 }
 
 // Location represents a geographic location
@@ -54,6 +62,7 @@ type AccountProfileResponse struct {
 	FullName         string             `json:"full_name" example:"John Doe"`
 	Nickname         string             `json:"nickname" example:"JD"`
 	Bio              string             `json:"bio" example:"I love playing basketball and soccer"`
+	DateOfBirth      *string            `json:"date_of_birth,omitempty" example:"1990-05-15"`
 	Location         *Location          `json:"location"`
 	ProfilePicture   *ProfilePicture    `json:"profile_picture"`
 	ActivityInterest []ActivityInterest `json:"activity_interest"`

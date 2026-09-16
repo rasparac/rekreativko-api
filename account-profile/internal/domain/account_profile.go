@@ -194,10 +194,17 @@ func (ap *AccountProfile) SetLocation(location *Location) error {
 		return nil
 	}
 
+	coordinatesChanged := ap.location != nil &&
+		ap.location.HasCoordinates() != location.HasCoordinates()
+	if ap.location != nil && ap.location.HasCoordinates() && location.HasCoordinates() {
+		coordinatesChanged = ap.location.Coordinates().Latitude() != location.Coordinates().Latitude() ||
+			ap.location.Coordinates().Longitude() != location.Coordinates().Longitude()
+	}
+
 	locationChanged := ap.location == nil ||
 		ap.location.City() != location.City() ||
 		ap.location.Country() != location.Country() ||
-		(ap.location.HasCoordinates() != location.HasCoordinates())
+		coordinatesChanged
 
 	if locationChanged {
 		ap.location = location

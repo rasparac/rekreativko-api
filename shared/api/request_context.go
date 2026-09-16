@@ -8,6 +8,7 @@ const (
 	requestIDKey contextKey = "request_id"
 	ipAddressKey contextKey = "ip_address"
 	userAgentKey contextKey = "user_agent"
+	eventIDKey   contextKey = "event_id"
 )
 
 func WithRequestID(ctx context.Context, requestID string) context.Context {
@@ -44,6 +45,24 @@ func UserAgentFromContext(ctx context.Context) string {
 	if v := ctx.Value(userAgentKey); v != nil {
 		if userAgent, ok := v.(string); ok {
 			return userAgent
+		}
+	}
+	return ""
+}
+
+// WithEventID/EventIDFromContext mirror WithRequestID/RequestIDFromContext,
+// but for async event-consumer flows (NATS handlers) instead of HTTP
+// requests - lets every log line inside a handler automatically carry which
+// domain event triggered it, the same way request_id already correlates logs
+// within one HTTP request.
+func WithEventID(ctx context.Context, eventID string) context.Context {
+	return context.WithValue(ctx, eventIDKey, eventID)
+}
+
+func EventIDFromContext(ctx context.Context) string {
+	if v := ctx.Value(eventIDKey); v != nil {
+		if eventID, ok := v.(string); ok {
+			return eventID
 		}
 	}
 	return ""

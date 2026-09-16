@@ -7,6 +7,7 @@ import (
 
 	"github.com/rasparac/rekreativko-api/account-profile/internal/application"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/domain"
+	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
 	"github.com/rasparac/rekreativko-api/shared/telemetry"
@@ -63,13 +64,15 @@ func (avh *createProfileEventHandler) Handle(ctx context.Context, payload []byte
 		return fmt.Errorf("decode payload: %w", err)
 	}
 
+	ctx = api.WithEventID(ctx, event.EventID.String())
+
 	log := avh.logger.WithValues(
 		"event_id", event.EventID,
 		"delivery_type", event.DeliveryType,
 		"account_id", event.AccountID,
 	)
 
-	log.Info(ctx, "handling account verified event")
+	log.Debug(ctx, "handling account verified event")
 
 	span.SetAttributes(
 		attribute.String("event.id", event.EventID.String()),
@@ -99,7 +102,7 @@ func (avh *createProfileEventHandler) Handle(ctx context.Context, payload []byte
 		return err
 	}
 
-	log.Info(ctx, "account profile and settings created")
+	log.Debug(ctx, "account profile and settings created")
 
 	span.SetStatus(codes.Ok, "account profile and settings created")
 

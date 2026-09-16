@@ -27,7 +27,7 @@ type (
 	refreshTokenModel struct {
 		ID        uuid.UUID
 		AccountID uuid.UUID
-		Token     string
+		TokenHash string
 		ExpiresAt time.Time
 		CreatedAt time.Time
 		RevokedAt sql.NullTime
@@ -35,7 +35,7 @@ type (
 
 	RefreshTokenFilter struct {
 		AccountID uuid.UUID
-		Token     string
+		TokenHash string
 	}
 
 	refreshTokenManager struct {
@@ -46,7 +46,7 @@ type (
 )
 
 func (rtf RefreshTokenFilter) Validate() error {
-	if rtf.AccountID == uuid.Nil && rtf.Token == "" {
+	if rtf.AccountID == uuid.Nil && rtf.TokenHash == "" {
 		return errors.New("missing filter")
 	}
 
@@ -70,7 +70,7 @@ func (m *refreshTokenManager) CreateRefreshToken(ctx context.Context, token *dom
 		model = toRefreshTokenModel(token)
 		query = `
 		INSERT INTO identity.refresh_tokens
-			(id, account_id, token, expires_at, created_at, revoked_at)
+			(id, account_id, token_hash, expires_at, created_at, revoked_at)
 		VALUES
 			($1, $2, $3, $4, $5, $6)
 		`
@@ -81,7 +81,7 @@ func (m *refreshTokenManager) CreateRefreshToken(ctx context.Context, token *dom
 		query,
 		model.ID,
 		model.AccountID,
-		model.Token,
+		model.TokenHash,
 		model.ExpiresAt,
 		model.CreatedAt,
 		model.RevokedAt,
@@ -99,7 +99,7 @@ func (m *refreshTokenManager) GetTokenBy(ctx context.Context, filter RefreshToke
 		baseQuery = `SELECT
 		id,
 		account_id,
-		token,
+		token_hash,
 		expires_at,
 		created_at,
 		revoked_at
@@ -114,9 +114,9 @@ func (m *refreshTokenManager) GetTokenBy(ctx context.Context, filter RefreshToke
 		filters = append(filters, fmt.Sprintf("account_id = $%d", len(args)))
 	}
 
-	if filter.Token != "" {
-		args = append(args, filter.Token)
-		filters = append(filters, fmt.Sprintf("token = $%d", len(args)))
+	if filter.TokenHash != "" {
+		args = append(args, filter.TokenHash)
+		filters = append(filters, fmt.Sprintf("token_hash = $%d", len(args)))
 	}
 
 	var (
@@ -130,7 +130,7 @@ func (m *refreshTokenManager) GetTokenBy(ctx context.Context, filter RefreshToke
 	err := m.db.QueryRow(ctx, query, args...).Scan(
 		&model.ID,
 		&model.AccountID,
-		&model.Token,
+		&model.TokenHash,
 		&model.ExpiresAt,
 		&model.CreatedAt,
 		&model.RevokedAt,
@@ -192,7 +192,7 @@ func toRefreshTokenModel(refreshToken *domain.RefreshToken) *refreshTokenModel {
 	return &refreshTokenModel{
 		ID:        refreshToken.ID(),
 		AccountID: refreshToken.AccountID(),
-		Token:     refreshToken.Token(),
+		TokenHash: refreshToken.TokenHash(),
 		ExpiresAt: refreshToken.ExpiresAt(),
 		CreatedAt: refreshToken.CreatedAt(),
 		RevokedAt: sql.NullTime{
@@ -206,7 +206,7 @@ func toDomainRefreshToken(refreshToken refreshTokenModel) *domain.RefreshToken {
 	return domain.ReconstructRefreshToken(
 		refreshToken.ID,
 		refreshToken.AccountID,
-		refreshToken.Token,
+		refreshToken.TokenHash,
 		refreshToken.ExpiresAt,
 		refreshToken.CreatedAt,
 		&refreshToken.RevokedAt.Time,

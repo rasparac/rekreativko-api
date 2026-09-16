@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
+	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/logger"
@@ -130,7 +131,7 @@ func (s *InviteService) SendInvite(
 	}
 
 	span.SetStatus(codes.Ok, "invite sent")
-	log.Info(ctx, "invite sent", "invite_id", invite.ID())
+	log.Debug(ctx, "invite sent", "invite_id", invite.ID())
 
 	return invite, nil
 }
@@ -199,7 +200,7 @@ func (s *InviteService) AcceptInvite(
 	}
 
 	span.SetStatus(codes.Ok, "invite accepted")
-	log.Info(ctx, "invite accepted", "member_id", member.ID())
+	log.Debug(ctx, "invite accepted", "member_id", member.ID())
 
 	return member, nil
 }
@@ -255,16 +256,69 @@ func (s *InviteService) DeclineInvite(
 	}
 
 	span.SetStatus(codes.Ok, "invite declined")
-	log.Info(ctx, "invite declined")
+	log.Debug(ctx, "invite declined")
 
 	return nil
+}
+
+// ExpireStaleInvites finds every pending invite past its expiry and marks it
+// expired. Meant to be run periodically by a cron job - accepting/declining
+// an expired invite already fails on its own, but nothing else ever flips
+// its status, which otherwise leaves it stuck as "pending" forever (still
+// shown by ListMyInvites, and blocking SendInvite's duplicate-invite check).
+func (s *InviteService) ExpireStaleInvites(ctx context.Context) (int, error) {
+	ctx, span := s.tracer.Start(
+		ctx,
+		"activity.service.ExpireStaleInvites",
+	)
+	defer span.End()
+
+	log := s.logger.WithValues("method", "ExpireStaleInvites")
+
+	invites, err := s.inviteRepo.FindExpiredPendingInvites(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to find expired invites", "error", err)
+		return 0, mapToAppErr(err)
+	}
+
+	var expiredCount int
+	for _, invite := range invites {
+		err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+			if err := invite.Expire(); err != nil {
+				return fmt.Errorf("expire invite: %w", err)
+			}
+
+			if err := s.inviteRepo.UpdateInvite(tCtx, invite); err != nil {
+				return fmt.Errorf("persist invite expiry: %w", err)
+			}
+
+			if err := s.eventWriter.InsertEvents(tCtx, activitySchema, invite.Events()); err != nil {
+				return fmt.Errorf("insert domain events: %w", err)
+			}
+			invite.ClearEvents()
+
+			return nil
+		})
+		if err != nil {
+			log.Error(ctx, "failed to expire invite", "invite_id", invite.ID(), "error", err)
+			continue
+		}
+		expiredCount++
+	}
+
+	span.SetAttributes(attribute.Int("expired_count", expiredCount))
+	log.Info(ctx, "expired stale invites", "count", expiredCount, "found", len(invites))
+
+	return expiredCount, nil
 }
 
 // ListMyInvites retrieves the caller's own pending invites
 func (s *InviteService) ListMyInvites(
 	ctx context.Context,
 	userID uuid.UUID,
-) ([]*domain.GroupInvite, error) {
+	params ListMyInvitesParams,
+) ([]*domain.GroupInvite, string, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
 		"activity.service.ListMyInvites",
@@ -278,15 +332,19 @@ func (s *InviteService) ListMyInvites(
 
 	span.SetAttributes(attribute.String("user_id", userID.String()))
 
-	invites, err := s.inviteRepo.ListPendingInvitesForUser(ctx, userID)
+	invites, nextPageToken, err := s.inviteRepo.ListPendingInvitesForUser(ctx, persistence.ListPendingInvitesFilter{
+		InvitedUserID: userID,
+		Limit:         params.Limit,
+		PageToken:     params.PageToken,
+	})
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to list invites", "error", err)
-		return nil, mapToAppErr(err)
+		return nil, "", mapToAppErr(err)
 	}
 
 	span.SetStatus(codes.Ok, "invites listed")
 	log.Debug(ctx, "invites listed", "count", len(invites))
 
-	return invites, nil
+	return invites, nextPageToken, nil
 }

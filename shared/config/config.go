@@ -26,10 +26,19 @@ type (
 		IdentityServiceConfig       IdentityServiceConfig
 		AccountProfileServiceConfig AccountProfileServiceConfig
 		ActivityServiceConfig       ActivityServiceConfig
+		NotificationsServiceConfig  NotificationsServiceConfig
+
+		Features FeaturesConfig
+	}
+
+	FeaturesConfig struct {
+		// Phone/SMS registration and verification are built but not launched -
+		// no SMS provider is wired up yet. Keep this false until one is.
+		PhoneRegistrationEnabled bool `envconfig:"PHONE_REGISTRATION_ENABLED" default:"false"`
 	}
 
 	Logger struct {
-		Level  string `envconfig:"LOGGER_LEVEL" default:"info"`
+		Level  string `envconfig:"LOG_LEVEL" default:"info"`
 		Format string `envconfig:"LOGGER_FORMAT" default:"json"`
 	}
 

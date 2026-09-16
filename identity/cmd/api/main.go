@@ -54,7 +54,7 @@ func main() {
 	logger := logger.New(cfg.Logger.Level, cfg.Logger.Format)
 
 	log := logger.WithName(
-		"rekreativko",
+		cfg.Service.Name,
 	)
 
 	log.Info(
@@ -72,7 +72,7 @@ func main() {
 }
 
 func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
-	appMetrics := metrics.New(cfg.Service.Name)
+	appMetrics := metrics.New()
 
 	dbTracer := metricstracer.New(appMetrics)
 
@@ -133,7 +133,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		os.Exit(1)
 	}
 	defer func() {
-		if tracingErr := shutdownTracing(ctx); err != nil {
+		if tracingErr := shutdownTracing(ctx); tracingErr != nil {
 			log.Error(ctx, "failed to shutdown telemetry", "error", tracingErr)
 		}
 	}()
@@ -149,6 +149,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		verificationCodeGenerator,
 		passwordHasher,
 		appMetrics,
+		cfg.Features.PhoneRegistrationEnabled,
 	)
 
 	mux := http.NewServeMux()
@@ -161,6 +162,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	middlewaresChain := middleware.NewChain(
 		middleware.Recover(log),
 		middleware.RequestID,
+		middleware.ClientInfo,
 		middleware.CheckGatewayKey(
 			log,
 			cfg.Service.GatewayKey,

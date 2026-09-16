@@ -44,11 +44,12 @@ const (
 	AttendeeSourceAutoConfirmed AttendeeSource = "auto_confirmed" // added automatically by the system and confirmed (e.g. creator or auto-confirmed from capacity)
 	AttendeeSourceAutoPending   AttendeeSource = "auto_pending"   // added automatically by the system but pending (e.g. auto-pending from capacity)
 	AttendeeSourceRSVPManual    AttendeeSource = "rsvp_manual"    // member RSVPed themselves manually
+	AttendeeSourceRequested     AttendeeSource = "requested"      // RSVPed "going" on a session that requires creator/admin approval
 )
 
 type Attendee struct {
 	id         uuid.UUID
-	activityID uuid.UUID
+	activityID *uuid.UUID // nil for a standalone session with no group
 	sessionID  uuid.UUID
 	userID     uuid.UUID
 	status     AttendeeStatus
@@ -74,7 +75,7 @@ func (a *Attendee) ID() uuid.UUID {
 	return a.id
 }
 
-func (a *Attendee) ActivityID() uuid.UUID {
+func (a *Attendee) ActivityID() *uuid.UUID {
 	return a.activityID
 }
 
@@ -103,8 +104,8 @@ func (a *Attendee) UpdatedAt() time.Time {
 }
 
 func newAutoConfirmedAttendee(
-	sessionID,
-	activityID,
+	sessionID uuid.UUID,
+	activityID *uuid.UUID,
 	userID uuid.UUID,
 ) *Attendee {
 	now := time.Now().UTC()
@@ -122,8 +123,8 @@ func newAutoConfirmedAttendee(
 }
 
 func newAutoPendingAttendee(
-	sessionID,
-	activityID,
+	sessionID uuid.UUID,
+	activityID *uuid.UUID,
 	userID uuid.UUID,
 ) *Attendee {
 	now := time.Now().UTC()
@@ -142,7 +143,7 @@ func newAutoPendingAttendee(
 
 func NewRSVPManualAttendee(
 	session *Session,
-	activityID,
+	activityID *uuid.UUID,
 	userID uuid.UUID,
 	status AttendeeStatus,
 ) (*Attendee, error) {
@@ -184,6 +185,34 @@ func NewRSVPManualAttendee(
 	}
 
 	return a, nil
+}
+
+// NewRequestedAttendee creates a pending join request for a session that
+// requires creator/admin approval - mirrors NewJoinRequest for groups. Unlike
+// NewRSVPManualAttendee, this never resolves straight to "going": approval is
+// a separate, explicit step (see Attendee.Approve).
+func NewRequestedAttendee(
+	session *Session,
+	activityID *uuid.UUID,
+	userID uuid.UUID,
+	managerUserIDs []uuid.UUID,
+) *Attendee {
+	now := time.Now().UTC()
+
+	a := &Attendee{
+		id:         uuid.New(),
+		sessionID:  session.ID(),
+		activityID: activityID,
+		userID:     userID,
+		status:     AttendeeStatusPending,
+		source:     AttendeeSourceRequested,
+		createdAt:  now,
+		updatedAt:  now,
+	}
+
+	a.addEvent(NewAttendeeJoinRequestedEvent(a, session, managerUserIDs))
+
+	return a
 }
 
 func (a *Attendee) UpdateRSVP(
@@ -256,6 +285,74 @@ func (a *Attendee) Promote() error {
 	return nil
 }
 
+// Approve accepts a pending join request, moving the attendee to "going".
+// Authorization goes through session.canManageSession rather than a bare
+// role check, since a standalone session's creator has no group role at all
+// (empty string) and must still be able to approve their own session's
+// requests - the exact gap that caused the DELETE /sessions/{id} 500 bug
+// fixed earlier for Session.Cancel/Start/Complete.
+func (a *Attendee) Approve(session *Session, approverID uuid.UUID, approverRole MemberRole) error {
+	if !session.canManageSession(approverID, approverRole) {
+		return ErrUnauthorized
+	}
+
+	if a.status != AttendeeStatusPending || a.source != AttendeeSourceRequested {
+		return ErrAttendeeNotAwaitingApproval
+	}
+
+	a.status = AttendeeStatusGoing
+	a.updatedAt = time.Now().UTC()
+
+	a.addEvent(NewAttendeeJoinApprovedEvent(a, session, approverID))
+
+	return nil
+}
+
+// Remove removes an already-confirmed attendee from a session - a manager
+// kicking someone out, as opposed to CancelRSVP (application layer only),
+// which lets a user cancel only their own RSVP. Authorization goes through
+// session.canManageSession, same as Approve/Reject, so a standalone
+// session's creator (no group role) can still remove attendees from their
+// own session. Like CancelRSVP, removal doesn't change the attendee's
+// status - "removed" means soft-deleted (see AttendeeRepository.
+// DeleteAttendee) - this method only validates the action and records who
+// did it, for notification/audit purposes.
+func (a *Attendee) Remove(session *Session, removerID uuid.UUID, removerRole MemberRole) error {
+	if !session.canManageSession(removerID, removerRole) {
+		return ErrUnauthorized
+	}
+
+	if a.userID == session.CreatedByID() {
+		return ErrCannotRemoveCreator
+	}
+
+	if !a.status.IsConfirmed() {
+		return ErrAttendeeNotGoing
+	}
+
+	a.addEvent(NewAttendeeRemovedEvent(a, session, removerID))
+
+	return nil
+}
+
+// Reject declines a pending join request, moving the attendee to "not_going".
+func (a *Attendee) Reject(session *Session, rejectorID uuid.UUID, rejectorRole MemberRole) error {
+	if !session.canManageSession(rejectorID, rejectorRole) {
+		return ErrUnauthorized
+	}
+
+	if a.status != AttendeeStatusPending || a.source != AttendeeSourceRequested {
+		return ErrAttendeeNotAwaitingApproval
+	}
+
+	a.status = AttendeeStatusNotGoing
+	a.updatedAt = time.Now().UTC()
+
+	a.addEvent(NewAttendeeJoinRejectedEvent(a, session, rejectorID))
+
+	return nil
+}
+
 func (a *Attendee) validateRSVPTransition(newStatus AttendeeStatus) error {
 	if !newStatus.IsValid() {
 		return ErrInvalidAttendeeStatus
@@ -306,7 +403,7 @@ func (a *Attendee) ClearEvents() {
 func ReconstructAttendee(
 	id uuid.UUID,
 	sessionID uuid.UUID,
-	activityID uuid.UUID,
+	activityID *uuid.UUID,
 	userID uuid.UUID,
 	status AttendeeStatus,
 	source AttendeeSource,

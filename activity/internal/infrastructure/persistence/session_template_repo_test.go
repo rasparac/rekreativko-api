@@ -19,6 +19,8 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 	isRecurringFalse := false
 	needsGenerationTrue := true
 	lookahead := 24 * time.Hour
+	cursorID := uuid.New()
+	cursorTime := time.Date(2026, 1, 15, 10, 0, 0, 0, time.UTC)
 
 	tests := []struct {
 		name          string
@@ -33,7 +35,7 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 			expectedQuery: "WHERE deleted_at IS NULL",
 			expectedArgs:  []interface{}{},
 			assertions: []func(query string) bool{
-				func(q string) bool { return strings.Contains(q, "ORDER BY created_at DESC") },
+				func(q string) bool { return strings.Contains(q, "ORDER BY created_at DESC, id DESC") },
 				func(q string) bool { return !strings.Contains(q, "$1") },
 			},
 		},
@@ -87,7 +89,9 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 			expectedArgs:  []interface{}{lookahead},
 			assertions: []func(query string) bool{
 				func(q string) bool { return strings.Contains(q, "AND recurrence_frequency IS NOT NULL") },
-				func(q string) bool { return strings.Contains(q, "generated_up_to IS NULL OR generated_up_to < NOW() + $1") },
+				func(q string) bool {
+					return strings.Contains(q, "generated_up_to IS NULL OR generated_up_to < NOW() + $1")
+				},
 			},
 		},
 		{
@@ -103,32 +107,24 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 			},
 		},
 		{
-			name: "pagination - limit only",
+			name: "pagination - limit only fetches one extra row",
 			filter: SessionTemplateFilter{
 				Limit: 10,
 			},
 			expectedQuery: "LIMIT $1",
-			expectedArgs:  []interface{}{10},
+			expectedArgs:  []interface{}{11},
 		},
 		{
-			name: "pagination - offset only",
+			name: "pagination - page token resumes via keyset condition",
 			filter: SessionTemplateFilter{
-				Offset: 20,
+				Limit:     10,
+				PageToken: postgres.EncodePageToken(cursorTime.Format(time.RFC3339Nano), cursorID),
 			},
-			expectedQuery: "OFFSET $1",
-			expectedArgs:  []interface{}{20},
-		},
-		{
-			name: "pagination - limit and offset",
-			filter: SessionTemplateFilter{
-				Limit:  10,
-				Offset: 20,
-			},
-			expectedQuery: "LIMIT $1",
-			expectedArgs:  []interface{}{10, 20},
+			expectedQuery: "AND (created_at, id) < ($1, $2)",
+			expectedArgs:  []interface{}{cursorTime, cursorID, 11},
 			assertions: []func(query string) bool{
-				func(q string) bool { return strings.Contains(q, "LIMIT $1") },
-				func(q string) bool { return strings.Contains(q, "OFFSET $2") },
+				func(q string) bool { return strings.Contains(q, "AND (created_at, id) < ($1, $2)") },
+				func(q string) bool { return strings.Contains(q, "LIMIT $3") },
 			},
 		},
 		{
@@ -138,16 +134,14 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 				Status:          &status,
 				IsRecurring:     &isRecurringTrue,
 				Limit:           50,
-				Offset:          100,
 			},
 			expectedQuery: "AND activity_group_id = $1",
-			expectedArgs:  []interface{}{groupID, "active", 50, 100},
+			expectedArgs:  []interface{}{groupID, "active", 51},
 			assertions: []func(query string) bool{
 				func(q string) bool { return strings.Contains(q, "AND activity_group_id = $1") },
 				func(q string) bool { return strings.Contains(q, "AND status = $2") },
 				func(q string) bool { return strings.Contains(q, "AND recurrence_frequency IS NOT NULL") },
 				func(q string) bool { return strings.Contains(q, "LIMIT $3") },
-				func(q string) bool { return strings.Contains(q, "OFFSET $4") },
 			},
 		},
 		{
@@ -171,7 +165,8 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			query, args := buildSessionTemplateQuery(tt.filter)
+			query, args, err := buildSessionTemplateQuery(tt.filter)
+			assert.NoError(t, err)
 
 			// Check expected query substring
 			assert.Contains(t, query, tt.expectedQuery,
@@ -242,11 +237,11 @@ func TestQueryBuilder(t *testing.T) {
 			Args:      make([]interface{}, 0),
 		}
 
-		qb.AddCondition("col1 = ", "val1")       // $1
-		qb.AddRawCondition("col2 IS NOT NULL")   // no param
-		qb.AddCondition("col3 = ", 42)           // $2
-		qb.AddRawCondition("col4 > 0")           // no param
-		qb.AddCondition("col5 = ", "val5")       // $3
+		qb.AddCondition("col1 = ", "val1")     // $1
+		qb.AddRawCondition("col2 IS NOT NULL") // no param
+		qb.AddCondition("col3 = ", 42)         // $2
+		qb.AddRawCondition("col4 > 0")         // no param
+		qb.AddCondition("col5 = ", "val5")     // $3
 
 		query, args := qb.Build()
 

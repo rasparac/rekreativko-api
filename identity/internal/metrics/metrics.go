@@ -35,52 +35,42 @@ type Metrics struct {
 	NotificationSendDuration *prometheus.HistogramVec
 }
 
-func New(namespace string) *Metrics {
-	constLabels := prometheus.Labels{"namespace": namespace}
+func New() *Metrics {
 	return &Metrics{
 		HTTPRequestTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "http_requests_total",
-				Help:        "Total number of HTTP requests",
-				ConstLabels: constLabels,
+				Name: "http_requests_total",
+				Help: "Total number of HTTP requests",
 			},
 			[]string{"method", "path", "status"},
 		),
 		HTTPRequestDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Name:        "http_request_duration_seconds",
-				Help:        "Duration of HTTP requests in seconds",
-				Buckets:     prometheus.DefBuckets,
-				ConstLabels: constLabels,
+				Name:    "http_request_duration_seconds",
+				Help:    "Duration of HTTP requests in seconds",
+				Buckets: prometheus.DefBuckets,
 			},
 			[]string{"method", "path", "status"},
 		),
 		HTTPResponseSize: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Name:        "http_response_size_bytes",
-				Help:        "Size of HTTP responses in bytes",
-				Buckets:     prometheus.ExponentialBuckets(100, 10, 7),
-				ConstLabels: constLabels,
+				Name:    "http_response_size_bytes",
+				Help:    "Size of HTTP responses in bytes",
+				Buckets: prometheus.ExponentialBuckets(100, 10, 7),
 			},
 			[]string{"method", "path", "status"},
 		),
 		HTTPRequestSize: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Name:        "http_request_size_bytes",
-				Help:        "Size of HTTP requests in bytes",
-				Buckets:     prometheus.ExponentialBuckets(100, 10, 7),
-				ConstLabels: constLabels,
+				Name:    "http_request_size_bytes",
+				Help:    "Size of HTTP requests in bytes",
+				Buckets: prometheus.ExponentialBuckets(100, 10, 7),
 			},
 			[]string{"method", "path"},
 		),
 
 		RegistrationsTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace: namespace,
 				Subsystem: "identity",
 				Name:      "registrations_total",
 				Help:      "Total number of account registrations",
@@ -89,76 +79,61 @@ func New(namespace string) *Metrics {
 		),
 		LoginAttemptsTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace: namespace,
-				Name:      "login_attempts_total",
-				Help:      "Total number of login attempts",
+				Name: "login_attempts_total",
+				Help: "Total number of login attempts",
 			},
 			[]string{"method"},
 		),
 		LoginSuccessTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "login_success_total",
-				Help:        "Total number of login successes",
-				ConstLabels: constLabels,
+				Name: "login_success_total",
+				Help: "Total number of login successes",
 			},
 		),
 		LoginFailuresTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "login_failures_total",
-				Help:        "Total number of login failures",
-				ConstLabels: constLabels,
+				Name: "login_failures_total",
+				Help: "Total number of login failures",
 			},
 			[]string{"reason"},
 		),
 		VerificationTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "verification_total",
-				Help:        "Total number of verifications",
-				ConstLabels: constLabels,
+				Name: "verification_total",
+				Help: "Total number of verifications",
 			},
 			[]string{"status"},
 		),
 		ActiveRefreshesTokens: promauto.NewGauge(
 			prometheus.GaugeOpts{
-				Namespace:   namespace,
-				Name:        "refreshes_tokens",
-				Help:        "Current number of active refreshes tokens",
-				ConstLabels: constLabels,
+				Name: "refreshes_tokens",
+				Help: "Current number of active refreshes tokens",
 			},
 		),
 
 		// Event
 		EventsPublishedTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Subsystem:   "events",
-				Name:        "published_total",
-				Help:        "Total number of events published",
-				ConstLabels: constLabels,
+				Subsystem: "events",
+				Name:      "published_total",
+				Help:      "Total number of events published",
 			},
 			[]string{"event_type"},
 		),
 		EventPublishDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Subsystem:   "events",
-				Name:        "publish_duration_seconds",
-				Help:        "Duration of event publishing in seconds",
-				Buckets:     prometheus.DefBuckets,
-				ConstLabels: constLabels,
+				Subsystem: "events",
+				Name:      "publish_duration_seconds",
+				Help:      "Duration of event publishing in seconds",
+				Buckets:   prometheus.DefBuckets,
 			},
 			[]string{"event_type"},
 		),
 		EventProcessedTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Subsystem:   "events",
-				Name:        "processed_total",
-				Help:        "Total number of events processed",
-				ConstLabels: constLabels,
+				Subsystem: "events",
+				Name:      "processed_total",
+				Help:      "Total number of events processed",
 			},
 			[]string{"event_type", "status"},
 		),
@@ -166,22 +141,18 @@ func New(namespace string) *Metrics {
 		// Database query
 		DBQueryTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Subsystem:   "database",
-				Name:        "query_total",
-				Help:        "Total number of database queries",
-				ConstLabels: constLabels,
+				Subsystem: "database",
+				Name:      "query_total",
+				Help:      "Total number of database queries",
 			},
 			[]string{"operation", "status", "table"},
 		),
 		DBQueryDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Subsystem:   "database",
-				Name:        "query_duration_seconds",
-				Help:        "Duration of database queries in seconds",
-				Buckets:     prometheus.DefBuckets,
-				ConstLabels: constLabels,
+				Subsystem: "database",
+				Name:      "query_duration_seconds",
+				Help:      "Duration of database queries in seconds",
+				Buckets:   prometheus.DefBuckets,
 			},
 			[]string{"operation", "status", "table"},
 		),
@@ -190,32 +161,26 @@ func New(namespace string) *Metrics {
 
 		NotificationSendTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Subsystem:   "notifications",
-				Name:        "send_total",
-				Help:        "Total number of notification sends",
-				ConstLabels: constLabels,
+				Subsystem: "notifications",
+				Name:      "send_total",
+				Help:      "Total number of notification sends",
 			},
 			[]string{"type", "channel"},
 		),
 		NotificationSendDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Subsystem:   "notifications",
-				Name:        "send_duration_seconds",
-				Help:        "Duration of notification sends in seconds",
-				Buckets:     prometheus.DefBuckets,
-				ConstLabels: constLabels,
+				Subsystem: "notifications",
+				Name:      "send_duration_seconds",
+				Help:      "Duration of notification sends in seconds",
+				Buckets:   prometheus.DefBuckets,
 			},
 			[]string{"type", "channel"},
 		),
 		NotificationSendFailures: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Subsystem:   "notifications",
-				Name:        "send_failures_total",
-				Help:        "Total number of notification send failures",
-				ConstLabels: constLabels,
+				Subsystem: "notifications",
+				Name:      "send_failures_total",
+				Help:      "Total number of notification send failures",
 			},
 			[]string{"type", "channel", "reason"},
 		),

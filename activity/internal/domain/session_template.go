@@ -50,7 +50,7 @@ type SessionTemplate struct {
 
 	recurrenceRule  *RecurrenceRule
 	defaultCapacity *int
-	defaultLocation *Location // city/country only for templates (sessions have full lat/lng)
+	defaultLocation *Location  // required; inherited by every session generated from this template
 	generatedUpTo   *time.Time // tracks how far ahead sessions have been generated
 
 	createdAt time.Time
@@ -60,10 +60,14 @@ type SessionTemplate struct {
 	events []domainevent.Event
 }
 
-// validateFields checks common validation rules for title, capacity, and recurrence
-func validateFields(title string, defaultCapacity *int, recurrenceRule *RecurrenceRule) error {
+// validateFields checks common validation rules for title, capacity, location, and recurrence
+func validateFields(title string, defaultCapacity *int, defaultLocation *Location, recurrenceRule *RecurrenceRule) error {
 	if title == "" {
 		return ErrSessionTemplateTitleRequired
+	}
+
+	if defaultLocation == nil {
+		return ErrSessionTemplateLocationRequired
 	}
 
 	if defaultCapacity != nil && *defaultCapacity < 0 {
@@ -86,7 +90,7 @@ func NewSessionTemplate(
 	defaultCapacity *int,
 	defaultLocation *Location,
 ) (*SessionTemplate, error) {
-	if err := validateFields(title, defaultCapacity, recurrenceRule); err != nil {
+	if err := validateFields(title, defaultCapacity, defaultLocation, recurrenceRule); err != nil {
 		return nil, err
 	}
 
@@ -155,7 +159,7 @@ func (st *SessionTemplate) Update(
 		return err
 	}
 
-	if err := validateFields(title, defaultCapacity, recurrenceRule); err != nil {
+	if err := validateFields(title, defaultCapacity, defaultLocation, recurrenceRule); err != nil {
 		return err
 	}
 

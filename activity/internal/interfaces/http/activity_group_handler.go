@@ -71,6 +71,7 @@ func (h *Handler) CreateActivityGroup(w http.ResponseWriter, r *http.Request) {
 //	@Router			/api/v1/activity-groups/{id} [get]
 func (h *Handler) GetActivityGroup(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
 
 	// Parse group ID from path
 	groupIDStr := r.PathValue("id")
@@ -82,7 +83,7 @@ func (h *Handler) GetActivityGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get group
-	group, err := h.activityGroupService.GetActivityGroup(ctx, groupID)
+	group, err := h.activityGroupService.GetActivityGroup(ctx, groupID, accountID)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
@@ -223,16 +224,21 @@ func (h *Handler) DeleteActivityGroup(w http.ResponseWriter, r *http.Request) {
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
 //	@Param			creator_id	query		string										false	"Filter by creator ID"
+//	@Param			member_id	query		string										false	"Filter by membership (groups joined, not just created). Another account's private-group memberships are excluded - only their public groups are returned"
+//	@Param			member_status	query		[]string									false	"Repeatable; restricts member_id to these membership statuses (e.g. member_status=pending for outstanding join requests). Defaults to confirmed only. Non-confirmed values are ignored (falls back to confirmed) unless member_id is your own account - ignored without member_id"
 //	@Param			status		query		string										false	"Filter by status (draft, active, cancelled)"
 //	@Param			title		query		string										false	"Filter by title (partial match)"
+//	@Param			activity_type	query	string										false	"Filter by activity type"
+//	@Param			difficulty_level	query	string										false	"Filter by difficulty level (beginner, intermediate, advanced)"
 //	@Param			limit		query		int											false	"Limit number of results (default 20)"
-//	@Param			offset		query		int											false	"Offset for pagination (default 0)"
-//	@Success		200			{object}	api.Response[dtos.ActivityGroupListResponse]	"Groups retrieved successfully"
+//	@Param			page_token	query		string										false	"Token from the previous response's next_page_token, to fetch the next page"
+//	@Success		200			{object}	api.Response[api.Page[dtos.ActivityGroupResponse]]	"Groups retrieved successfully"
 //	@Failure		400			{object}	api.Response[any]									"Invalid request"
 //	@Failure		500			{object}	api.Response[any]									"Internal server error"
 //	@Router			/api/v1/activity-groups [get]
 func (h *Handler) ListActivityGroups(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
 
 	// Parse query parameters
 	params, err := mapper.QueryToListActivityGroupsParams(r.URL.Query())
@@ -241,9 +247,10 @@ func (h *Handler) ListActivityGroups(w http.ResponseWriter, r *http.Request) {
 		api.WriteBadRequestResponse(w, "invalid_params", "Invalid query parameters")
 		return
 	}
+	params.RequesterID = accountID
 
 	// List groups
-	groups, err := h.activityGroupService.ListActivityGroups(ctx, *params)
+	groups, nextPageToken, err := h.activityGroupService.ListActivityGroups(ctx, *params)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
@@ -251,7 +258,7 @@ func (h *Handler) ListActivityGroups(w http.ResponseWriter, r *http.Request) {
 
 	api.WriteOkResponse(
 		w,
-		mapper.ActivityGroupListToResponse(groups, params.Limit, params.Offset),
+		api.NewPage(groups, params.Limit, nextPageToken, mapper.ActivityGroupToResponse),
 		"",
 	)
 }
@@ -265,10 +272,12 @@ func (h *Handler) ListActivityGroups(w http.ResponseWriter, r *http.Request) {
 //	@Security		GatewayKeyAuth && BearerAuth
 //	@Param			city			query		string										false	"Filter by city"
 //	@Param			country			query		string										false	"Filter by country"
-//	@Param			activity_type	query		string										false	"Filter by activity type"
+//	@Param			activity_type	query		string										false	"Filter by a single activity type (shorthand for one interests entry with no level)"
+//	@Param			difficulty_level	query	string										false	"Filter by a single difficulty level, paired with activity_type above"
+//	@Param			interests		query		[]string									false	"Repeatable; each value is 'type' or 'type:level' (e.g. interests=running&interests=cycling:advanced) - OR-matched, so results match ANY listed interest. Combine several in one call instead of one call per interest."
 //	@Param			limit			query		int											false	"Limit number of results (default 20)"
-//	@Param			offset			query		int											false	"Offset for pagination (default 0)"
-//	@Success		200				{object}	api.Response[dtos.ActivityGroupListResponse]	"Groups retrieved successfully"
+//	@Param			page_token		query		string										false	"Token from the previous response's next_page_token, to fetch the next page"
+//	@Success		200				{object}	api.Response[api.Page[dtos.ActivityGroupResponse]]	"Groups retrieved successfully"
 //	@Failure		400				{object}	api.Response[any]									"Invalid request"
 //	@Failure		500				{object}	api.Response[any]									"Internal server error"
 //	@Router			/api/v1/activity-groups/discover [get]
@@ -284,13 +293,13 @@ func (h *Handler) DiscoverActivityGroups(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Discover groups
-	groups, err := h.activityGroupService.DiscoverActivityGroups(ctx, *params)
+	groups, nextPageToken, err := h.activityGroupService.DiscoverActivityGroups(ctx, *params)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
 
 	api.WriteOkResponse(w,
-		mapper.ActivityGroupListToResponse(groups, params.Limit, params.Offset),
+		api.NewPage(groups, params.Limit, nextPageToken, mapper.ActivityGroupToResponse),
 		"")
 }

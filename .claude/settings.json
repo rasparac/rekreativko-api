@@ -10,6 +10,27 @@
         ],
         "matcher": ""
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/post-commit-ticket-writer.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(bd *)",
+      "Bash(git *)"
+    ],
+    "ask": [
+      "Bash(bd delete *)",
+      "Bash(bd dolt push --force*)"
     ]
   }
 }

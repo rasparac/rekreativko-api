@@ -2,12 +2,12 @@ package mapper
 
 import (
 	"net/url"
-	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
+	"github.com/rasparac/rekreativko-api/shared/api"
 )
 
 // CreateActivityGroupRequestToParams converts CreateActivityGroupRequest to application params
@@ -83,30 +83,10 @@ func ActivityGroupToResponse(group *domain.ActivityGroup) *dtos.ActivityGroupRes
 	return resp
 }
 
-// ActivityGroupListToResponse converts list of activity groups to list response
-func ActivityGroupListToResponse(
-	groups []*domain.ActivityGroup,
-	limit int,
-	offset int,
-) *dtos.ActivityGroupListResponse {
-	responses := make([]dtos.ActivityGroupResponse, len(groups))
-	for i, group := range groups {
-		responses[i] = *ActivityGroupToResponse(group)
-	}
-
-	return &dtos.ActivityGroupListResponse{
-		Groups: responses,
-		Total:  len(responses),
-		Limit:  limit,
-		Offset: offset,
-	}
-}
-
 // QueryToListActivityGroupsParams parses query parameters for listing activity groups
 func QueryToListActivityGroupsParams(query url.Values) (*application.ListActivityGroupsParams, error) {
 	params := &application.ListActivityGroupsParams{
-		Limit:  20, // default
-		Offset: 0,  // default
+		Limit: 20, // default
 	}
 
 	// Parse creator_id filter
@@ -116,6 +96,22 @@ func QueryToListActivityGroupsParams(query url.Values) (*application.ListActivit
 			return nil, err
 		}
 		params.CreatorID = &creatorID
+	}
+
+	// Parse member_id filter
+	if memberIDStr := query.Get("member_id"); memberIDStr != "" {
+		memberID, err := uuid.Parse(memberIDStr)
+		if err != nil {
+			return nil, err
+		}
+		params.MemberID = &memberID
+	}
+
+	// Parse member_status filter - repeatable, e.g.
+	// ?member_status=pending&member_status=confirmed. Only meaningful
+	// alongside member_id.
+	if statuses := query["member_status"]; len(statuses) > 0 {
+		params.MemberStatus = statuses
 	}
 
 	// Parse status filter
@@ -128,23 +124,22 @@ func QueryToListActivityGroupsParams(query url.Values) (*application.ListActivit
 		params.Title = &title
 	}
 
-	// Parse limit
-	if limitStr := query.Get("limit"); limitStr != "" {
-		limit, err := strconv.Atoi(limitStr)
-		if err != nil {
-			return nil, err
-		}
-		params.Limit = limit
+	// Parse activity_type filter
+	if activityType := query.Get("activity_type"); activityType != "" {
+		params.ActivityType = &activityType
 	}
 
-	// Parse offset
-	if offsetStr := query.Get("offset"); offsetStr != "" {
-		offset, err := strconv.Atoi(offsetStr)
-		if err != nil {
-			return nil, err
-		}
-		params.Offset = offset
+	// Parse difficulty_level filter
+	if difficultyLevel := query.Get("difficulty_level"); difficultyLevel != "" {
+		params.DifficultyLevel = &difficultyLevel
 	}
+
+	limit, pageToken, err := api.ParsePageParams(query, params.Limit)
+	if err != nil {
+		return nil, err
+	}
+	params.Limit = limit
+	params.PageToken = pageToken
 
 	return params, nil
 }
@@ -152,8 +147,7 @@ func QueryToListActivityGroupsParams(query url.Values) (*application.ListActivit
 // QueryToDiscoverActivityGroupsParams parses query parameters for discovering activity groups
 func QueryToDiscoverActivityGroupsParams(query url.Values) (*application.DiscoverActivityGroupsParams, error) {
 	params := &application.DiscoverActivityGroupsParams{
-		Limit:  20, // default
-		Offset: 0,  // default
+		Limit: 20, // default
 	}
 
 	// Parse city filter
@@ -166,28 +160,14 @@ func QueryToDiscoverActivityGroupsParams(query url.Values) (*application.Discove
 		params.Country = &country
 	}
 
-	// Parse activity_type filter
-	if activityType := query.Get("activity_type"); activityType != "" {
-		params.ActivityType = &activityType
-	}
+	params.Interests = parseInterestsFromQuery(query)
 
-	// Parse limit
-	if limitStr := query.Get("limit"); limitStr != "" {
-		limit, err := strconv.Atoi(limitStr)
-		if err != nil {
-			return nil, err
-		}
-		params.Limit = limit
+	limit, pageToken, err := api.ParsePageParams(query, params.Limit)
+	if err != nil {
+		return nil, err
 	}
-
-	// Parse offset
-	if offsetStr := query.Get("offset"); offsetStr != "" {
-		offset, err := strconv.Atoi(offsetStr)
-		if err != nil {
-			return nil, err
-		}
-		params.Offset = offset
-	}
+	params.Limit = limit
+	params.PageToken = pageToken
 
 	return params, nil
 }

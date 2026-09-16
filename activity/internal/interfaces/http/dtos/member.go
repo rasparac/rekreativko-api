@@ -27,15 +27,12 @@ type MemberResponse struct {
 	DecidedAt       *time.Time `json:"decided_at,omitempty" example:"2024-01-01T00:00:00Z"`
 }
 
-// MemberListResponse is a response containing a list of members
-type MemberListResponse struct {
-	Members []MemberResponse `json:"members"`
-	Total   int              `json:"total"`
-	Limit   int              `json:"limit"`
-	Offset  int              `json:"offset"`
-}
-
 // InviteMemberResponse is a response after inviting a member
 type InviteMemberResponse struct {
+	ID uuid.UUID `json:"id" example:"123e4567-e89b-12d3-a456-426655440000"`
+}
+
+// RequestToJoinGroupResponse is a response after requesting to join an activity group
+type RequestToJoinGroupResponse struct {
 	ID uuid.UUID `json:"id" example:"123e4567-e89b-12d3-a456-426655440000"`
 }

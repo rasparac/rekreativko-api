@@ -2,12 +2,12 @@ package mapper
 
 import (
 	"net/url"
-	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
+	"github.com/rasparac/rekreativko-api/shared/api"
 )
 
 // InviteMemberRequestToParams converts InviteMemberRequest to application params
@@ -100,30 +100,10 @@ func MemberToResponse(member *domain.Member) *dtos.MemberResponse {
 	}
 }
 
-// MemberListToResponse converts list of members to list response
-func MemberListToResponse(
-	members []*domain.Member,
-	limit int,
-	offset int,
-) *dtos.MemberListResponse {
-	responses := make([]dtos.MemberResponse, len(members))
-	for i, member := range members {
-		responses[i] = *MemberToResponse(member)
-	}
-
-	return &dtos.MemberListResponse{
-		Members: responses,
-		Total:   len(responses),
-		Limit:   limit,
-		Offset:  offset,
-	}
-}
-
 // QueryToListMembersParams parses query parameters for listing members
 func QueryToListMembersParams(query url.Values) (*application.ListMembersParams, error) {
 	params := &application.ListMembersParams{
-		Limit:  20, // default
-		Offset: 0,  // default
+		Limit: 20, // default
 	}
 
 	// Parse activity_group_id filter
@@ -154,23 +134,12 @@ func QueryToListMembersParams(query url.Values) (*application.ListMembersParams,
 		params.Role = &role
 	}
 
-	// Parse limit
-	if limitStr := query.Get("limit"); limitStr != "" {
-		limit, err := strconv.Atoi(limitStr)
-		if err != nil {
-			return nil, err
-		}
-		params.Limit = limit
+	limit, pageToken, err := api.ParsePageParams(query, params.Limit)
+	if err != nil {
+		return nil, err
 	}
-
-	// Parse offset
-	if offsetStr := query.Get("offset"); offsetStr != "" {
-		offset, err := strconv.Atoi(offsetStr)
-		if err != nil {
-			return nil, err
-		}
-		params.Offset = offset
-	}
+	params.Limit = limit
+	params.PageToken = pageToken
 
 	return params, nil
 }

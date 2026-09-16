@@ -3,6 +3,8 @@ package postgres
 import (
 	"fmt"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // QueryBuilder is a helper for building dynamic SQL queries with parameterized arguments.
@@ -99,4 +101,73 @@ func EscapeLikePattern(s string) string {
 // Call this method after adding all conditions to get the complete SQL query.
 func (qb *QueryBuilder) Build() (string, []any) {
 	return qb.BaseQuery, qb.Args
+}
+
+// AddKeysetCondition adds a keyset-pagination resume condition:
+// "AND (sortColumn, id) > ($n, $n+1)" (or "<" for descending order), using
+// Postgres row comparison so a single predicate captures both "strictly past
+// the last sort value" and "same sort value, but past the last id" (the
+// tiebreaker for rows that sort equally). direction must match the query's
+// own ORDER BY direction exactly, or results will be silently wrong.
+//
+// sortColumn must be a hardcoded SQL fragment, never user input - same rule as AddCondition.
+func (qb *QueryBuilder) AddKeysetCondition(sortColumn string, direction string, sortValue any, id uuid.UUID) {
+	op := ">"
+	if direction == "DESC" {
+		op = "<"
+	}
+
+	qb.ParamCount++
+	sortParam := qb.ParamCount
+	qb.ParamCount++
+	idParam := qb.ParamCount
+
+	qb.BaseQuery += fmt.Sprintf(" AND (%s, id) %s ($%d, $%d)", sortColumn, op, sortParam, idParam)
+	qb.Args = append(qb.Args, sortValue, id)
+}
+
+// InterestPair is one (activity type, difficulty level) combination to
+// OR-match via AddInterestsCondition. An empty DifficultyLevel matches any
+// level for that ActivityType.
+type InterestPair struct {
+	ActivityType    string
+	DifficultyLevel string
+}
+
+// AddInterestsCondition adds "AND (pair1 OR pair2 OR ...)", one clause per
+// interest pair, so a caller with several activity interests (e.g. running
+// at any level, cycling at advanced only) gets everything matching *any* of
+// them in a single query - instead of the caller needing to run one query
+// per interest and merge/dedupe/paginate the results themselves.
+//
+// typeColumn and levelColumn must be hardcoded SQL fragments, never user
+// input - same rule as AddCondition. A no-op if interests is empty.
+func (qb *QueryBuilder) AddInterestsCondition(typeColumn, levelColumn string, interests []InterestPair) {
+	clauses := make([]string, 0, len(interests))
+
+	for _, interest := range interests {
+		if interest.ActivityType == "" {
+			continue
+		}
+
+		qb.ParamCount++
+		typeParam := qb.ParamCount
+
+		if interest.DifficultyLevel == "" {
+			clauses = append(clauses, fmt.Sprintf("%s = $%d", typeColumn, typeParam))
+			qb.Args = append(qb.Args, interest.ActivityType)
+			continue
+		}
+
+		qb.ParamCount++
+		levelParam := qb.ParamCount
+		clauses = append(clauses, fmt.Sprintf("(%s = $%d AND %s = $%d)", typeColumn, typeParam, levelColumn, levelParam))
+		qb.Args = append(qb.Args, interest.ActivityType, interest.DifficultyLevel)
+	}
+
+	if len(clauses) == 0 {
+		return
+	}
+
+	qb.BaseQuery += " AND (" + strings.Join(clauses, " OR ") + ")"
 }

@@ -12,14 +12,16 @@ func Test_NewRefreshToken(t *testing.T) {
 
 	var (
 		accountID = uuid.New()
+		plaintext = "raw_token"
 		tokenHash = "hashed_token"
 		expiresAt = time.Now().Add(24 * time.Hour)
 	)
 
-	token := NewRefreshToken(accountID, tokenHash, expiresAt)
+	token := NewRefreshToken(accountID, plaintext, tokenHash, expiresAt)
 
 	assert.Equal(t, accountID, token.AccountID())
-	assert.Equal(t, tokenHash, token.Token())
+	assert.Equal(t, plaintext, token.Token())
+	assert.Equal(t, tokenHash, token.TokenHash())
 	assert.Equal(t, expiresAt, token.ExpiresAt())
 
 	assert.True(t, token.IsValid())
@@ -57,7 +59,7 @@ func Test_RefreshToken_IsValid(t *testing.T) {
 
 	for _, tc := range testCase {
 		t.Run(tc.name, func(t *testing.T) {
-			token := NewRefreshToken(uuid.New(), "hash", tc.expiresAt)
+			token := NewRefreshToken(uuid.New(), "raw", "hash", tc.expiresAt)
 
 			if tc.revoked {
 				err := token.Revoke("unit test revoke")
@@ -70,7 +72,7 @@ func Test_RefreshToken_IsValid(t *testing.T) {
 }
 
 func Test_RefreshToken_Revoke(t *testing.T) {
-	token := NewRefreshToken(uuid.New(), "hash", time.Now().Add(1*time.Hour))
+	token := NewRefreshToken(uuid.New(), "raw", "hash", time.Now().Add(1*time.Hour))
 
 	assert.False(t, token.IsRevoked())
 

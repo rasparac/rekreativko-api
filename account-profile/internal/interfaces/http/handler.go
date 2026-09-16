@@ -22,7 +22,7 @@ type (
 	accountProfiler interface {
 		GetProfile(ctx context.Context, filter application.ProfileFilter) (*domain.AccountProfile, error)
 		UpdateProfile(ctx context.Context, accountID uuid.UUID, toUpdateProfile application.UpdateProfileParams) error
-		GetProfiles(ctx context.Context, filter application.ProfilesFilter) ([]*domain.AccountProfile, error)
+		GetProfiles(ctx context.Context, filter application.ProfilesFilter) ([]*domain.AccountProfile, string, error)
 	}
 
 	accountSettingsService interface {
@@ -60,7 +60,7 @@ func (h *accountPorfileHandler) RegisterRoutes(
 
 	mux.Handle(
 		"GET /api/v1/profiles/{id}",
-		middlewares.ThenFunc(nil),
+		middlewares.ThenFunc(h.GetProfileByID),
 	)
 
 	mux.Handle(
@@ -119,6 +119,46 @@ func (h *accountPorfileHandler) GetProfile(
 	)
 }
 
+// GetProfileByID
+//
+//	@Summary		Returns account profile by ID
+//	@Description	Returns a single account profile by account ID
+//	@Tags			account Profile
+//	@Produce		json
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			id	path		string				true	"Account ID"
+//	@Success		200	{object}	api.Response[any]	"Account profile returned successfully"
+//	@Failure		400	{object}	api.Response[any]	"Invalid request"
+//	@Failure		404	{object}	api.Response[any]	"Profile not found"
+//	@Failure		500	{object}	api.Response[any]	"Internal server error"
+//	@Router			/api/v1/profiles/{id} [get]
+func (h *accountPorfileHandler) GetProfileByID(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	ctx := r.Context()
+
+	accountID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		api.WriteBadRequestResponse(w, "invalid_account_id", "Invalid account ID")
+		return
+	}
+
+	profile, err := h.accountProfileService.GetProfile(ctx, application.ProfileFilter{
+		AccountID: &accountID,
+	})
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	api.WriteOkResponse(
+		w,
+		mapper.DomainProfileToResponse(profile),
+		"",
+	)
+}
+
 // GetProfiles
 //
 //	@Summary		Returns account profiles
@@ -137,9 +177,9 @@ func (h *accountPorfileHandler) GetProfile(
 //	@Param			sort_order		query		string		false	"Sort order (asc, desc)"
 //	@Param			country			query		string		false	"Filter by location country"
 //	@Param			limit			query		int			false	"Limit number of results (default 20)"
-//	@Param			offset			query		int			false	"Offset for pagination (default 0)"
+//	@Param			page_token		query		string		false	"Token from the previous response's next_page_token, to fetch the next page"
 //
-//	@Success		200				{object}	api.Response[any]
+//	@Success		200				{object}	api.Response[api.Page[dtos.AccountProfileResponse]]
 //	@Failure		400				{object}	api.Response[any]	"Invalid request"
 //	@Failure		500				{object}	api.Response[any]	"Internal server error"
 //	@Router			/api/v1/profiles [get]
@@ -155,20 +195,15 @@ func (h *accountPorfileHandler) GetProfiles(
 		return
 	}
 
-	profiles, err := h.accountProfileService.GetProfiles(r.Context(), filter)
+	profiles, nextPageToken, err := h.accountProfileService.GetProfiles(r.Context(), filter)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
 
-	response := make([]dtos.AccountProfileResponse, 0, len(profiles))
-	for _, profile := range profiles {
-		response = append(response, mapper.DomainProfileToResponse(profile))
-	}
-
 	api.WriteOkResponse(
 		w,
-		response,
+		api.NewPage(profiles, filter.Limit, nextPageToken, mapper.DomainProfileToResponse),
 		"",
 	)
 }
@@ -183,7 +218,9 @@ func (h *accountPorfileHandler) GetProfiles(
 //
 //	@Security		GatewayKeyAuth && BearerAuth
 //	@Param			id		path		string						true	"Profile account ID"
+//
 // TODO: Fix swagger parsing for UpdateProfileRequest
+//
 //	Param			request	body		dtos.UpdateProfileRequest	true	"Account Registration Data"
 //	@Success		200		{object}	api.Response[any]			"Account created successfully"
 //	@Failure		400		{object}	api.Response[any]			"Invalid request"
@@ -205,7 +242,12 @@ func (h *accountPorfileHandler) UpdateProfile(
 		return
 	}
 
-	params := mapper.UpdateProfileRequestToParams(req)
+	params, err := mapper.UpdateProfileRequestToParams(req)
+	if err != nil {
+		api.WriteBadRequestResponse(w, "invalid_date_of_birth", "date_of_birth must be in YYYY-MM-DD format")
+		return
+	}
+
 	err = h.accountProfileService.UpdateProfile(r.Context(), accountID, params)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)

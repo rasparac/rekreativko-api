@@ -23,6 +23,7 @@ type SessionGeneratorService struct {
 	txManager       *postgres.TransactionManager
 	templateRepo    SessionTemplateRepository
 	sessionRepo     persistence.SessionRepository
+	groupRepo       ActivityGroupRepository
 	eventWriter     domainevent.EventWriter
 	tracer          trace.Tracer
 	metrics         *metrics.Metrics
@@ -35,6 +36,7 @@ func NewSessionGeneratorService(
 	txManager *postgres.TransactionManager,
 	templateRepo SessionTemplateRepository,
 	sessionRepo persistence.SessionRepository,
+	groupRepo ActivityGroupRepository,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 	lookaheadWindow time.Duration,
@@ -44,6 +46,7 @@ func NewSessionGeneratorService(
 		txManager:       txManager,
 		templateRepo:    templateRepo,
 		sessionRepo:     sessionRepo,
+		groupRepo:       groupRepo,
 		eventWriter:     eventWriter,
 		tracer:          telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:         metrics,
@@ -131,6 +134,18 @@ func (s *SessionGeneratorService) generateSessionsForTemplate(
 		return 0, nil
 	}
 
+	// Title and activity type are constant across every occurrence generated
+	// from this template - resolve them once instead of per-occurrence.
+	group, err := s.groupRepo.GetActivityGroupByID(ctx, template.ActivityGroupID())
+	if err != nil {
+		return 0, fmt.Errorf("failed to get activity group for template: %w", err)
+	}
+
+	title, err := domain.NewTitle(template.Title())
+	if err != nil {
+		return 0, fmt.Errorf("failed to build session title from template: %w", err)
+	}
+
 	// Generate sessions
 	var sessionsGenerated int
 	currentTime := startFrom
@@ -150,12 +165,13 @@ func (s *SessionGeneratorService) generateSessionsForTemplate(
 
 		// Create session at this occurrence
 		err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
-			// Build session location
+			// Build session location, inherited from the template's default location
 			location, err := domain.NewSessionLocation(
 				template.LocationCity(),
 				template.LocationCountry(),
-				0, // latitude - TODO: add lat/lng to template
-				0, // longitude
+				template.DefaultLocation().Street(),
+				template.DefaultLocation().Latitude(),
+				template.DefaultLocation().Longitude(),
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create location: %w", err)
@@ -171,14 +187,17 @@ func (s *SessionGeneratorService) generateSessionsForTemplate(
 
 			// Create session
 			templateID := template.ID()
+			activityGroupID := template.ActivityGroupID()
 			sessionInput := domain.SessionInput{
-				ActivityGroupID: template.ActivityGroupID(),
+				ActivityGroupID: &activityGroupID,
 				CreatedByID:     template.CreatedByID(),
 				TemplateID:      &templateID,
+				Title:           title,
+				ActivityType:    group.ActivityType(),
+				DifficultyLevel: group.DifficultyLevel(),
 				Location:        location,
 				Schedule:        schedule,
 				Capacity:        template.DefaultCapacity(),
-				Note:            fmt.Sprintf("Generated from template: %s", template.Title()),
 				IsRecurring:     true,
 				AutoAttendeeIDs: nil, // No auto-attendees for generated sessions
 			}

@@ -20,4 +20,10 @@ type (
 		Timeout time.Duration `envconfig:"ACTIVITY_SERVICE_TIMEOUT" default:"30s"`
 		Version string        `envconfig:"ACTIVITY_SERVICE_VERSION" default:"1.0.0"`
 	}
+
+	NotificationsServiceConfig struct {
+		URL     string        `envconfig:"NOTIFICATIONS_SERVICE_URL" default:"http://localhost:8083"`
+		Timeout time.Duration `envconfig:"NOTIFICATIONS_SERVICE_TIMEOUT" default:"30s"`
+		Version string        `envconfig:"NOTIFICATIONS_SERVICE_VERSION" default:"1.0.0"`
+	}
 )

@@ -1,0 +1,37 @@
+groups:
+  - name: rekreativko.availability
+    rules:
+      - alert: ServiceDown
+        expr: up{job="rekreativko"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} is down"
+          description: "Prometheus has failed to scrape {{ $labels.service }} for 2 minutes."
+
+  - name: rekreativko.http
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum by (service) (rate(http_requests_total{status=~"5.."}[5m]))
+          /
+          sum by (service) (rate(http_requests_total[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx error rate on {{ $labels.service }}"
+          description: "{{ $labels.service }} has a 5xx error rate above 5% for the last 5 minutes (current value: {{ $value | humanizePercentage }})."
+
+  - name: rekreativko.outbox
+    rules:
+      - alert: OutboxPublishFailures
+        expr: sum(rate(events_processed_total{service="outbox-publisher", status="failed"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox publisher is failing to publish events"
+          description: "The outbox publisher has had a non-zero event failure rate for the last 5 minutes (current value: {{ $value | humanize }}/s)."

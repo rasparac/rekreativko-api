@@ -20,10 +20,15 @@ type CreateSessionTemplateRequest struct {
 	RecurrenceTimeMinute int     `json:"recurrence_time_minute" validate:"min=0,max=59" example:"0"`
 	RecurrenceEndsAt     *string `json:"recurrence_ends_at" validate:"omitempty,datetime=2006-01-02T15:04:05Z07:00" example:"2025-12-31T23:59:59Z"` // RFC3339
 
-	// Default session settings
-	DefaultCapacity *int    `json:"default_capacity" validate:"omitempty,min=1" example:"20"`
-	LocationCity    *string `json:"location_city" validate:"omitempty,min=2,max=100" example:"Belgrade"`
-	LocationCountry *string `json:"location_country" validate:"omitempty,min=2,max=100" example:"Serbia"`
+	// Default session settings, inherited by every session generated from this template
+	DefaultCapacity *int   `json:"default_capacity" validate:"omitempty,min=1" example:"20"`
+	LocationCity    string `json:"location_city" validate:"required,min=2,max=100" example:"Belgrade"`
+	LocationCountry string `json:"location_country" validate:"required,min=2,max=100" example:"Serbia"`
+	// LocationStreet is an optional venue/address line, inherited by every
+	// session generated from this template.
+	LocationStreet string  `json:"location_street,omitempty" validate:"omitempty,max=255" example:"Ada Ciganlija bb, Court 3"`
+	LocationLat    float64 `json:"location_lat" validate:"required,min=-90,max=90" example:"44.8176"`
+	LocationLng    float64 `json:"location_lng" validate:"required,min=-180,max=180" example:"20.4633"`
 }
 
 // UpdateSessionTemplateRequest is a request to update a session template
@@ -40,10 +45,15 @@ type UpdateSessionTemplateRequest struct {
 	RecurrenceTimeMinute int     `json:"recurrence_time_minute" validate:"min=0,max=59" example:"0"`
 	RecurrenceEndsAt     *string `json:"recurrence_ends_at" validate:"omitempty,datetime=2006-01-02T15:04:05Z07:00" example:"2025-12-31T23:59:59Z"`
 
-	// Default session settings
-	DefaultCapacity *int    `json:"default_capacity" validate:"omitempty,min=1" example:"20"`
-	LocationCity    *string `json:"location_city" validate:"omitempty,min=2,max=100" example:"Belgrade"`
-	LocationCountry *string `json:"location_country" validate:"omitempty,min=2,max=100" example:"Serbia"`
+	// Default session settings, inherited by every session generated from this template
+	DefaultCapacity *int   `json:"default_capacity" validate:"omitempty,min=1" example:"20"`
+	LocationCity    string `json:"location_city" validate:"required,min=2,max=100" example:"Belgrade"`
+	LocationCountry string `json:"location_country" validate:"required,min=2,max=100" example:"Serbia"`
+	// LocationStreet is an optional venue/address line, inherited by every
+	// session generated from this template.
+	LocationStreet string  `json:"location_street,omitempty" validate:"omitempty,max=255" example:"Ada Ciganlija bb, Court 3"`
+	LocationLat    float64 `json:"location_lat" validate:"required,min=-90,max=90" example:"44.8176"`
+	LocationLng    float64 `json:"location_lng" validate:"required,min=-180,max=180" example:"20.4633"`
 }
 
 // RecurrenceInfo contains recurrence rule information
@@ -67,8 +77,11 @@ type SessionTemplateResponse struct {
 	Description     string     `json:"description" example:"Every Monday morning run in the park"`
 	Status          string     `json:"status" example:"active"`
 	DefaultCapacity *int       `json:"default_capacity,omitempty" example:"20"`
-	LocationCity    *string    `json:"location_city,omitempty" example:"Belgrade"`
-	LocationCountry *string    `json:"location_country,omitempty" example:"Serbia"`
+	LocationCity    string     `json:"location_city" example:"Belgrade"`
+	LocationCountry string     `json:"location_country" example:"Serbia"`
+	LocationStreet  string     `json:"location_street,omitempty" example:"Ada Ciganlija bb, Court 3"`
+	LocationLat     float64    `json:"location_lat" example:"44.8176"`
+	LocationLng     float64    `json:"location_lng" example:"20.4633"`
 	GeneratedUpTo   *time.Time `json:"generated_up_to,omitempty" example:"2025-12-31T23:59:59Z"`
 
 	// Recurrence information (omitted if template is not recurring)
@@ -77,14 +90,6 @@ type SessionTemplateResponse struct {
 	CreatedAt time.Time  `json:"created_at" example:"2024-01-01T00:00:00Z"`
 	UpdatedAt time.Time  `json:"updated_at" example:"2024-01-01T00:00:00Z"`
 	DeletedAt *time.Time `json:"deleted_at,omitempty" example:"2024-01-01T00:00:00Z"`
-}
-
-// SessionTemplateListResponse is a response containing a list of session templates
-type SessionTemplateListResponse struct {
-	Templates []SessionTemplateResponse `json:"templates"`
-	Total     int                       `json:"total"`
-	Limit     int                       `json:"limit"`
-	Offset    int                       `json:"offset"`
 }
 
 // CreateSessionTemplateResponse is a response after creating a session template

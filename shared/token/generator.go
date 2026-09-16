@@ -3,13 +3,14 @@ package token
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type (
@@ -19,12 +20,13 @@ type (
 		refreshTokenDuration time.Duration
 	}
 
+	// Claims is deliberately minimal - just the standard registered claims
+	// (sub carries the account ID). Anything else about the account (email,
+	// phone, subscription tier, etc.) is mutable and can't be safely cached in
+	// a token that can't be revoked or edited once issued; fetch it fresh via
+	// GET /api/v1/me instead.
 	Claims struct {
 		jwt.RegisteredClaims
-
-		AccountID   uuid.UUID `json:"account_id"`
-		PhoneNumber string    `json:"phone_number"`
-		Roles       []string  `json:"roles"`
 	}
 )
 
@@ -94,17 +96,15 @@ func (g *Generator) GenerateRefreshToken() (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-func (g *Generator) HashRefreshToken(token string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
-	if err != nil {
-		return "", fmt.Errorf("failed to hash refresh token: %w", err)
-	}
-
-	return string(hash), nil
-}
-
-func (g *Generator) CompareRefreshTokenAndHash(token, hash string) error {
-	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(token))
+// HashRefreshToken returns a deterministic SHA-256 hex digest of a refresh
+// token, for storage/lookup. Unlike passwords, refresh tokens are already
+// high-entropy random values (see GenerateRefreshToken), so a slow, salted
+// hash like bcrypt isn't needed to resist brute-forcing - a fast, deterministic
+// hash is what lets the database look a token up by equality (`WHERE token_hash = ?`)
+// while still never storing the raw, usable credential.
+func (g *Generator) HashRefreshToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 func (g *Generator) RefreshTokenDuration() time.Duration {

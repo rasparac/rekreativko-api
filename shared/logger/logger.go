@@ -8,7 +8,9 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/shared/api"
+	"github.com/rasparac/rekreativko-api/shared/authcontext"
 )
 
 type (
@@ -112,10 +114,21 @@ func (l *Logger) log(
 	requestID := api.RequestIDFromContext(ctx)
 	ipAddress := api.IpAddressFromContext(ctx)
 	userAgent := api.UserAgentFromContext(ctx)
+	eventID := api.EventIDFromContext(ctx)
+
+	// Empty (not uuid.Nil.String()) when unset, matching the other fields
+	// here - most log lines happen after auth middleware has populated this,
+	// but plenty (startup, public endpoints, background jobs) never have it.
+	var accountID string
+	if id := authcontext.GetAccountID(ctx); id != uuid.Nil {
+		accountID = id.String()
+	}
 
 	keysAndValues = append(keysAndValues, "ip_address", ipAddress)
 	keysAndValues = append(keysAndValues, "user_agent", userAgent)
 	keysAndValues = append(keysAndValues, "request_id", requestID)
+	keysAndValues = append(keysAndValues, "event_id", eventID)
+	keysAndValues = append(keysAndValues, "account_id", accountID)
 
 	var pcs [1]uintptr
 	runtime.Callers(3, pcs[:]) // skip callers, log, and the public method

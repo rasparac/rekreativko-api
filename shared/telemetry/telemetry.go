@@ -91,4 +91,7 @@ const (
 
 	TracerActivityService    = "activity.service"
 	TracerActivityRepository = "activity.repository"
+
+	TracerNotificationsService    = "notifications.service"
+	TracerNotificationsRepository = "notifications.repository"
 )

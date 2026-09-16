@@ -2,22 +2,36 @@ package http
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/domainerror"
 )
 
-// getUserRole fetches the user's role in the activity group from the database
-// Returns the role string or an error if the user is not a member
-func (h *Handler) getUserRole(ctx context.Context, activityGroupID, accountID uuid.UUID) (string, error) {
-	member, err := h.memberService.GetMember(ctx, activityGroupID, accountID)
+// getUserRole fetches the user's role in the activity group from the database.
+// Returns the role string or an error if the user is not a member. A standalone
+// session has no group at all, so there's no role to look up - the caller's
+// permission is decided purely by the domain layer's "are you the creator" check.
+func (h *Handler) getUserRole(ctx context.Context, activityGroupID *uuid.UUID, accountID uuid.UUID) (string, error) {
+	if activityGroupID == nil {
+		return "", nil
+	}
+
+	member, err := h.memberService.GetMember(ctx, *activityGroupID, accountID)
 	if err != nil {
-		h.logger.Error(ctx, "failed to get user membership",
-			"activity_group_id", activityGroupID,
-			"account_id", accountID,
-			"error", err)
+		// Not a member is the expected, common case for e.g. a standalone
+		// session's own creator managing their session - they have no group
+		// role at all by design (see canManageSession's creator fallback).
+		// Not a real error, so don't log it as one on every such action.
+		if !errors.Is(err, domain.ErrMemberNotFound) {
+			h.logger.Error(ctx, "failed to get user membership",
+				"activity_group_id", activityGroupID,
+				"account_id", accountID,
+				"error", err)
+		}
 		return "", domainerror.NotFound(domainerror.ErrCodeNotFound, "user is not a member of this activity group", err)
 	}
 

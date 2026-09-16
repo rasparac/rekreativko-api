@@ -6,39 +6,30 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rasparac/rekreativko-api/shared/activitycatalog"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 )
 
-type ActivityType string
+type ActivityType = activitycatalog.ActivityType
 
 const (
-	ActivityTypeHiking   ActivityType = "hiking"
-	ActivityTypeCycling  ActivityType = "cycling"
-	ActivityTypeRunning  ActivityType = "running"
-	ActivityTypeSwimming ActivityType = "swimming"
-	ActivityTypeYoga     ActivityType = "yoga"
-	ActivityTypeGym      ActivityType = "gym"
-	ActivityTypeOther    ActivityType = "other"
+	ActivityTypeHiking        = activitycatalog.ActivityTypeHiking
+	ActivityTypeCycling       = activitycatalog.ActivityTypeCycling
+	ActivityTypeRunning       = activitycatalog.ActivityTypeRunning
+	ActivityTypeSwimming      = activitycatalog.ActivityTypeSwimming
+	ActivityTypeYoga          = activitycatalog.ActivityTypeYoga
+	ActivityTypeGym           = activitycatalog.ActivityTypeGym
+	ActivityTypeOther         = activitycatalog.ActivityTypeOther
+	ActivityTypeWalking       = activitycatalog.ActivityTypeWalking
+	ActivityTypeJogging       = activitycatalog.ActivityTypeJogging
+	ActivityTypeBasketball    = activitycatalog.ActivityTypeBasketball
+	ActivityTypeFootball      = activitycatalog.ActivityTypeFootball
+	ActivityTypeTennis        = activitycatalog.ActivityTypeTennis
+	ActivityTypeDancing       = activitycatalog.ActivityTypeDancing
+	ActivityTypeSkiing        = activitycatalog.ActivityTypeSkiing
+	ActivityTypeClimbing      = activitycatalog.ActivityTypeClimbing
+	ActivityTypeWeightlifting = activitycatalog.ActivityTypeWeightlifting
 )
-
-var validActivityTypes = map[ActivityType]struct{}{
-	ActivityTypeHiking:   {},
-	ActivityTypeCycling:  {},
-	ActivityTypeRunning:  {},
-	ActivityTypeSwimming: {},
-	ActivityTypeYoga:     {},
-	ActivityTypeGym:      {},
-	ActivityTypeOther:    {},
-}
-
-func (t ActivityType) IsValid() bool {
-	_, exists := validActivityTypes[t]
-	return exists
-}
-
-func (t ActivityType) String() string {
-	return string(t)
-}
 
 type ActivityGroupStatus string
 
@@ -68,24 +59,13 @@ func (v ActivityGroupVisibility) String() string {
 	return string(v)
 }
 
-type DifficultyLevel string
+type DifficultyLevel = activitycatalog.ActivityLevel
 
 const (
-	DifficultyLevelBeginner     DifficultyLevel = "beginner"
-	DifficultyLevelIntermediate DifficultyLevel = "intermediate"
-	DifficultyLevelAdvanced     DifficultyLevel = "advanced"
+	DifficultyLevelBeginner     = activitycatalog.ActivityLevelBeginner
+	DifficultyLevelIntermediate = activitycatalog.ActivityLevelIntermediate
+	DifficultyLevelAdvanced     = activitycatalog.ActivityLevelAdvanced
 )
-
-func (d DifficultyLevel) IsValid() bool {
-	switch d {
-	case DifficultyLevelBeginner,
-		DifficultyLevelIntermediate,
-		DifficultyLevelAdvanced:
-		return true
-	default:
-		return false
-	}
-}
 
 type Title struct {
 	value string
@@ -108,11 +88,12 @@ func (t Title) Value() string {
 type Location struct {
 	city      string
 	country   string
+	street    string // optional - venue/address line, e.g. "Ada Ciganlija bb, Court 3"
 	latitude  float64
 	longitude float64
 }
 
-func NewLocation(city, country string, latitude, longitude float64) (Location, error) {
+func NewLocation(city, country, street string, latitude, longitude float64) (Location, error) {
 	if len(city) == 0 {
 		return Location{}, errors.New("city cannot be empty")
 	}
@@ -128,6 +109,7 @@ func NewLocation(city, country string, latitude, longitude float64) (Location, e
 	return Location{
 		city:      city,
 		country:   country,
+		street:    street,
 		latitude:  latitude,
 		longitude: longitude,
 	}, nil
@@ -139,6 +121,10 @@ func (l Location) City() string {
 
 func (l Location) Country() string {
 	return l.country
+}
+
+func (l Location) Street() string {
+	return l.street
 }
 
 func (l Location) Latitude() float64 {
@@ -408,6 +394,22 @@ func (ag *ActivityGroup) IsCancelled() bool {
 
 func (ag *ActivityGroup) CanRequestToJoin() bool {
 	return ag.IsActive() && ag.Visibility() == ActivityGroupVisibilityPublic
+}
+
+// IsVisibleTo reports whether userID may see this group at all. Public
+// groups are visible to everyone; private groups only to their creator or a
+// confirmed member - isMember must be resolved by the caller (a DB lookup,
+// not something this aggregate can answer on its own).
+func (ag *ActivityGroup) IsVisibleTo(userID uuid.UUID, isMember bool) bool {
+	if ag.visibility == ActivityGroupVisibilityPublic {
+		return true
+	}
+
+	if ag.creatorID == userID {
+		return true
+	}
+
+	return isMember
 }
 
 func (ag *ActivityGroup) Update(

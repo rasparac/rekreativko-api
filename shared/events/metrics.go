@@ -14,49 +14,40 @@ type Metrics struct {
 	// Database metrics
 	DBQueryTotal    *prometheus.CounterVec
 	DBQueryDuration *prometheus.HistogramVec
-
-	// Notification metrics
-	NotificationSendTotal    *prometheus.CounterVec
-	NotificationSendFailures *prometheus.CounterVec
-	NotificationSendDuration *prometheus.HistogramVec
 }
 
-func New(namespace string) *Metrics {
+func New() *Metrics {
 	return &Metrics{
 		// Event
 		EventsPublishedTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace: namespace,
 				Subsystem: "events",
 				Name:      "published_total",
 				Help:      "Total number of events published",
 			},
-			[]string{"event_type"},
+			[]string{"event_type", "schema"},
 		),
 		EventPublishDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace: namespace,
 				Subsystem: "events",
 				Name:      "publish_duration_seconds",
 				Help:      "Duration of event publishing in seconds",
 				Buckets:   prometheus.DefBuckets,
 			},
-			[]string{"event_type"},
+			[]string{"event_type", "schema"},
 		),
 		EventProcessedTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace: namespace,
 				Subsystem: "events",
 				Name:      "processed_total",
 				Help:      "Total number of events processed",
 			},
-			[]string{"event_type", "status"},
+			[]string{"event_type", "schema", "status"},
 		),
 
 		// Database query
 		DBQueryTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace: namespace,
 				Subsystem: "database",
 				Name:      "query_total",
 				Help:      "Total number of database queries",
@@ -65,44 +56,12 @@ func New(namespace string) *Metrics {
 		),
 		DBQueryDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace: namespace,
 				Subsystem: "database",
 				Name:      "query_duration_seconds",
 				Help:      "Duration of database queries in seconds",
 				Buckets:   prometheus.DefBuckets,
 			},
 			[]string{"operation", "status", "table"},
-		),
-
-		// Notifications
-
-		NotificationSendTotal: promauto.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: namespace,
-				Subsystem: "notifications",
-				Name:      "send_total",
-				Help:      "Total number of notification sends",
-			},
-			[]string{"type", "channel"},
-		),
-		NotificationSendDuration: promauto.NewHistogramVec(
-			prometheus.HistogramOpts{
-				Namespace: namespace,
-				Subsystem: "notifications",
-				Name:      "send_duration_seconds",
-				Help:      "Duration of notification sends in seconds",
-				Buckets:   prometheus.DefBuckets,
-			},
-			[]string{"type", "channel"},
-		),
-		NotificationSendFailures: promauto.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: namespace,
-				Subsystem: "notifications",
-				Name:      "send_failures_total",
-				Help:      "Total number of notification send failures",
-			},
-			[]string{"type", "channel", "reason"},
 		),
 	}
 }

@@ -21,7 +21,6 @@ type (
 		CreateAccount(ctx context.Context, account *domain.Account) error
 		GetBy(ctx context.Context, filter AccountFilter) (*domain.Account, error)
 		UpdateAccount(ctx context.Context, account *domain.Account) error
-		DeleteAccount(ctx context.Context, UUID uuid.UUID) error
 	}
 
 	AccountFilter struct {
@@ -46,6 +45,7 @@ type (
 		LockedUntil         sql.NullTime
 		CreatedAt           time.Time
 		UpdatedAt           time.Time
+		DeletedAt           sql.NullTime
 	}
 )
 
@@ -85,7 +85,8 @@ func (am *AccountManager) GetBy(ctx context.Context, filter AccountFilter) (*dom
 		failed_login_attempts,
 		locked_until,
 		created_at,
-		updated_at
+		updated_at,
+		deleted_at
 	FROM identity.accounts WHERE %s`
 		args    = []any{}
 		filters = []string{}
@@ -129,6 +130,7 @@ func (am *AccountManager) GetBy(ctx context.Context, filter AccountFilter) (*dom
 		&model.LockedUntil,
 		&model.CreatedAt,
 		&model.UpdatedAt,
+		&model.DeletedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrAccountNotFound
@@ -182,7 +184,8 @@ func (am *AccountManager) UpdateAccount(ctx context.Context, account *domain.Acc
 				status = $4,
 				failed_login_attempts = $5,
 				locked_until = $6,
-				updated_at = $7
+				updated_at = $7,
+				deleted_at = $8
 			WHERE id = $1
 		`
 	)
@@ -199,6 +202,7 @@ func (am *AccountManager) UpdateAccount(ctx context.Context, account *domain.Acc
 		model.FailedLoginAttempts,
 		model.LockedUntil,
 		model.UpdatedAt,
+		model.DeletedAt,
 	)
 	if err != nil {
 		return err
@@ -211,29 +215,15 @@ func (am *AccountManager) UpdateAccount(ctx context.Context, account *domain.Acc
 	return nil
 }
 
-func (am *AccountManager) DeleteAccount(ctx context.Context, UUID uuid.UUID) error {
-	query := `
-	UPDATE
-		identity.accounts
-	SET
-		status = 'deleted',
-		updated_at = NOW()
-	WHERE id = $1`
-
-	querier := am.tx.Querier(ctx)
-
-	_, err := querier.Exec(ctx, query, UUID)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func toAccountModel(account *domain.Account) *accoutModel {
 	var lockedIn time.Time
 	if account.LockedUntil() != nil {
 		lockedIn = *account.LockedUntil()
+	}
+
+	var deletedAt time.Time
+	if account.DeletedAt() != nil {
+		deletedAt = *account.DeletedAt()
 	}
 
 	return &accoutModel{
@@ -255,6 +245,10 @@ func toAccountModel(account *domain.Account) *accoutModel {
 		},
 		CreatedAt: account.CreatedAt(),
 		UpdatedAt: account.UpdatedAt(),
+		DeletedAt: sql.NullTime{
+			Time:  deletedAt,
+			Valid: !deletedAt.IsZero(),
+		},
 	}
 }
 
@@ -271,6 +265,11 @@ func toDomainAccount(account accoutModel) (*domain.Account, error) {
 
 	password := domain.NewPasswordFromHash(account.PasswordHash)
 
+	var deletedAt *time.Time
+	if account.DeletedAt.Valid {
+		deletedAt = &account.DeletedAt.Time
+	}
+
 	return domain.ReconstructAccount(
 		account.ID,
 		email,
@@ -281,6 +280,7 @@ func toDomainAccount(account accoutModel) (*domain.Account, error) {
 		&account.LockedUntil.Time,
 		account.CreatedAt,
 		account.UpdatedAt,
+		deletedAt,
 	), nil
 }
 

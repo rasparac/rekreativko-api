@@ -15,6 +15,7 @@ var (
 	ErrActivityGroupNotActive         = errors.New("activity group is not active")
 	ErrActivityGroupCompleted         = errors.New("activity group is completed")
 	ErrActivityGroupFull              = errors.New("activity group is full")
+	ErrActivityGroupNotJoinable       = errors.New("activity group is not open for join requests")
 	ErrInvalidScheduleTime            = errors.New("start time must be before end time")
 	ErrActivityGroupInvalidVisibility = errors.New("activity group visibility is required")
 	ErrStartTimeInPast                = errors.New("start time cannot be in the past")
@@ -34,6 +35,7 @@ var (
 	ErrCannotDemoteCreator   = errors.New("cannot demote the creator to a regular member")
 	ErrMemberAlreadyPriority = errors.New("member is already a priority member")
 	ErrMemberNotPriority     = errors.New("member is not a priority member")
+	ErrInsufficientRole      = errors.New("member role cannot manage this group")
 )
 
 // Invite errors
@@ -54,6 +56,7 @@ var (
 	ErrSessionNotStarted               = errors.New("session has not started yet")
 	ErrSessionCanceled                 = errors.New("session is canceled")
 	ErrSessionCompleted                = errors.New("session is completed")
+	ErrSessionNotExpiredYet            = errors.New("session has not expired yet")
 	ErrSessionAlreadyStarted           = errors.New("session has already started")
 	ErrSessionInvalidSchedule          = errors.New("session schedule is invalid")
 	ErrInvalidSessionCapacity          = errors.New("session capacity must be a positive integer or nil for unlimited")
@@ -62,6 +65,9 @@ var (
 	ErrSessionLocationCountryRequired  = errors.New("session location country is required")
 	ErrSessionLocationLatitudeInvalid  = errors.New("session location latitude must be between -90 and 90")
 	ErrSessionLocationLongitudeInvalid = errors.New("session location longitude must be between -180 and 180")
+	ErrInvalidSessionVisibility        = errors.New("session visibility must be public or private")
+	ErrSessionFull                     = errors.New("session has reached its capacity")
+	ErrInvalidDiscoveryRadius          = errors.New("discovery radius must be greater than 0")
 	ErrSessionNotOpen                  = errors.New("session is not open for regular members yet")
 )
 
@@ -72,8 +78,9 @@ var (
 	ErrAttendeeAlreadyAttending  = errors.New("attendee is already attending this session")
 	ErrAttendeeNotGoing          = errors.New("attendee is not marked as going to this session")
 	ErrAttendeeCannotPromote     = errors.New("no pending attendees to promote to confirmed status")
-	ErrInvalidAttendeeTransition = errors.New("invalid attendee status transition")
-	ErrInvalidAttendeeStatus     = errors.New("invalid attendee status")
+	ErrInvalidAttendeeTransition   = errors.New("invalid attendee status transition")
+	ErrInvalidAttendeeStatus       = errors.New("invalid attendee status")
+	ErrAttendeeNotAwaitingApproval = errors.New("attendee is not awaiting approval")
 )
 
 // Recurrence errors
@@ -103,6 +110,7 @@ var (
 // SessionTemplate errors
 var (
 	ErrSessionTemplateTitleRequired         = errors.New("session template title is required")
+	ErrSessionTemplateLocationRequired      = errors.New("session template location is required")
 	ErrInvalidRecurrenceFrequency           = errors.New("invalid recurrence frequency")
 	ErrInvalidGenerateHoursBefore           = errors.New("generate hours before cut-off time must be non-negative")
 	ErrInvalidDefaultCapacity               = errors.New("default capacity must be greater than 0")

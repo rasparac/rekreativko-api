@@ -29,8 +29,8 @@ type (
 		LookaheadWindow *time.Duration // how far ahead to generate (e.g., 7 days)
 
 		// Pagination
-		Limit  int
-		Offset int
+		Limit     int
+		PageToken string
 	}
 
 	// Database schema reference:
@@ -41,8 +41,10 @@ type (
 	//     title varchar(200) NOT NULL,
 	//     description text DEFAULT NULL,
 	//     capacity int DEFAULT NULL CHECK (capacity IS NULL OR capacity > 0),
-	//     location_city varchar(100) DEFAULT NULL,
-	//     location_country varchar(100) DEFAULT NULL,
+	//     location_city varchar(100) NOT NULL,
+	//     location_country varchar(100) NOT NULL,
+	//     location_lat DECIMAL(9, 6) NOT NULL,
+	//     location_lng DECIMAL(9, 6) NOT NULL,
 	//     generated_up_to timestamptz DEFAULT NULL,
 	//     status varchar(50) NOT NULL DEFAULT 'active',
 	//     recurrence_frequency varchar(50) DEFAULT NULL,
@@ -68,6 +70,9 @@ type (
 		capacity        sql.NullInt32
 		locationCity    sql.NullString
 		locationCountry sql.NullString
+		locationStreet  sql.NullString
+		locationLat     sql.NullFloat64
+		locationLng     sql.NullFloat64
 		generatedUpTo   sql.NullTime
 
 		// Recurrence fields
@@ -121,10 +126,13 @@ func (m *sessionTemplateManager) CreateSessionTemplate(
 			recurrence_time_minute,
 			recurrence_ends_at,
 			created_at,
-			updated_at
+			updated_at,
+			location_lat,
+			location_lng,
+			location_street
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-			$11, $12, $13, $14, $15, $16, $17, $18, $19
+			$11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
 		)
 	`
 
@@ -150,6 +158,9 @@ func (m *sessionTemplateManager) CreateSessionTemplate(
 		model.recurrenceEndsAt,
 		model.createdAt,
 		model.updatedAt,
+		model.locationLat,
+		model.locationLng,
+		model.locationStreet,
 	)
 
 	if err != nil {
@@ -182,6 +193,9 @@ func (m *sessionTemplateManager) UpdateSessionTemplate(
 			recurrence_time_hour = $12,
 			recurrence_time_minute = $13,
 			recurrence_ends_at = $14,
+			location_lat = $15,
+			location_lng = $16,
+			location_street = $17,
 			updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -203,6 +217,9 @@ func (m *sessionTemplateManager) UpdateSessionTemplate(
 		model.recurrenceTimeHour,
 		model.recurrenceTimeMinute,
 		model.recurrenceEndsAt,
+		model.locationLat,
+		model.locationLng,
+		model.locationStreet,
 	)
 
 	if err != nil {
@@ -281,7 +298,10 @@ func (m *sessionTemplateManager) GetSessionTemplateByID(
 			recurrence_time_minute,
 			recurrence_ends_at,
 			created_at,
-			updated_at
+			updated_at,
+			location_lat,
+			location_lng,
+			location_street
 		FROM activity.session_template
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -310,6 +330,9 @@ func (m *sessionTemplateManager) GetSessionTemplateByID(
 		&model.recurrenceEndsAt,
 		&model.createdAt,
 		&model.updatedAt,
+		&model.locationLat,
+		&model.locationLng,
+		&model.locationStreet,
 	)
 
 	if err != nil {
@@ -327,14 +350,17 @@ func (m *sessionTemplateManager) GetSessionTemplateByID(
 func (m *sessionTemplateManager) ListSessionTemplates(
 	ctx context.Context,
 	filter SessionTemplateFilter,
-) ([]*domain.SessionTemplate, error) {
-	query, args := buildSessionTemplateQuery(filter)
+) ([]*domain.SessionTemplate, string, error) {
+	query, args, err := buildSessionTemplateQuery(filter)
+	if err != nil {
+		return nil, "", err
+	}
 
 	q := m.tx.Querier(ctx)
 
 	rows, err := q.Query(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query session templates: %w", err)
+		return nil, "", fmt.Errorf("failed to query session templates: %w", err)
 	}
 	defer rows.Close()
 
@@ -369,29 +395,36 @@ func (m *sessionTemplateManager) ListSessionTemplates(
 			&model.recurrenceEndsAt,
 			&model.createdAt,
 			&model.updatedAt,
+			&model.locationLat,
+			&model.locationLng,
+			&model.locationStreet,
 		)
 
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan session template row: %w", err)
+			return nil, "", fmt.Errorf("failed to scan session template row: %w", err)
 		}
 
 		template, err := sessionTemplateToDomain(&model)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert session template to domain: %w", err)
+			return nil, "", fmt.Errorf("failed to convert session template to domain: %w", err)
 		}
 
 		templates = append(templates, template)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating session template rows: %w", err)
+		return nil, "", fmt.Errorf("error iterating session template rows: %w", err)
 	}
 
-	return templates, nil
+	page, nextPageToken := postgres.BuildPage(templates, filter.Limit, func(t *domain.SessionTemplate) (string, uuid.UUID) {
+		return t.CreatedAt().UTC().Format(time.RFC3339Nano), t.ID()
+	})
+
+	return page, nextPageToken, nil
 }
 
 // buildSessionTemplateQuery constructs the SQL query and arguments for filtering session templates
-func buildSessionTemplateQuery(filter SessionTemplateFilter) (string, []interface{}) {
+func buildSessionTemplateQuery(filter SessionTemplateFilter) (string, []interface{}, error) {
 	qb := &postgres.QueryBuilder{
 		BaseQuery: `
 		SELECT
@@ -413,7 +446,10 @@ func buildSessionTemplateQuery(filter SessionTemplateFilter) (string, []interfac
 			recurrence_time_minute,
 			recurrence_ends_at,
 			created_at,
-			updated_at
+			updated_at,
+			location_lat,
+			location_lng,
+			location_street
 		FROM activity.session_template
 		WHERE deleted_at IS NULL`,
 		Args: make([]any, 0),
@@ -461,23 +497,30 @@ func buildSessionTemplateQuery(filter SessionTemplateFilter) (string, []interfac
 		}
 	}
 
-	// Order by created_at for consistent results
-	qb.BaseQuery += ` ORDER BY created_at DESC`
+	cursor, err := postgres.DecodePageToken(filter.PageToken)
+	if err != nil {
+		return "", nil, err
+	}
+	if cursor != nil {
+		sortValue, err := time.Parse(time.RFC3339Nano, cursor.SortValue)
+		if err != nil {
+			return "", nil, postgres.ErrInvalidPageToken
+		}
+		qb.AddKeysetCondition("created_at", "DESC", sortValue, cursor.ID)
+	}
 
-	// Pagination
+	// Order by created_at for consistent results
+	qb.BaseQuery += ` ORDER BY created_at DESC, id DESC`
+
+	// Pagination - fetch one extra row to detect a next page
 	if filter.Limit > 0 {
 		qb.ParamCount++
 		qb.BaseQuery += fmt.Sprintf(" LIMIT $%d", qb.ParamCount)
-		qb.Args = append(qb.Args, filter.Limit)
+		qb.Args = append(qb.Args, filter.Limit+1)
 	}
 
-	if filter.Offset > 0 {
-		qb.ParamCount++
-		qb.BaseQuery += fmt.Sprintf(" OFFSET $%d", qb.ParamCount)
-		qb.Args = append(qb.Args, filter.Offset)
-	}
-
-	return qb.Build()
+	query, args := qb.Build()
+	return query, args, nil
 }
 
 // ListSessionTemplatesByGroup is a convenience method to get all templates for an activity group
@@ -485,9 +528,10 @@ func (m *sessionTemplateManager) ListSessionTemplatesByGroup(
 	ctx context.Context,
 	activityGroupID uuid.UUID,
 ) ([]*domain.SessionTemplate, error) {
-	return m.ListSessionTemplates(ctx, SessionTemplateFilter{
+	templates, _, err := m.ListSessionTemplates(ctx, SessionTemplateFilter{
 		ActivityGroupID: &activityGroupID,
 	})
+	return templates, err
 }
 
 // FindRecurringTemplatesToGenerate finds active recurring templates that need session generation
@@ -497,10 +541,11 @@ func (m *sessionTemplateManager) FindRecurringTemplatesToGenerate(
 	lookaheadWindow time.Duration,
 ) ([]*domain.SessionTemplate, error) {
 	needsGeneration := true
-	return m.ListSessionTemplates(ctx, SessionTemplateFilter{
+	templates, _, err := m.ListSessionTemplates(ctx, SessionTemplateFilter{
 		NeedsGeneration: &needsGeneration,
 		LookaheadWindow: &lookaheadWindow,
 	})
+	return templates, err
 }
 
 func sessionTemplateModelFromDomain(st *domain.SessionTemplate) *sessionTemplateModel {
@@ -530,6 +575,13 @@ func sessionTemplateModelFromDomain(st *domain.SessionTemplate) *sessionTemplate
 	}
 	if country := st.LocationCountry(); country != "" {
 		model.locationCountry = sql.NullString{String: country, Valid: true}
+	}
+	if loc := st.DefaultLocation(); loc != nil {
+		model.locationLat = sql.NullFloat64{Float64: loc.Latitude(), Valid: true}
+		model.locationLng = sql.NullFloat64{Float64: loc.Longitude(), Valid: true}
+		if street := loc.Street(); street != "" {
+			model.locationStreet = sql.NullString{String: street, Valid: true}
+		}
 	}
 
 	// Generated up to
@@ -584,15 +636,15 @@ func sessionTemplateToDomain(model *sessionTemplateModel) (*domain.SessionTempla
 		capacity = &cap
 	}
 
-	// Reconstruct location (city/country only)
+	// Reconstruct location
 	var location *domain.Location
 	if model.locationCity.Valid && model.locationCountry.Valid {
-		// For templates, we only store city/country, no coordinates
-		// Using 0,0 as placeholder coordinates since domain.Location requires them
 		loc, err := domain.NewLocation(
 			model.locationCity.String,
 			model.locationCountry.String,
-			0, 0, // templates don't need coordinates
+			model.locationStreet.String,
+			model.locationLat.Float64,
+			model.locationLng.Float64,
 		)
 		if err != nil {
 			return nil, err

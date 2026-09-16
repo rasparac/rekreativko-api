@@ -42,6 +42,8 @@ const (
 	EventActivitySessionStarted             = "activity.session.started"
 	EventActivitySessionCancelled           = "activity.session.cancelled"
 	EventActivitySessionCompleted           = "activity.session.completed"
+	EventActivitySessionExpired             = "activity.session.expired"
+	EventActivitySessionVisibilityChanged   = "activity.session.visibility_changed"
 	EventActivitySessionAttendeeAutoPending = "activity.session.attendee.auto_pending"
 
 	// Session attendee events
@@ -51,6 +53,10 @@ const (
 	EventActivitySessionAttendeeRSVPMaybe       = "activity.session.attendee.rsvp_maybe"
 	EventActivitySessionAttendeeRSVPAutoPending = "activity.session.attendee.rsvp_auto_pending"
 	EventActivitySessionAttendeePromoted        = "activity.session.attendee.promoted" // e.g. from waiting list to confirmed
+	EventActivitySessionAttendeeJoinRequested   = "activity.session.attendee.join_requested"
+	EventActivitySessionAttendeeJoinApproved    = "activity.session.attendee.join_approved"
+	EventActivitySessionAttendeeJoinRejected    = "activity.session.attendee.join_rejected"
+	EventActivitySessionAttendeeRemoved         = "activity.session.attendee.removed"
 
 	// Invite link events
 	EventActivityInviteLinkCreated = "activity.invite_link.created"
@@ -253,20 +259,26 @@ type MemberJoinRequestedEvent struct {
 	domainevent.BaseEvent
 	ActivityGroupID uuid.UUID `json:"activity_id"`
 	UserID          uuid.UUID `json:"user_id"`
+	// ManagerUserIDs are the group's confirmed admins/creator at request time -
+	// carried on the event so consumers (e.g. notifications) can resolve who
+	// to notify without needing to query activity's own schema.
+	ManagerUserIDs []uuid.UUID `json:"manager_user_ids"`
 }
 
 func NewMemberJoinRequestedEvent(
 	member *Member,
+	managerUserIDs []uuid.UUID,
 ) *MemberJoinRequestedEvent {
 	return &MemberJoinRequestedEvent{
 		BaseEvent: domainevent.BaseEvent{
 			EventID:     uuid.New(),
-			EventType:   EventActivityGroupMemberJoined,
+			EventType:   EventActivityGroupMemberJoinRequested,
 			OccurredAt:  time.Now().UTC(),
 			AggregateID: member.ActivityGroupID(),
 		},
 		ActivityGroupID: member.ActivityGroupID(),
 		UserID:          member.UserID(),
+		ManagerUserIDs:  managerUserIDs,
 	}
 }
 
@@ -489,6 +501,7 @@ func NewInviteSentEvent(invite *GroupInvite) *InviteSentEvent {
 type InviteAcceptedEvent struct {
 	domainevent.BaseEvent
 	ActivityID    uuid.UUID `json:"activity_id"`
+	InvitedBy     uuid.UUID `json:"invited_by"`
 	InvitedUserID uuid.UUID `json:"invited_user_id"`
 }
 
@@ -501,6 +514,7 @@ func NewInviteAcceptedEvent(invite *GroupInvite) *InviteAcceptedEvent {
 			AggregateID: invite.ID(),
 		},
 		ActivityID:    invite.ActivityGroupID(),
+		InvitedBy:     invite.InvitedByID(),
 		InvitedUserID: invite.InvitedUserID(),
 	}
 }
@@ -508,6 +522,7 @@ func NewInviteAcceptedEvent(invite *GroupInvite) *InviteAcceptedEvent {
 type InviteDeclinedEvent struct {
 	domainevent.BaseEvent
 	ActivityID    uuid.UUID `json:"activity_id"`
+	InvitedBy     uuid.UUID `json:"invited_by"`
 	InvitedUserID uuid.UUID `json:"invited_user_id"`
 }
 
@@ -520,6 +535,7 @@ func NewInviteDeclinedEvent(invite *GroupInvite) *InviteDeclinedEvent {
 			AggregateID: invite.ID(),
 		},
 		ActivityID:    invite.ActivityGroupID(),
+		InvitedBy:     invite.InvitedByID(),
 		InvitedUserID: invite.InvitedUserID(),
 	}
 }
@@ -527,6 +543,7 @@ func NewInviteDeclinedEvent(invite *GroupInvite) *InviteDeclinedEvent {
 type InviteExpiredEvent struct {
 	domainevent.BaseEvent
 	ActivityID    uuid.UUID `json:"activity_id"`
+	InvitedBy     uuid.UUID `json:"invited_by"`
 	InvitedUserID uuid.UUID `json:"invited_user_id"`
 }
 
@@ -538,6 +555,7 @@ func NewInviteExpiredEvent(invite *GroupInvite) *InviteExpiredEvent {
 			OccurredAt:  time.Now().UTC(),
 			AggregateID: invite.ID(),
 		},
+		InvitedBy:     invite.InvitedByID(),
 		ActivityID:    invite.ActivityGroupID(),
 		InvitedUserID: invite.InvitedUserID(),
 	}
@@ -629,7 +647,7 @@ func NewInviteLinkExpiredEvent(
 
 type SessionCreatedEvent struct {
 	domainevent.BaseEvent
-	ActivityID  uuid.UUID  `json:"activity_id"`
+	ActivityID  *uuid.UUID `json:"activity_id"`
 	CreatedBy   uuid.UUID  `json:"created_by"`
 	StartTime   time.Time  `json:"start_time"`
 	EndTime     *time.Time `json:"end_time"`
@@ -657,13 +675,13 @@ func NewSessionCreatedEvent(
 
 type SessionAttendeeAutoConfirmedEvent struct {
 	domainevent.BaseEvent
-	ActivityID uuid.UUID `json:"activity_id"`
-	UserID     uuid.UUID `json:"user_id"`
+	ActivityID *uuid.UUID `json:"activity_id"`
+	UserID     uuid.UUID  `json:"user_id"`
 }
 
 func NewSessionAttendeeAutoConfirmedEvent(
 	sessionID uuid.UUID,
-	activityID uuid.UUID,
+	activityID *uuid.UUID,
 	userID uuid.UUID,
 ) *SessionAttendeeAutoConfirmedEvent {
 	return &SessionAttendeeAutoConfirmedEvent{
@@ -680,13 +698,13 @@ func NewSessionAttendeeAutoConfirmedEvent(
 
 type SessionAttendeeAutoPendingEvent struct {
 	domainevent.BaseEvent
-	ActivityID uuid.UUID `json:"activity_id"`
-	UserID     uuid.UUID `json:"user_id"`
+	ActivityID *uuid.UUID `json:"activity_id"`
+	UserID     uuid.UUID  `json:"user_id"`
 }
 
 func NewSessionAttendeeAutoPendingEvent(
 	sessionID uuid.UUID,
-	activityID uuid.UUID,
+	activityID *uuid.UUID,
 	userID uuid.UUID,
 ) *SessionAttendeeAutoPendingEvent {
 	return &SessionAttendeeAutoPendingEvent{
@@ -703,8 +721,8 @@ func NewSessionAttendeeAutoPendingEvent(
 
 type SessionUpdatedEvent struct {
 	domainevent.BaseEvent
-	ActivityID uuid.UUID `json:"activity_id"`
-	UpdatedBy  uuid.UUID `json:"updated_by"`
+	ActivityID *uuid.UUID `json:"activity_id"`
+	UpdatedBy  uuid.UUID  `json:"updated_by"`
 }
 
 func NewSessionUpdatedEvent(
@@ -723,17 +741,51 @@ func NewSessionUpdatedEvent(
 	}
 }
 
+type SessionVisibilityChangedEvent struct {
+	domainevent.BaseEvent
+	ActivityID    *uuid.UUID `json:"activity_id"`
+	ChangedBy     uuid.UUID  `json:"changed_by"`
+	OldVisibility string     `json:"old_visibility"`
+	Visibility    string     `json:"visibility"`
+}
+
+func NewSessionVisibilityChangedEvent(
+	session *Session,
+	oldVisibility SessionVisibility,
+	changedBy uuid.UUID,
+) *SessionVisibilityChangedEvent {
+	return &SessionVisibilityChangedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionVisibilityChanged,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: session.ID(),
+		},
+		ActivityID:    session.ActivityGroupID(),
+		ChangedBy:     changedBy,
+		Visibility:    session.Visibility().String(),
+		OldVisibility: oldVisibility.String(),
+	}
+}
+
+// SessionCancelledEvent carries AttendeeUserIDs (the session's attendees at
+// cancellation time, resolved by the application layer) so the notifications
+// service can fan out a notification to each of them without needing to
+// query activity's own schema - mirrors the ManagerUserIDs convention used by
+// MemberJoinRequestedEvent.
 type SessionCancelledEvent struct {
 	domainevent.BaseEvent
-	ActivityID         uuid.UUID `json:"activity_id"`
-	CancelledBy        uuid.UUID `json:"cancelled_by"`
-	CancellationReason string    `json:"cancellation_reason"`
+	ActivityID         *uuid.UUID  `json:"activity_id"`
+	CancelledBy        uuid.UUID   `json:"cancelled_by"`
+	CancellationReason string      `json:"cancellation_reason"`
+	AttendeeUserIDs    []uuid.UUID `json:"attendee_user_ids"`
 }
 
 func NewSessionCancelledEvent(
 	session *Session,
 	cancelledBy uuid.UUID,
 	cancellationReason string,
+	attendeeUserIDs []uuid.UUID,
 ) *SessionCancelledEvent {
 	return &SessionCancelledEvent{
 		BaseEvent: domainevent.BaseEvent{
@@ -745,13 +797,14 @@ func NewSessionCancelledEvent(
 		ActivityID:         session.ActivityGroupID(),
 		CancelledBy:        cancelledBy,
 		CancellationReason: cancellationReason,
+		AttendeeUserIDs:    attendeeUserIDs,
 	}
 }
 
 type SessionStartedEvent struct {
 	domainevent.BaseEvent
-	ActivityID uuid.UUID `json:"activity_id"`
-	StartedBy  uuid.UUID `json:"started_by"`
+	ActivityID *uuid.UUID `json:"activity_id"`
+	StartedBy  uuid.UUID  `json:"started_by"`
 }
 
 func NewSessionStartedEvent(
@@ -772,9 +825,9 @@ func NewSessionStartedEvent(
 
 type SessionCompletedEvent struct {
 	domainevent.BaseEvent
-	ActivityID    uuid.UUID `json:"activity_id"`
-	CompletedByID uuid.UUID `json:"completed_by_id"`
-	IsRecurring   bool      `json:"is_recurring"`
+	ActivityID    *uuid.UUID `json:"activity_id"`
+	CompletedByID uuid.UUID  `json:"completed_by_id"`
+	IsRecurring   bool       `json:"is_recurring"`
 }
 
 func NewSessionCompletedEvent(
@@ -794,11 +847,33 @@ func NewSessionCompletedEvent(
 	}
 }
 
+// SessionExpiredEvent marks a session auto-completed by the cron sweep once its
+// end time has passed - no actor, unlike SessionCompletedEvent, since nothing
+// user-initiated caused this transition.
+type SessionExpiredEvent struct {
+	domainevent.BaseEvent
+	ActivityID  *uuid.UUID `json:"activity_id"`
+	IsRecurring bool       `json:"is_recurring"`
+}
+
+func NewSessionExpiredEvent(session *Session) *SessionExpiredEvent {
+	return &SessionExpiredEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionExpired,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: session.ID(),
+		},
+		ActivityID:  session.ActivityGroupID(),
+		IsRecurring: session.IsRecurring(),
+	}
+}
+
 type AttendeeRSVPAutoPendingEvent struct {
 	domainevent.BaseEvent
-	ActivityID uuid.UUID `json:"activity_id"`
-	UserID     uuid.UUID `json:"user_id"`
-	SessionID  uuid.UUID `json:"session_id"`
+	ActivityID *uuid.UUID `json:"activity_id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	SessionID  uuid.UUID  `json:"session_id"`
 }
 
 func NewAttendeeRSVPAutoPendingEvent(
@@ -820,9 +895,9 @@ func NewAttendeeRSVPAutoPendingEvent(
 
 type AttendeeRSVPGoingEvent struct {
 	domainevent.BaseEvent
-	ActivityID uuid.UUID `json:"activity_id"`
-	UserID     uuid.UUID `json:"user_id"`
-	SessionID  uuid.UUID `json:"session_id"`
+	ActivityID *uuid.UUID `json:"activity_id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	SessionID  uuid.UUID  `json:"session_id"`
 }
 
 func NewAttendeeRSVPGoingEvent(
@@ -844,10 +919,10 @@ func NewAttendeeRSVPGoingEvent(
 
 type AttendeeRSVPNotGoingEvent struct {
 	domainevent.BaseEvent
-	ActivityID uuid.UUID `json:"activity_id"`
-	UserID     uuid.UUID `json:"user_id"`
-	SessionID  uuid.UUID `json:"session_id"`
-	HoldSpot   bool      `json:"hold_spot"`
+	ActivityID *uuid.UUID `json:"activity_id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	SessionID  uuid.UUID  `json:"session_id"`
+	HoldSpot   bool       `json:"hold_spot"`
 }
 
 func NewAttendeeRSVPNotGoingEvent(
@@ -871,10 +946,10 @@ func NewAttendeeRSVPNotGoingEvent(
 
 type AttendeeRSVPMaybeEvent struct {
 	domainevent.BaseEvent
-	ActivityID uuid.UUID `json:"activity_id"`
-	UserID     uuid.UUID `json:"user_id"`
-	SessionID  uuid.UUID `json:"session_id"`
-	HoldSpot   bool      `json:"hold_spot"`
+	ActivityID *uuid.UUID `json:"activity_id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	SessionID  uuid.UUID  `json:"session_id"`
+	HoldSpot   bool       `json:"hold_spot"`
 }
 
 func NewAttendeeRSVPMaybeEvent(
@@ -898,6 +973,8 @@ func NewAttendeeRSVPMaybeEvent(
 
 type AttendeePromotedEvent struct {
 	domainevent.BaseEvent
+	SessionID uuid.UUID `json:"session_id"`
+	UserID    uuid.UUID `json:"user_id"`
 }
 
 func NewAttendeePromotedEvent(a *Attendee) *AttendeePromotedEvent {
@@ -908,6 +985,104 @@ func NewAttendeePromotedEvent(a *Attendee) *AttendeePromotedEvent {
 			OccurredAt:  time.Now().UTC(),
 			AggregateID: a.ID(),
 		},
+		SessionID: a.SessionID(),
+		UserID:    a.UserID(),
+	}
+}
+
+// AttendeeJoinRequestedEvent is raised when a user RSVPs "going" on a session
+// that requires creator/admin approval - carries ManagerUserIDs directly
+// (resolved at request time) so the notifications service never needs to
+// query membership data itself, mirroring MemberJoinRequestedEvent.
+type AttendeeJoinRequestedEvent struct {
+	domainevent.BaseEvent
+	ActivityID     *uuid.UUID  `json:"activity_id"`
+	SessionID      uuid.UUID   `json:"session_id"`
+	UserID         uuid.UUID   `json:"user_id"`
+	ManagerUserIDs []uuid.UUID `json:"manager_user_ids"`
+}
+
+func NewAttendeeJoinRequestedEvent(a *Attendee, s *Session, managerUserIDs []uuid.UUID) *AttendeeJoinRequestedEvent {
+	return &AttendeeJoinRequestedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionAttendeeJoinRequested,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: a.ID(),
+		},
+		ActivityID:     s.ActivityGroupID(),
+		SessionID:      s.ID(),
+		UserID:         a.UserID(),
+		ManagerUserIDs: managerUserIDs,
+	}
+}
+
+type AttendeeJoinApprovedEvent struct {
+	domainevent.BaseEvent
+	ActivityID *uuid.UUID `json:"activity_id"`
+	SessionID  uuid.UUID  `json:"session_id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	ApprovedBy uuid.UUID  `json:"approved_by"`
+}
+
+func NewAttendeeJoinApprovedEvent(a *Attendee, s *Session, approvedBy uuid.UUID) *AttendeeJoinApprovedEvent {
+	return &AttendeeJoinApprovedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionAttendeeJoinApproved,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: a.ID(),
+		},
+		ActivityID: s.ActivityGroupID(),
+		SessionID:  s.ID(),
+		UserID:     a.UserID(),
+		ApprovedBy: approvedBy,
+	}
+}
+
+type AttendeeJoinRejectedEvent struct {
+	domainevent.BaseEvent
+	ActivityID *uuid.UUID `json:"activity_id"`
+	SessionID  uuid.UUID  `json:"session_id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	RejectedBy uuid.UUID  `json:"rejected_by"`
+}
+
+func NewAttendeeJoinRejectedEvent(a *Attendee, s *Session, rejectedBy uuid.UUID) *AttendeeJoinRejectedEvent {
+	return &AttendeeJoinRejectedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionAttendeeJoinRejected,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: a.ID(),
+		},
+		ActivityID: s.ActivityGroupID(),
+		SessionID:  s.ID(),
+		UserID:     a.UserID(),
+		RejectedBy: rejectedBy,
+	}
+}
+
+type AttendeeRemovedEvent struct {
+	domainevent.BaseEvent
+	ActivityID *uuid.UUID `json:"activity_id"`
+	SessionID  uuid.UUID  `json:"session_id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	RemovedBy  uuid.UUID  `json:"removed_by"`
+}
+
+func NewAttendeeRemovedEvent(a *Attendee, s *Session, removedBy uuid.UUID) *AttendeeRemovedEvent {
+	return &AttendeeRemovedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionAttendeeRemoved,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: a.ID(),
+		},
+		ActivityID: s.ActivityGroupID(),
+		SessionID:  s.ID(),
+		UserID:     a.UserID(),
+		RemovedBy:  removedBy,
 	}
 }
 

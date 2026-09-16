@@ -47,23 +47,8 @@ func (h *Handler) CreateRSVP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get activity group ID from query parameter
-	activityGroupIDStr := r.URL.Query().Get("activity_group_id")
-	if activityGroupIDStr == "" {
-		h.logger.Error(ctx, "missing activity group ID")
-		api.WriteBadRequestResponse(w, "missing_group_id", "Activity group ID is required")
-		return
-	}
-
-	activityGroupID, err := uuid.Parse(activityGroupIDStr)
-	if err != nil {
-		h.logger.Error(ctx, "invalid activity group ID", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_group_id", "Invalid activity group ID")
-		return
-	}
-
 	// Convert to application params
-	params := mapper.CreateRSVPRequestToParams(&req, sessionID, activityGroupID, userID)
+	params := mapper.CreateRSVPRequestToParams(&req, sessionID, userID)
 
 	// Create RSVP
 	attendee, err := h.attendeeService.CreateRSVP(ctx, *params)
@@ -112,23 +97,8 @@ func (h *Handler) UpdateRSVP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get activity group ID from query parameter
-	activityGroupIDStr := r.URL.Query().Get("activity_group_id")
-	if activityGroupIDStr == "" {
-		h.logger.Error(ctx, "missing activity group ID")
-		api.WriteBadRequestResponse(w, "missing_group_id", "Activity group ID is required")
-		return
-	}
-
-	activityGroupID, err := uuid.Parse(activityGroupIDStr)
-	if err != nil {
-		h.logger.Error(ctx, "invalid activity group ID", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_group_id", "Invalid activity group ID")
-		return
-	}
-
 	// Convert to application params
-	params := mapper.UpdateRSVPRequestToParams(&req, sessionID, activityGroupID, userID)
+	params := mapper.UpdateRSVPRequestToParams(&req, sessionID, userID)
 
 	// Update RSVP
 	attendee, err := h.attendeeService.UpdateRSVP(ctx, *params)
@@ -224,8 +194,8 @@ func (h *Handler) GetRSVP(w http.ResponseWriter, r *http.Request) {
 //	@Param			sessionId	path		string									true	"Session ID"
 //	@Param			status		query		string									false	"Filter by status (going, pending, not_going, maybe, promoted)"
 //	@Param			limit		query		int										false	"Limit number of results (default 20)"
-//	@Param			offset		query		int										false	"Offset for pagination (default 0)"
-//	@Success		200			{object}	api.Response[dtos.AttendeeListResponse]	"Attendees retrieved successfully"
+//	@Param			page_token	query		string									false	"Token from the previous response's next_page_token, to fetch the next page"
+//	@Success		200			{object}	api.Response[api.Page[dtos.AttendeeResponse]]	"Attendees retrieved successfully"
 //	@Failure		400			{object}	api.Response[any]						"Invalid request"
 //	@Failure		500			{object}	api.Response[any]						"Internal server error"
 //	@Router			/api/v1/sessions/{sessionId}/attendees [get]
@@ -253,7 +223,7 @@ func (h *Handler) ListAttendees(w http.ResponseWriter, r *http.Request) {
 	params.SessionID = &sessionID
 
 	// List attendees
-	attendees, err := h.attendeeService.ListRSVPs(ctx, *params)
+	attendees, nextPageToken, err := h.attendeeService.ListRSVPs(ctx, *params)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
@@ -261,7 +231,185 @@ func (h *Handler) ListAttendees(w http.ResponseWriter, r *http.Request) {
 
 	api.WriteOkResponse(
 		w,
-		mapper.AttendeeListToResponse(attendees, params.Limit, params.Offset),
+		api.NewPage(attendees, params.Limit, nextPageToken, mapper.AttendeeToResponse),
 		"",
 	)
+}
+
+// ApproveAttendee handles POST /api/v1/sessions/{sessionId}/rsvp/{userId}/approve
+//
+//	@Summary		Approve a pending join request
+//	@Description	Approves a pending join request on a session that requires creator/admin approval, moving the attendee to "going"
+//	@Tags			RSVPs
+//	@Produce		json
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			sessionId	path		string				true	"Session ID"
+//	@Param			userId		path		string				true	"User ID of the requester to approve"
+//	@Success		200			{object}	api.Response[any]	"Join request approved"
+//	@Failure		400			{object}	api.Response[any]	"Invalid request"
+//	@Failure		401			{object}	api.Response[any]	"Unauthorized"
+//	@Failure		403			{object}	api.Response[any]	"Not authorized to manage this session"
+//	@Failure		404			{object}	api.Response[any]	"Session or attendee not found"
+//	@Failure		409			{object}	api.Response[any]	"Session full or attendee not awaiting approval"
+//	@Failure		500			{object}	api.Response[any]	"Internal server error"
+//	@Router			/api/v1/sessions/{sessionId}/rsvp/{userId}/approve [post]
+func (h *Handler) ApproveAttendee(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
+
+	sessionID, err := uuid.Parse(r.PathValue("sessionId"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid session ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_session_id", "Invalid session ID")
+		return
+	}
+
+	userID, err := uuid.Parse(r.PathValue("userId"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid user ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_user_id", "Invalid user ID")
+		return
+	}
+
+	// Get the session so we know which group (if any) to check the requester's role against
+	session, err := h.sessionService.GetSession(ctx, sessionID, accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	requesterRole, err := h.getUserRole(ctx, session.ActivityGroupID(), accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	params := mapper.ApproveAttendeeRequestToParams(sessionID, userID, accountID, requesterRole)
+
+	if err := h.attendeeService.ApproveAttendee(ctx, *params); err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	h.logger.Info(ctx, "attendee approved", "session_id", sessionID, "user_id", userID)
+
+	api.WriteOkResponse(w, struct{}{}, "Join request approved")
+}
+
+// RejectAttendee handles POST /api/v1/sessions/{sessionId}/rsvp/{userId}/reject
+//
+//	@Summary		Reject a pending join request
+//	@Description	Rejects a pending join request on a session that requires creator/admin approval, moving the attendee to "not_going"
+//	@Tags			RSVPs
+//	@Produce		json
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			sessionId	path		string				true	"Session ID"
+//	@Param			userId		path		string				true	"User ID of the requester to reject"
+//	@Success		200			{object}	api.Response[any]	"Join request rejected"
+//	@Failure		400			{object}	api.Response[any]	"Invalid request"
+//	@Failure		401			{object}	api.Response[any]	"Unauthorized"
+//	@Failure		403			{object}	api.Response[any]	"Not authorized to manage this session"
+//	@Failure		404			{object}	api.Response[any]	"Session or attendee not found"
+//	@Failure		409			{object}	api.Response[any]	"Attendee not awaiting approval"
+//	@Failure		500			{object}	api.Response[any]	"Internal server error"
+//	@Router			/api/v1/sessions/{sessionId}/rsvp/{userId}/reject [post]
+func (h *Handler) RejectAttendee(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
+
+	sessionID, err := uuid.Parse(r.PathValue("sessionId"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid session ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_session_id", "Invalid session ID")
+		return
+	}
+
+	userID, err := uuid.Parse(r.PathValue("userId"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid user ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_user_id", "Invalid user ID")
+		return
+	}
+
+	session, err := h.sessionService.GetSession(ctx, sessionID, accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	requesterRole, err := h.getUserRole(ctx, session.ActivityGroupID(), accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	params := mapper.RejectAttendeeRequestToParams(sessionID, userID, accountID, requesterRole)
+
+	if err := h.attendeeService.RejectAttendee(ctx, *params); err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	h.logger.Info(ctx, "attendee rejected", "session_id", sessionID, "user_id", userID)
+
+	api.WriteOkResponse(w, struct{}{}, "Join request rejected")
+}
+
+// RemoveAttendee handles DELETE /api/v1/sessions/{sessionId}/rsvp/{userId}
+//
+//	@Summary		Remove an attendee from a session
+//	@Description	Removes an already-confirmed attendee from a session (a manager kicking someone out), as opposed to DELETE /rsvp which only lets a user cancel their own RSVP
+//	@Tags			RSVPs
+//	@Produce		json
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			sessionId	path		string				true	"Session ID"
+//	@Param			userId		path		string				true	"User ID of the attendee to remove"
+//	@Success		200			{object}	api.Response[any]	"Attendee removed"
+//	@Failure		400			{object}	api.Response[any]	"Invalid request"
+//	@Failure		401			{object}	api.Response[any]	"Unauthorized"
+//	@Failure		403			{object}	api.Response[any]	"Not authorized to manage this session"
+//	@Failure		404			{object}	api.Response[any]	"Session or attendee not found"
+//	@Failure		409			{object}	api.Response[any]	"Attendee is not confirmed, or is the session creator"
+//	@Failure		500			{object}	api.Response[any]	"Internal server error"
+//	@Router			/api/v1/sessions/{sessionId}/rsvp/{userId} [delete]
+func (h *Handler) RemoveAttendee(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
+
+	sessionID, err := uuid.Parse(r.PathValue("sessionId"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid session ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_session_id", "Invalid session ID")
+		return
+	}
+
+	userID, err := uuid.Parse(r.PathValue("userId"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid user ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_user_id", "Invalid user ID")
+		return
+	}
+
+	session, err := h.sessionService.GetSession(ctx, sessionID, accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	requesterRole, err := h.getUserRole(ctx, session.ActivityGroupID(), accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	params := mapper.RemoveAttendeeRequestToParams(sessionID, userID, accountID, requesterRole)
+
+	if err := h.attendeeService.RemoveAttendee(ctx, *params); err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	h.logger.Info(ctx, "attendee removed", "session_id", sessionID, "user_id", userID)
+
+	api.WriteOkResponse(w, struct{}{}, "Attendee removed")
 }

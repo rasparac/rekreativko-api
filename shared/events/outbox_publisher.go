@@ -67,34 +67,12 @@ func (op *outboxPublisher) Start(ctx context.Context) error {
 }
 
 func (op *outboxPublisher) publish(ctx context.Context) error {
-	var (
-		start          = time.Now()
-		totalFailed    int
-		totalPublished int
-	)
-
 	// Poll events from configured bounded context schemas
 	for _, schema := range op.schemas {
-		failedCount, publishedCount, err := op.publishFromSchema(ctx, schema)
+		_, _, err := op.publishFromSchema(ctx, schema)
 		if err != nil {
 			op.logger.Error(ctx, "failed to publish from schema", "schema", schema, "error", err)
-			totalFailed += failedCount
-			continue
 		}
-		totalFailed += failedCount
-		totalPublished += publishedCount
-	}
-
-	duration := time.Since(start).Seconds()
-	op.metrics.EventPublishDuration.WithLabelValues(
-		"outbox",
-	).Observe(duration)
-
-	op.metrics.EventsPublishedTotal.WithLabelValues("outbox").Add(float64(totalPublished))
-	op.metrics.EventProcessedTotal.WithLabelValues("outbox", "success").Add(float64(totalPublished))
-
-	if totalFailed > 0 {
-		op.metrics.EventProcessedTotal.WithLabelValues("outbox", "failed").Add(float64(totalFailed))
 	}
 
 	return nil
@@ -107,9 +85,12 @@ func (op *outboxPublisher) publishFromSchema(ctx context.Context, schema string)
 	}
 
 	for _, event := range events {
+		start := time.Now()
 		err := op.broker.Publish(ctx, event.EventType, event.Payload)
+		op.metrics.EventPublishDuration.WithLabelValues(event.EventType, schema).Observe(time.Since(start).Seconds())
 		if err != nil {
 			failedCount++
+			op.metrics.EventProcessedTotal.WithLabelValues(event.EventType, schema, "failed").Inc()
 			op.logger.Error(ctx, "failed to publish outbox event", "schema", schema, "error", err)
 			continue
 		}
@@ -117,10 +98,14 @@ func (op *outboxPublisher) publishFromSchema(ctx context.Context, schema string)
 		err = op.eventReader.MarkEventAsPublished(ctx, schema, event.EventID)
 		if err != nil {
 			failedCount++
+			op.metrics.EventProcessedTotal.WithLabelValues(event.EventType, schema, "failed").Inc()
 			op.logger.Error(ctx, "failed to mark as published outbox event", "schema", schema, "error", err)
 			continue
 		}
+
 		publishedCount++
+		op.metrics.EventsPublishedTotal.WithLabelValues(event.EventType, schema).Inc()
+		op.metrics.EventProcessedTotal.WithLabelValues(event.EventType, schema, "success").Inc()
 	}
 
 	return failedCount, publishedCount, nil

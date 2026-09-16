@@ -75,7 +75,7 @@ func (uss *accountSettingsService) GetSettings(ctx context.Context, accountID uu
 
 	span.SetStatus(codes.Ok, "settings found")
 
-	log.Info(ctx, "settings found")
+	log.Debug(ctx, "settings found")
 
 	return settings, nil
 }
@@ -125,6 +125,10 @@ func (uss *accountSettingsService) UpdateSettings(
 		return fmt.Errorf("update settings: %w", err)
 	}
 
+	span.SetStatus(codes.Ok, "settings updated")
+
+	log.Debug(ctx, "settings updated")
+
 	return nil
 }
 
@@ -165,7 +169,7 @@ func (uss *accountSettingsService) CreateSettings(ctx context.Context, params Cr
 
 	span.SetStatus(codes.Ok, "settings created")
 
-	log.Info(ctx, "settings created")
+	log.Debug(ctx, "settings created")
 
 	return nil
 }

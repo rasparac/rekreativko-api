@@ -155,9 +155,13 @@ CREATE TABLE IF NOT EXISTS activity.session_template(
     -- default capacity for sessions generated from this template
     -- NULL = no limit
     capacity int DEFAULT NULL CHECK (capacity IS NULL OR capacity > 0),
-    -- location type hint for discovery (coordinates set per-session)
-    location_city varchar(100) DEFAULT NULL,
-    location_country varchar(100) DEFAULT NULL,
+    -- default location, inherited by every session generated from this template
+    location_city varchar(100) NOT NULL,
+    location_country varchar(100) NOT NULL,
+    location_lat DECIMAL(9, 6) NOT NULL,
+    location_lng DECIMAL(9, 6) NOT NULL,
+    -- optional venue/address line, e.g. "Ada Ciganlija bb, Court 3"
+    location_street varchar(255) DEFAULT NULL,
     -- tracks how far ahead sessions have been generated
     -- cron job generates sessions from this point forward
     generated_up_to timestamptz DEFAULT NULL,
@@ -191,18 +195,33 @@ WHERE
 -- ============================================================
 CREATE TABLE IF NOT EXISTS activity.session(
     id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-    activity_group_id uuid NOT NULL REFERENCES activity.activity_group(id),
+    -- NULL = standalone session with no group (always public - see visibility below)
+    activity_group_id uuid DEFAULT NULL REFERENCES activity.activity_group(id),
     session_template_id uuid DEFAULT NULL REFERENCES activity.session_template(id),
     created_by_id uuid NOT NULL,
+    title varchar(200) NOT NULL,
+    -- inherited from the group when activity_group_id is set, required from the
+    -- user when standalone; always required from the template when generated
+    activity_type varchar(50) NOT NULL,
+    -- same inheritance rule as activity_type above
+    difficulty_level varchar(50) NOT NULL DEFAULT 'beginner',
     location_lat DECIMAL(9, 6) NOT NULL,
     location_lng DECIMAL(9, 6) NOT NULL,
     location_city varchar(100) NOT NULL,
     location_country varchar(100) NOT NULL,
+    -- optional venue/address line, e.g. "Ada Ciganlija bb, Court 3"
+    location_street varchar(255) DEFAULT NULL,
     start_time timestamptz NOT NULL,
-    end_time timestamptz NOT NULL,
+    -- end_time is optional - a standalone session may have no fixed end time
+    end_time timestamptz,
     -- capacity == NULL means no limit
     capacity int NULL,
     status varchar(100) NOT NULL DEFAULT 'scheduled',
+    -- visibility: 'private' (group members only) or 'public' (anyone can RSVP as an attendee, without joining the group)
+    visibility varchar(20) NOT NULL DEFAULT 'private',
+    -- requires_approval: if true, RSVPing "going" creates a pending join request
+    -- the creator/admin must approve rather than joining immediately
+    requires_approval boolean NOT NULL DEFAULT FALSE,
     is_recurring boolean NOT NULL DEFAULT FALSE,
     note text DEFAULT NULL,
     -- open_at: when regular members can start RSVPing (NULL = immediately open)
@@ -212,8 +231,7 @@ CREATE TABLE IF NOT EXISTS activity.session(
     updated_at timestamptz NOT NULL DEFAULT NOW(),
     cancelled_at timestamptz DEFAULT NULL,
     started_at timestamptz DEFAULT NULL,
-    completed_at timestamptz DEFAULT NULL,
-    CONSTRAINT uq_active_session UNIQUE (activity_group_id, created_by_id)
+    completed_at timestamptz DEFAULT NULL
 );
 
 COMMENT ON COLUMN activity.session.session_template_id IS 'Links to the template that generated this session (NULL for manual sessions)';
@@ -234,7 +252,7 @@ WHERE (is_recurring = TRUE) AND (status = 'completed');
 
 -- location based queries: find active public sessions by location
 CREATE INDEX idx_sessions_location ON activity.session(location_lat, location_lng)
-WHERE (status = 'scheduled');
+WHERE (status = 'scheduled') AND (visibility = 'public');
 
 -- find all sessions generated from a template
 CREATE INDEX idx_sessions_template ON activity.session(session_template_id)
@@ -248,7 +266,8 @@ WHERE (open_at IS NOT NULL) AND (status = 'scheduled');
 CREATE TABLE IF NOT EXISTS activity.session_attendee(
     id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
     session_id uuid NOT NULL REFERENCES activity.session(id),
-    activity_group_id uuid NOT NULL REFERENCES activity.activity_group(id),
+    -- NULL for an attendee of a standalone session with no group
+    activity_group_id uuid DEFAULT NULL REFERENCES activity.activity_group(id),
     account_id uuid NOT NULL,
     status varchar(100) NOT NULL DEFAULT 'pending',
     source varchar(100) NOT NULL DEFAULT 'auto_pending',
@@ -291,7 +310,8 @@ CREATE TABLE IF NOT EXISTS activity.activity_group_statistics(
 -- session statistics
 CREATE TABLE IF NOT EXISTS activity.session_statistics(
     session_id uuid PRIMARY KEY NOT NULL REFERENCES activity.session(id),
-    activity_group_id uuid NOT NULL REFERENCES activity.activity_group(id),
+    -- NULL for a standalone session with no group
+    activity_group_id uuid DEFAULT NULL REFERENCES activity.activity_group(id),
     total_going int NOT NULL DEFAULT 0,
     total_pending int NOT NULL DEFAULT 0,
     total_not_going int NOT NULL DEFAULT 0,

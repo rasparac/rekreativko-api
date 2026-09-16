@@ -51,7 +51,7 @@ func (r *Router) loadRoutes() {
 		StripPrefix: true,
 		AuthRule: []AuthRule{
 			{
-				PathPattern: "^/identity/api/v1/(login|register|verify-account|resend-verification-code)$",
+				PathPattern: "^/identity/api/v1/(login|register|verify-account|resend-verification-code|refresh-token)$",
 				RequireAuth: false,
 			},
 			{
@@ -81,6 +81,18 @@ func (r *Router) loadRoutes() {
 		AuthRule: []AuthRule{
 			{
 				PathPattern: "^/activity/api/v1/.*",
+				RequireAuth: true,
+			},
+		},
+	})
+
+	r.addRoute(Route{
+		Prefix:      "/notifications",
+		Service:     "notifications",
+		StripPrefix: true,
+		AuthRule: []AuthRule{
+			{
+				PathPattern: "^/notifications/api/v1/.*",
 				RequireAuth: true,
 			},
 		},

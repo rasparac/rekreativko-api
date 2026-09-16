@@ -13,9 +13,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rasparac/rekreativko-api/gateway/internal"
-	"github.com/rasparac/rekreativko-api/shared/notification"
 	"github.com/rasparac/rekreativko-api/shared/config"
-	"github.com/rasparac/rekreativko-api/shared/events"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/middleware"
 	"github.com/rasparac/rekreativko-api/shared/telemetry"
@@ -63,7 +61,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer func() {
-		if tracingErr := shutdownTracing(ctx); err != nil {
+		if tracingErr := shutdownTracing(ctx); tracingErr != nil {
 			log.Error(ctx, "failed to shutdown telemetry", "error", tracingErr)
 		}
 	}()
@@ -80,6 +78,10 @@ func main() {
 		"activity": {
 			URL:     cfg.ActivityServiceConfig.URL,
 			Timeout: cfg.ActivityServiceConfig.Timeout,
+		},
+		"notifications": {
+			URL:     cfg.NotificationsServiceConfig.URL,
+			Timeout: cfg.NotificationsServiceConfig.Timeout,
 		},
 	}
 
@@ -112,9 +114,8 @@ func main() {
 	}
 
 	publicPaths := []string{
-		`^/identity/api/v1/(login|register|verify-account|resend-verification-code)$`,
+		`^/identity/api/v1/(login|register|verify-account|resend-verification-code|refresh-token)$`,
 		"^/swagger/.*",
-		"^/metrics/.*",
 		"^/health$",
 	}
 
@@ -149,28 +150,20 @@ func main() {
 		middleware.AddGatewayKey(cfg.GatewayServiceConfig.GatewayKeys),
 	)
 
-	appMetrics := gateway.New(cfg.Service.Name)
+	appMetrics := gateway.New()
 
 	if cfg.Telemetry.MetricsEnabled {
 		log.Info(ctx, "metrics enabled")
 		middlewaresChain = middlewaresChain.Append(middleware.Metrics(appMetrics))
-		mux.Handle("GET /metrics", promhttp.Handler())
+
+		metricsChain := middleware.NewChain(
+			middleware.Recover(log),
+			middleware.RequireMetricsToken(log, cfg.Service.GatewayKey),
+		)
+		mux.Handle("GET /metrics", metricsChain.Then(promhttp.Handler()))
 	}
 
 	mux.Handle("/", middlewaresChain.Then(router))
-
-	messageBroker, err := events.NewNatsBroker(
-		cfg.NatsConfig.URL,
-		cfg.Service.Name,
-		log,
-	)
-	if err != nil {
-		log.Error(ctx, "failed to create message broker", "error", err)
-		os.Exit(1)
-	}
-	defer messageBroker.Close(ctx)
-
-	prepareNotifications(messageBroker, appMetrics, cfg, log)
 
 	err = startServer(cfg, mux, log)
 	if err != nil {
@@ -178,36 +171,6 @@ func main() {
 		os.Exit(1)
 	}
 
-}
-
-func prepareNotifications(
-	broker events.MessageBroker,
-	appMetrics notification.Metrics,
-	cfg *config.Config,
-	log *logger.Logger,
-) {
-	var (
-		emailSender notification.EmailSender
-		smsSender   notification.SMSSender
-	)
-
-	if cfg.IsDevMode() {
-		emailSender = notification.NewInMemoryEmailSender(log)
-		smsSender = notification.NewInMemorySMSSender(log)
-	}
-
-	notificationService := notification.NewService(
-		smsSender,
-		emailSender,
-		appMetrics,
-	)
-
-	ctx := context.Background()
-
-	_ = broker.Subscribe(ctx, "identity.account.verified", notificationService.HandleAccountVerified)
-	_ = broker.Subscribe(ctx, "identity.account.locked", notificationService.HandleAccountLocked)
-	_ = broker.Subscribe(ctx, "identity.account.password.changed", notificationService.HandlePasswordChanged)
-	_ = broker.Subscribe(ctx, "identity.verification_code.created", notificationService.HandleVerificationCodeGenerated)
 }
 
 func startServer(cfg *config.Config, handler http.Handler, log *logger.Logger) error {

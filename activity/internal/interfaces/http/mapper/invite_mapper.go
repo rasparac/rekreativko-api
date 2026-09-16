@@ -1,10 +1,13 @@
 package mapper
 
 import (
+	"net/url"
+
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
+	"github.com/rasparac/rekreativko-api/shared/api"
 )
 
 // SendInviteRequestToParams converts SendInviteRequest to application params
@@ -41,14 +44,18 @@ func InviteToResponse(invite *domain.GroupInvite) *dtos.InviteResponse {
 	return resp
 }
 
-// InviteListToResponse converts a list of domain GroupInvites to InviteListResponse
-func InviteListToResponse(invites []*domain.GroupInvite) *dtos.InviteListResponse {
-	responses := make([]dtos.InviteResponse, len(invites))
-	for i, invite := range invites {
-		responses[i] = *InviteToResponse(invite)
+// QueryToListMyInvitesParams parses query parameters for listing the caller's invites
+func QueryToListMyInvitesParams(query url.Values) (*application.ListMyInvitesParams, error) {
+	params := &application.ListMyInvitesParams{
+		Limit: 20, // default
 	}
 
-	return &dtos.InviteListResponse{
-		Invites: responses,
+	limit, pageToken, err := api.ParsePageParams(query, params.Limit)
+	if err != nil {
+		return nil, err
 	}
+	params.Limit = limit
+	params.PageToken = pageToken
+
+	return params, nil
 }

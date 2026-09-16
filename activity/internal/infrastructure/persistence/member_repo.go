@@ -33,8 +33,9 @@ type MemberRepository interface {
 	UpdateMember(ctx context.Context, member *domain.Member) error
 	GetMemberByID(ctx context.Context, id uuid.UUID) (*domain.Member, error)
 	GetMemberByGroupAndUser(ctx context.Context, activityGroupID, userID uuid.UUID) (*domain.Member, error)
-	ListMembers(ctx context.Context, filter MemberFilter) ([]*domain.Member, error)
+	ListMembers(ctx context.Context, filter MemberFilter) ([]*domain.Member, string, error)
 	DeleteMember(ctx context.Context, id uuid.UUID) error
+	CountConfirmedMembers(ctx context.Context, activityGroupID uuid.UUID) (int, error)
 }
 
 // MemberFilter defines query filters for listing members
@@ -44,7 +45,7 @@ type MemberFilter struct {
 	Status          *domain.MemberStatus
 	Role            *domain.MemberRole
 	Limit           int
-	Offset          int
+	PageToken       string
 }
 
 type memberManager struct {
@@ -167,7 +168,7 @@ func (m *memberManager) GetMemberByID(ctx context.Context, id uuid.UUID) (*domai
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("member not found: %w", err)
+			return nil, domain.ErrMemberNotFound
 		}
 		return nil, fmt.Errorf("failed to get member: %w", err)
 	}
@@ -212,7 +213,7 @@ func (m *memberManager) GetMemberByGroupAndUser(
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("member not found: %w", err)
+			return nil, domain.ErrMemberNotFound
 		}
 		return nil, fmt.Errorf("failed to get member: %w", err)
 	}
@@ -220,7 +221,7 @@ func (m *memberManager) GetMemberByGroupAndUser(
 	return memberModelToDomain(&model)
 }
 
-func (m *memberManager) ListMembers(ctx context.Context, filter MemberFilter) ([]*domain.Member, error) {
+func (m *memberManager) ListMembers(ctx context.Context, filter MemberFilter) ([]*domain.Member, string, error) {
 	var (
 		conditions []string
 		args       []interface{}
@@ -268,24 +269,33 @@ func (m *memberManager) ListMembers(ctx context.Context, filter MemberFilter) ([
 		argIndex++
 	}
 
+	// Resume from the previous page's cursor, if any
+	cursor, err := postgres.DecodePageToken(filter.PageToken)
+	if err != nil {
+		return nil, "", err
+	}
+	if cursor != nil {
+		sortValue, err := time.Parse(time.RFC3339Nano, cursor.SortValue)
+		if err != nil {
+			return nil, "", postgres.ErrInvalidPageToken
+		}
+		conditions = append(conditions, fmt.Sprintf("(joined_at, id) < ($%d, $%d)", argIndex, argIndex+1))
+		args = append(args, sortValue, cursor.ID)
+		argIndex += 2
+	}
+
 	// Build WHERE clause
 	if len(conditions) > 0 {
 		query += " AND " + strings.Join(conditions, " AND ")
 	}
 
-	// Add ordering
-	query += " ORDER BY joined_at DESC"
+	// Add ordering - id is a tiebreaker for rows with an identical joined_at
+	query += " ORDER BY joined_at DESC, id DESC"
 
-	// Add pagination
+	// Fetch one extra row so we can tell whether there's a next page
 	if filter.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT $%d", argIndex)
-		args = append(args, filter.Limit)
-		argIndex++
-	}
-
-	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIndex)
-		args = append(args, filter.Offset)
+		args = append(args, filter.Limit+1)
 		argIndex++
 	}
 
@@ -293,7 +303,7 @@ func (m *memberManager) ListMembers(ctx context.Context, filter MemberFilter) ([
 
 	rows, err := q.Query(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list members: %w", err)
+		return nil, "", fmt.Errorf("failed to list members: %w", err)
 	}
 	defer rows.Close()
 
@@ -312,22 +322,26 @@ func (m *memberManager) ListMembers(ctx context.Context, filter MemberFilter) ([
 			&model.leftAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan member: %w", err)
+			return nil, "", fmt.Errorf("failed to scan member: %w", err)
 		}
 
 		member, err := memberModelToDomain(&model)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert member: %w", err)
+			return nil, "", fmt.Errorf("failed to convert member: %w", err)
 		}
 
 		members = append(members, member)
 	}
 
 	if rows.Err() != nil {
-		return nil, fmt.Errorf("error iterating members: %w", rows.Err())
+		return nil, "", fmt.Errorf("error iterating members: %w", rows.Err())
 	}
 
-	return members, nil
+	page, nextPageToken := postgres.BuildPage(members, filter.Limit, func(mbr *domain.Member) (string, uuid.UUID) {
+		return mbr.JoinedAt().UTC().Format(time.RFC3339Nano), mbr.ID()
+	})
+
+	return page, nextPageToken, nil
 }
 
 func (m *memberManager) DeleteMember(ctx context.Context, id uuid.UUID) error {
@@ -345,6 +359,26 @@ func (m *memberManager) DeleteMember(ctx context.Context, id uuid.UUID) error {
 	}
 
 	return nil
+}
+
+func (m *memberManager) CountConfirmedMembers(ctx context.Context, activityGroupID uuid.UUID) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM activity.member
+		WHERE activity_group_id = $1
+		  AND status = 'confirmed'
+		  AND deleted_at IS NULL
+	`
+
+	q := m.tx.Querier(ctx)
+
+	var count int
+	err := q.QueryRow(ctx, query, activityGroupID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count confirmed members: %w", err)
+	}
+
+	return count, nil
 }
 
 // memberModelFromDomain converts domain Member to database model

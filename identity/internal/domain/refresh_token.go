@@ -12,23 +12,32 @@ type RefreshToken struct {
 	accessToken string
 	tokenType   string
 	accountID   uuid.UUID
-	value       string
-	expiresAt   time.Time
-	createdAt   time.Time
-	revokedAt   *time.Time
+	// plaintext is the raw, client-facing token value. Only ever populated at
+	// creation time (NewRefreshToken) - it is never persisted and reconstructed
+	// tokens loaded from the database (ReconstructRefreshToken) never have it,
+	// only its hash.
+	plaintext string
+	// tokenHash is a SHA-256 hex digest of plaintext; this is what gets stored
+	// and looked up in the database.
+	tokenHash string
+	expiresAt time.Time
+	createdAt time.Time
+	revokedAt *time.Time
 
 	events []domainevent.Event
 }
 
 func NewRefreshToken(
 	accountID uuid.UUID,
-	value string,
+	plaintext string,
+	tokenHash string,
 	expiresAt time.Time,
 ) *RefreshToken {
 	rt := &RefreshToken{
 		id:        uuid.New(),
 		accountID: accountID,
-		value:     value,
+		plaintext: plaintext,
+		tokenHash: tokenHash,
 		expiresAt: expiresAt,
 		createdAt: time.Now().UTC(),
 	}
@@ -41,7 +50,7 @@ func NewRefreshToken(
 func ReconstructRefreshToken(
 	id uuid.UUID,
 	accountID uuid.UUID,
-	value string,
+	tokenHash string,
 	expiresAt time.Time,
 	createdAt time.Time,
 	revokedAt *time.Time,
@@ -49,7 +58,7 @@ func ReconstructRefreshToken(
 	return &RefreshToken{
 		id:        id,
 		accountID: accountID,
-		value:     value,
+		tokenHash: tokenHash,
 		expiresAt: expiresAt,
 		createdAt: createdAt,
 		revokedAt: revokedAt,
@@ -65,8 +74,16 @@ func (rt *RefreshToken) AccountID() uuid.UUID {
 	return rt.accountID
 }
 
+// Token returns the raw, client-facing token value. Only meaningful right
+// after creation (NewRefreshToken); reconstructed tokens loaded from the
+// database never have the plaintext, only TokenHash().
 func (rt *RefreshToken) Token() string {
-	return rt.value
+	return rt.plaintext
+}
+
+// TokenHash returns the SHA-256 hex digest used for storage/lookup.
+func (rt *RefreshToken) TokenHash() string {
+	return rt.tokenHash
 }
 
 func (rt *RefreshToken) ExpiresAt() time.Time {

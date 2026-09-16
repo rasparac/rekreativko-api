@@ -138,7 +138,10 @@ func NewCreatorMember(activityGroupID, userID uuid.UUID) *Member {
 	return p
 }
 
-func NewJoinRequest(activityGroupID, userID uuid.UUID) *Member {
+// NewJoinRequest creates a pending Member from a self-serve join request.
+// managerUserIDs is purely for the raised event's payload (who should be
+// notified) - it has no bearing on the Member entity itself.
+func NewJoinRequest(activityGroupID, userID uuid.UUID, managerUserIDs []uuid.UUID) *Member {
 	m := &Member{
 		id:              uuid.New(),
 		activityGroupID: activityGroupID,
@@ -148,7 +151,7 @@ func NewJoinRequest(activityGroupID, userID uuid.UUID) *Member {
 		joinedAt:        time.Now().UTC(),
 	}
 
-	m.addEvent(NewMemberJoinRequestedEvent(m))
+	m.addEvent(NewMemberJoinRequestedEvent(m, managerUserIDs))
 
 	return m
 }

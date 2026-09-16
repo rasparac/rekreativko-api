@@ -26,45 +26,36 @@ type Metrics struct {
 	SettingsReset   prometheus.Counter
 }
 
-func New(namespace string) *Metrics {
-	constLabels := prometheus.Labels{"namespace": namespace}
+func New() *Metrics {
 	return &Metrics{
 		HTTPRequestTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "http_requests_total",
-				Help:        "Total number of HTTP requests",
-				ConstLabels: constLabels,
+				Name: "http_requests_total",
+				Help: "Total number of HTTP requests",
 			},
 			[]string{"method", "path", "status"},
 		),
 		HTTPRequestDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Name:        "http_request_duration_seconds",
-				Help:        "Duration of HTTP requests in seconds",
-				Buckets:     prometheus.DefBuckets,
-				ConstLabels: constLabels,
+				Name:    "http_request_duration_seconds",
+				Help:    "Duration of HTTP requests in seconds",
+				Buckets: prometheus.DefBuckets,
 			},
 			[]string{"method", "path", "status"},
 		),
 		HTTPResponseSize: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Name:        "http_response_size_bytes",
-				Help:        "Size of HTTP responses in bytes",
-				Buckets:     prometheus.ExponentialBuckets(100, 10, 7),
-				ConstLabels: constLabels,
+				Name:    "http_response_size_bytes",
+				Help:    "Size of HTTP responses in bytes",
+				Buckets: prometheus.ExponentialBuckets(100, 10, 7),
 			},
 			[]string{"method", "path", "status"},
 		),
 		HTTPRequestSize: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Name:        "http_request_size_bytes",
-				Help:        "Size of HTTP requests in bytes",
-				Buckets:     prometheus.ExponentialBuckets(100, 10, 7),
-				ConstLabels: constLabels,
+				Name:    "http_request_size_bytes",
+				Help:    "Size of HTTP requests in bytes",
+				Buckets: prometheus.ExponentialBuckets(100, 10, 7),
 			},
 			[]string{"method", "path"},
 		),
@@ -72,7 +63,6 @@ func New(namespace string) *Metrics {
 		// Database query
 		DBQueryTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace: namespace,
 				Subsystem: "database",
 				Name:      "query_total",
 				Help:      "Total number of database queries",
@@ -81,12 +71,10 @@ func New(namespace string) *Metrics {
 		),
 		DBQueryDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Subsystem:   "database",
-				Name:        "query_duration_seconds",
-				Help:        "Duration of database queries in seconds",
-				Buckets:     prometheus.DefBuckets,
-				ConstLabels: constLabels,
+				Subsystem: "database",
+				Name:      "query_duration_seconds",
+				Help:      "Duration of database queries in seconds",
+				Buckets:   prometheus.DefBuckets,
 			},
 			[]string{"operation", "status", "table"},
 		),
@@ -94,25 +82,20 @@ func New(namespace string) *Metrics {
 		// Account Profile
 		ProfileCreated: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace: namespace,
-				Name:      "created_total",
-				Help:      "Total number of account profiles created",
+				Name: "created_total",
+				Help: "Total number of account profiles created",
 			},
 		),
 		ProfileDeleted: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "deleted_total",
-				Help:        "Total number of account profiles deleted",
-				ConstLabels: constLabels,
+				Name: "deleted_total",
+				Help: "Total number of account profiles deleted",
 			},
 		),
 		ProfileUpdated: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "updated_total",
-				Help:        "Total number of account profiles updated",
-				ConstLabels: constLabels,
+				Name: "updated_total",
+				Help: "Total number of account profiles updated",
 			},
 		),
 	}

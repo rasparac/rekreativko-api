@@ -1,0 +1,39 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Auto-discovers every container on the rekreativko network (mirrors how
+  # prometheus.yml discovers scrape targets), reading their JSON log files
+  # straight off the host via the docker.sock + container log directory
+  # mounts in docker-compose.yaml. Only sees containers - a service run via
+  # the VS Code debugger instead of `docker compose` won't show up here,
+  # same caveat as Prometheus scraping /metrics.
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # __meta_docker_container_name is "/identity" etc. - strip the leading slash
+      # and use it as "service" so it lines up with prometheus.yml's service label.
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: "service"
+      - source_labels: ["__meta_docker_container_log_stream"]
+        target_label: "stream"
+    pipeline_stages:
+      # Our services log structured JSON via shared/logger (slog). Pull just
+      # "level" out as an indexed label (low cardinality, useful for filtering)
+      # - everything else stays in the log line, queryable via `| json` in LogQL
+      # instead of blowing up label cardinality.
+      - json:
+          expressions:
+            level: level
+      - labels:
+          level:

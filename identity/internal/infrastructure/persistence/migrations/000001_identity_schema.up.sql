@@ -32,7 +32,9 @@ CREATE INDEX accounts_created_at_idx ON identity.accounts(created_at);
 CREATE TABLE IF NOT EXISTS identity.refresh_tokens(
     id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
     account_id uuid NOT NULL,
-    token text NOT NULL,
+    -- SHA-256 hex digest of the raw token; the raw value is only ever
+    -- returned to the client once and is never persisted.
+    token_hash text NOT NULL,
     created_at timestamptz NOT NULL DEFAULT NOW(),
     expires_at timestamptz NOT NULL,
     revoked_at timestamptz DEFAULT NULL
@@ -43,7 +45,7 @@ ALTER TABLE identity.refresh_tokens
 
 CREATE INDEX refresh_tokens_account_id_idx ON identity.refresh_tokens(account_id);
 
-CREATE UNIQUE INDEX refresh_tokens_token_uq_idx ON identity.refresh_tokens(token);
+CREATE UNIQUE INDEX refresh_tokens_token_hash_uq_idx ON identity.refresh_tokens(token_hash);
 
 CREATE INDEX refresh_tokens_created_at_idx ON identity.refresh_tokens(created_at);
 

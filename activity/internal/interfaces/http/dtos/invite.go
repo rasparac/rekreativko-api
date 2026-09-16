@@ -27,8 +27,3 @@ type InviteResponse struct {
 	ExpiresAt       time.Time  `json:"expires_at" example:"2024-01-08T00:00:00Z"`
 	RespondedAt     *time.Time `json:"responded_at,omitempty" example:"2024-01-02T00:00:00Z"`
 }
-
-// InviteListResponse is a response containing a list of group invites
-type InviteListResponse struct {
-	Invites []InviteResponse `json:"invites"`
-}

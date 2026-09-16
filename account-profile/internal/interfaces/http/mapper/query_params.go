@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/application"
+	"github.com/rasparac/rekreativko-api/shared/api"
 )
 
 var ErrMissingAccountProfilesFilter = errors.New("missing account profile filter")
@@ -86,26 +87,15 @@ func QueryToProfilesFilter(q url.Values) (application.ProfilesFilter, error) {
 	}
 
 	// Pagination (with defaults)
-	filter.Limit = 20
-	filter.Offset = 0
-
+	limit, pageToken, err := api.ParsePageParams(q, 20)
+	if err != nil {
+		return filter, fmt.Errorf("invalid limit")
+	}
 	if v := q.Get("limit"); v != "" {
-		limit, err := strconv.Atoi(v)
-		if err != nil || limit < 0 {
-			return filter, fmt.Errorf("invalid limit")
-		}
-		filter.Limit = limit
 		hasFilter = true
 	}
-
-	if v := q.Get("offset"); v != "" {
-		offset, err := strconv.Atoi(v)
-		if err != nil || offset < 0 {
-			return filter, fmt.Errorf("invalid offset")
-		}
-		filter.Offset = offset
-		hasFilter = true
-	}
+	filter.Limit = limit
+	filter.PageToken = pageToken
 
 	if !hasFilter {
 		return filter, ErrMissingAccountProfilesFilter

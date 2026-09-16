@@ -101,6 +101,13 @@ func (m *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 		}
 
 		ctx = context.WithValue(ctx, authcontext.AccountIDContextKey, accountID)
+
+		// Report back to Logging's access-log line, if it ran earlier in
+		// this chain and seeded the pointer - see accountIDLogPointer.
+		if logPtr := accountIDLogPointer(ctx); logPtr != nil {
+			*logPtr = accountID
+		}
+
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

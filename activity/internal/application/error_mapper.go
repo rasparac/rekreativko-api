@@ -3,11 +3,10 @@ package application
 import (
 	"errors"
 
-	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/domainerror"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // MapErrToAppError maps domain errors to application errors
@@ -26,6 +25,8 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.NotFound("session_template_deleted", "Session template has been deleted", err)
 	case errors.Is(err, domain.ErrSessionTemplateTitleRequired):
 		return domainerror.ValidationError("title_required", "Session template title is required", err)
+	case errors.Is(err, domain.ErrSessionTemplateLocationRequired):
+		return domainerror.ValidationError("location_required", "Session template location is required", err)
 	case errors.Is(err, domain.ErrInvalidDefaultCapacity):
 		return domainerror.ValidationError("invalid_capacity", "Default capacity must be greater than 0", err)
 	case errors.Is(err, domain.ErrInvalidRecurrenceFrequency):
@@ -54,6 +55,90 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.ValidationError("invalid_hour", "Invalid time of day hour, must be between 0 and 23", err)
 	case errors.Is(err, domain.ErrInvalidTimeOfDayMinute):
 		return domainerror.ValidationError("invalid_minute", "Invalid time of day minute, must be between 0 and 59", err)
+	case errors.Is(err, domain.ErrSessionLocationLatitudeInvalid):
+		return domainerror.ValidationError("invalid_latitude", "Latitude must be between -90 and 90", err)
+	case errors.Is(err, domain.ErrSessionLocationLongitudeInvalid):
+		return domainerror.ValidationError("invalid_longitude", "Longitude must be between -180 and 180", err)
+	case errors.Is(err, domain.ErrInvalidDiscoveryRadius):
+		return domainerror.ValidationError("invalid_radius", "Discovery radius must be greater than 0", err)
+	}
+
+	// Session errors
+	switch {
+	case errors.Is(err, domain.ErrSessionNotFound):
+		return domainerror.NotFound("session_not_found", "Session not found", err)
+	case errors.Is(err, domain.ErrSessionCanceled):
+		return domainerror.Conflict("session_canceled", "Session is canceled", err)
+	case errors.Is(err, domain.ErrSessionCompleted):
+		return domainerror.Conflict("session_completed", "Session is completed", err)
+	case errors.Is(err, domain.ErrSessionAlreadyStarted):
+		return domainerror.Conflict("session_already_started", "Session has already started", err)
+	case errors.Is(err, domain.ErrSessionNotStarted):
+		return domainerror.Conflict("session_not_started", "Session has not started yet", err)
+	case errors.Is(err, domain.ErrSessionNotScheduled):
+		return domainerror.Conflict("session_not_scheduled", "Session is not scheduled", err)
+	case errors.Is(err, domain.ErrSessionNotOpen):
+		return domainerror.Forbidden("session_not_open", "Session is not open for regular members yet", err)
+	case errors.Is(err, domain.ErrSessionInvalidSchedule):
+		return domainerror.ValidationError("invalid_schedule", "Session schedule is invalid", err)
+	case errors.Is(err, domain.ErrSessionStartTimeInPast):
+		return domainerror.ValidationError("start_time_in_past", "Session start time cannot be in the past", err)
+	case errors.Is(err, domain.ErrInvalidSessionCapacity):
+		return domainerror.ValidationError("invalid_capacity", "Session capacity must be a positive integer or nil for unlimited", err)
+	case errors.Is(err, domain.ErrSessionLocationCityRequired):
+		return domainerror.ValidationError("city_required", "Session location city is required", err)
+	case errors.Is(err, domain.ErrSessionLocationCountryRequired):
+		return domainerror.ValidationError("country_required", "Session location country is required", err)
+	case errors.Is(err, domain.ErrInvalidSessionVisibility):
+		return domainerror.ValidationError("invalid_visibility", "Session visibility must be public or private", err)
+	case errors.Is(err, domain.ErrSessionFull):
+		return domainerror.Conflict("session_full", "Session has reached its capacity", err)
+	}
+
+	// Attendee errors
+	switch {
+	case errors.Is(err, domain.ErrAttendeeNotFound):
+		return domainerror.NotFound("attendee_not_found", "Attendee not found", err)
+	case errors.Is(err, domain.ErrAttendeeNotGroupMember):
+		return domainerror.Forbidden("attendee_not_group_member", "You must be a member of this activity group", err)
+	case errors.Is(err, domain.ErrAttendeeAlreadyAttending):
+		return domainerror.Conflict("attendee_already_attending", "Already attending this session", err)
+	case errors.Is(err, domain.ErrAttendeeNotGoing):
+		return domainerror.Conflict("attendee_not_going", "Attendee is not marked as going to this session", err)
+	case errors.Is(err, domain.ErrAttendeeCannotPromote):
+		return domainerror.Conflict("no_pending_attendees", "No pending attendees to promote to confirmed status", err)
+	case errors.Is(err, domain.ErrInvalidAttendeeTransition):
+		return domainerror.ValidationError("invalid_attendee_transition", "Invalid attendee status transition", err)
+	case errors.Is(err, domain.ErrInvalidAttendeeStatus):
+		return domainerror.ValidationError("invalid_attendee_status", "Invalid attendee status", err)
+	case errors.Is(err, domain.ErrAttendeeNotAwaitingApproval):
+		return domainerror.Conflict("attendee_not_awaiting_approval", "Attendee is not awaiting approval", err)
+	case errors.Is(err, domain.ErrCannotRemoveCreator):
+		return domainerror.Conflict("cannot_remove_creator", "Cannot remove the creator from the activity", err)
+	}
+
+	// Member errors
+	switch {
+	case errors.Is(err, domain.ErrMemberNotFound):
+		return domainerror.NotFound("member_not_found", "Member not found", err)
+	case errors.Is(err, domain.ErrMemberAlreadyAdmin):
+		return domainerror.Conflict("member_already_admin", "Member is already an admin", err)
+	case errors.Is(err, domain.ErrMemberNotAdmin):
+		return domainerror.Conflict("member_not_admin", "Member is not an admin", err)
+	case errors.Is(err, domain.ErrCreatorCannotLeave):
+		return domainerror.Conflict("creator_cannot_leave", "Creator cannot leave their own activity", err)
+	case errors.Is(err, domain.ErrNotConfirmed):
+		return domainerror.Conflict("member_not_confirmed", "Member is not confirmed", err)
+	case errors.Is(err, domain.ErrNotPendingStatus):
+		return domainerror.Conflict("member_not_pending", "Member status is not pending", err)
+	case errors.Is(err, domain.ErrCannotDemoteCreator):
+		return domainerror.Conflict("cannot_demote_creator", "Cannot demote the creator to a regular member", err)
+	case errors.Is(err, domain.ErrMemberAlreadyPriority):
+		return domainerror.Conflict("member_already_priority", "Member is already a priority member", err)
+	case errors.Is(err, domain.ErrMemberNotPriority):
+		return domainerror.Conflict("member_not_priority", "Member is not a priority member", err)
+	case errors.Is(err, domain.ErrInsufficientRole):
+		return domainerror.Forbidden("insufficient_role", "Your role cannot manage this group", err)
 	}
 
 	// Database errors
@@ -67,6 +152,14 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.NotFound("activity_group_not_found", "Activity group not found", err)
 	case errors.Is(err, domain.ErrActivityGroupDeleted):
 		return domainerror.NotFound("activity_group_deleted", "Activity group has been deleted", err)
+	case errors.Is(err, domain.ErrActivityGroupNotActive):
+		return domainerror.Conflict("activity_group_not_active", "Activity group is not active", err)
+	case errors.Is(err, domain.ErrActivityGroupNotJoinable):
+		return domainerror.Forbidden("activity_group_not_joinable", "This activity group is not open for join requests", err)
+	case errors.Is(err, domain.ErrActivityGroupFull):
+		return domainerror.Conflict("activity_group_full", "Activity group has reached its member capacity", err)
+	case errors.Is(err, domain.ErrAlreadyParticipating):
+		return domainerror.Conflict("already_participating", "You already have a pending request or membership in this activity group", err)
 	case errors.Is(err, domain.ErrUnauthorized):
 		return domainerror.Unauthorized("unauthorized", "Unauthorized to perform this action", err)
 	}
@@ -89,89 +182,4 @@ func MapErrToAppError(err error) *domainerror.AppError {
 
 	// Default to internal error with wrapped error for debugging
 	return domainerror.InternalWithErr(err)
-}
-
-// MapPostgresError maps Postgres errors to application errors with detailed constraint information
-func MapPostgresError(err *pgconn.PgError) *domainerror.AppError {
-	// Note: pgx.ErrNoRows is not a *pgconn.PgError, so it should be checked
-	// before calling this function
-
-	// Unique constraint violations
-	if err.Code == pgerrcode.UniqueViolation {
-		return domainerror.Conflict(
-			"unique_violation",
-			formatConstraintMessage(err, "already exists"),
-			err,
-		)
-	}
-
-	// Foreign key violations
-	if err.Code == pgerrcode.ForeignKeyViolation {
-		return domainerror.ValidationError(
-			"foreign_key_violation",
-			formatConstraintMessage(err, "references invalid or missing record"),
-			err,
-		)
-	}
-
-	// Not-null constraint violations
-	if err.Code == pgerrcode.NotNullViolation {
-		return domainerror.ValidationError(
-			"not_null_violation",
-			formatConstraintMessage(err, "is required"),
-			err,
-		)
-	}
-
-	// Check constraint violations
-	if err.Code == pgerrcode.CheckViolation {
-		return domainerror.ValidationError(
-			"check_violation",
-			formatConstraintMessage(err, "violates check constraint"),
-			err,
-		)
-	}
-
-	// Other integrity constraint violations
-	if pgerrcode.IsIntegrityConstraintViolation(err.Code) {
-		return domainerror.ValidationError(
-			"constraint_violation",
-			formatConstraintMessage(err, "violates database constraint"),
-			err,
-		)
-	}
-
-	// Catch-all for other Postgres errors
-	return domainerror.InternalWithErr(err)
-}
-
-// formatConstraintMessage creates a user-friendly message from Postgres error details
-func formatConstraintMessage(err *pgconn.PgError, defaultSuffix string) string {
-	// Try to extract column name from constraint name
-	// Common patterns: table_column_key, table_column_check, etc.
-	if err.ConstraintName != "" {
-		// Remove common suffixes to get a cleaner field name
-		fieldName := err.ConstraintName
-
-		// Try to extract meaningful field name from constraint
-		// Examples: "session_templates_title_key" -> "title"
-		//           "accounts_email_unique" -> "email"
-		if err.ColumnName != "" {
-			fieldName = err.ColumnName
-		}
-
-		return fieldName + " " + defaultSuffix
-	}
-
-	// Fallback to column name if available
-	if err.ColumnName != "" {
-		return err.ColumnName + " " + defaultSuffix
-	}
-
-	// Final fallback to generic message with detail if available
-	if err.Detail != "" {
-		return err.Detail
-	}
-
-	return "Database constraint violation"
 }

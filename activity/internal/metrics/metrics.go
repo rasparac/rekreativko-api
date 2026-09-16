@@ -43,191 +43,151 @@ type Metrics struct {
 	DBQueryDuration *prometheus.HistogramVec
 }
 
-func New(namespace string) *Metrics {
-	constLabels := prometheus.Labels{"namespace": namespace}
+func New() *Metrics {
 	return &Metrics{
 		HTTPRequestTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "http_requests_total",
-				Help:        "Total number of HTTP requests",
-				ConstLabels: constLabels,
+				Name: "http_requests_total",
+				Help: "Total number of HTTP requests",
 			},
 			[]string{"method", "path", "status"},
 		),
 		HTTPRequestDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Name:        "http_request_duration_seconds",
-				Help:        "HTTP request duration in seconds",
-				ConstLabels: constLabels,
+				Name: "http_request_duration_seconds",
+				Help: "HTTP request duration in seconds",
 			},
 			[]string{"method", "path", "status"},
 		),
 		HTTPResponseSize: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Name:        "http_response_size_bytes",
-				Help:        "HTTP response size in bytes",
-				ConstLabels: constLabels,
+				Name: "http_response_size_bytes",
+				Help: "HTTP response size in bytes",
 			},
 			[]string{"method", "path", "status"},
 		),
 		HTTPRequestSize: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Name:        "http_request_size_bytes",
-				Help:        "HTTP request size in bytes",
-				ConstLabels: constLabels,
+				Name: "http_request_size_bytes",
+				Help: "HTTP request size in bytes",
 			},
 			[]string{"method", "path"},
 		),
 		ActivityGroupCreatedTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "activity_group_created_total",
-				Help:        "Total number of activity groups created",
-				ConstLabels: constLabels,
+				Name: "activity_group_created_total",
+				Help: "Total number of activity groups created",
 			},
 		),
 		ActivityGroupUpdatedTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "activity_group_updated_total",
-				Help:        "Total number of activity groups updated",
-				ConstLabels: constLabels,
+				Name: "activity_group_updated_total",
+				Help: "Total number of activity groups updated",
 			},
 		),
 		ActivityGroupDeletedTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "activity_group_deleted_total",
-				Help:        "Total number of activity groups deleted",
-				ConstLabels: constLabels,
+				Name: "activity_group_deleted_total",
+				Help: "Total number of activity groups deleted",
 			},
 		),
 		SessionCreatedTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "session_created_total",
-				Help:        "Total number of sessions created",
-				ConstLabels: constLabels,
+				Name: "session_created_total",
+				Help: "Total number of sessions created",
 			},
 		),
 		SessionUpdatedTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "session_updated_total",
-				Help:        "Total number of sessions updated",
-				ConstLabels: constLabels,
+				Name: "session_updated_total",
+				Help: "Total number of sessions updated",
 			},
 		),
 		SessionDeletedTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "session_deleted_total",
-				Help:        "Total number of sessions deleted",
-				ConstLabels: constLabels,
+				Name: "session_deleted_total",
+				Help: "Total number of sessions deleted",
 			},
 		),
 		SessionTemplateCreatedTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "session_template_created_total",
-				Help:        "Total number of session templates created",
-				ConstLabels: constLabels,
+				Name: "session_template_created_total",
+				Help: "Total number of session templates created",
 			},
 		),
 		SessionTemplateUpdatedTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "session_template_updated_total",
-				Help:        "Total number of session templates updated",
-				ConstLabels: constLabels,
+				Name: "session_template_updated_total",
+				Help: "Total number of session templates updated",
 			},
 		),
 		SessionTemplateDeletedTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "session_template_deleted_total",
-				Help:        "Total number of session templates deleted",
-				ConstLabels: constLabels,
+				Name: "session_template_deleted_total",
+				Help: "Total number of session templates deleted",
 			},
 		),
 		MemberJoinedTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "member_joined_total",
-				Help:        "Total number of members joined",
-				ConstLabels: constLabels,
+				Name: "member_joined_total",
+				Help: "Total number of members joined",
 			},
 		),
 		MemberLeftTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "member_left_total",
-				Help:        "Total number of members left",
-				ConstLabels: constLabels,
+				Name: "member_left_total",
+				Help: "Total number of members left",
 			},
 		),
 		MemberInvitedTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "member_invited_total",
-				Help:        "Total number of members invited",
-				ConstLabels: constLabels,
+				Name: "member_invited_total",
+				Help: "Total number of members invited",
 			},
 		),
 		MemberAcceptedTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "member_accepted_total",
-				Help:        "Total number of member invitations accepted",
-				ConstLabels: constLabels,
+				Name: "member_accepted_total",
+				Help: "Total number of member invitations accepted",
 			},
 		),
 		EventsPublishedTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "events_published_total",
-				Help:        "Total number of domain events published",
-				ConstLabels: constLabels,
+				Subsystem: "events",
+				Name:      "published_total",
+				Help:      "Total number of domain events published",
 			},
 			[]string{"event_type"},
 		),
 		EventPublishDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Name:        "event_publish_duration_seconds",
-				Help:        "Event publish duration in seconds",
-				ConstLabels: constLabels,
+				Subsystem: "events",
+				Name:      "publish_duration_seconds",
+				Help:      "Event publish duration in seconds",
 			},
 			[]string{"event_type"},
 		),
 		EventProcessedTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "events_processed_total",
-				Help:        "Total number of domain events processed",
-				ConstLabels: constLabels,
+				Subsystem: "events",
+				Name:      "processed_total",
+				Help:      "Total number of domain events processed",
 			},
 			[]string{"event_type", "status"},
 		),
 		DBQueryTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace:   namespace,
-				Name:        "db_query_total",
-				Help:        "Total number of database queries",
-				ConstLabels: constLabels,
+				Subsystem: "database",
+				Name:      "query_total",
+				Help:      "Total number of database queries",
 			},
 			[]string{"operation", "status", "table"},
 		),
 		DBQueryDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Namespace:   namespace,
-				Name:        "db_query_duration_seconds",
-				Help:        "Database query duration in seconds",
-				ConstLabels: constLabels,
+				Subsystem: "database",
+				Name:      "query_duration_seconds",
+				Help:      "Database query duration in seconds",
 			},
 			[]string{"operation", "status", "table"},
 		),

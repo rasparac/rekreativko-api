@@ -23,6 +23,7 @@ type SessionTemplateService struct {
 	logger       *logger.Logger
 	txManager    *postgres.TransactionManager
 	templateRepo SessionTemplateRepository
+	memberRepo   MemberRepository
 	eventWriter  domainevent.EventWriter
 	tracer       trace.Tracer
 	metrics      *metrics.Metrics
@@ -33,6 +34,7 @@ func NewSessionTemplateService(
 	logger *logger.Logger,
 	txManager *postgres.TransactionManager,
 	templateRepo SessionTemplateRepository,
+	memberRepo MemberRepository,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *SessionTemplateService {
@@ -40,6 +42,7 @@ func NewSessionTemplateService(
 		logger:       logger.WithName("activity.session_template_service"),
 		txManager:    txManager,
 		templateRepo: templateRepo,
+		memberRepo:   memberRepo,
 		eventWriter:  eventWriter,
 		tracer:       telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:      metrics,
@@ -68,9 +71,16 @@ func (s *SessionTemplateService) CreateSessionTemplate(
 		attribute.String("created_by_id", params.CreatedByID.String()),
 	)
 
+	// Only members who can manage the group may create session templates for it.
+	err := requireCanManageGroup(ctx, s.memberRepo, params.ActivityGroupID, params.CreatedByID)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "user cannot create session templates for this group", "error", err)
+		return nil, mapToAppErr(err)
+	}
+
 	// Build recurrence rule if provided
 	var recurrenceRule *domain.RecurrenceRule
-	var err error
 	if params.RecurrenceFrequency != nil {
 		recurrenceRule, err = s.buildRecurrenceRule(params)
 		if err != nil {
@@ -80,18 +90,13 @@ func (s *SessionTemplateService) CreateSessionTemplate(
 		}
 	}
 
-	// Build location if provided
-	var location *domain.Location
-	if params.LocationCity != nil && params.LocationCountry != nil {
-		// Templates don't need coordinates, use 0,0
-		loc, err := domain.NewLocation(*params.LocationCity, *params.LocationCountry, 0, 0)
-		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			log.Error(ctx, "failed to create location", "error", err)
-			return nil, MapErrToAppError(err)
-		}
-		location = &loc
+	loc, err := domain.NewLocation(params.LocationCity, params.LocationCountry, params.LocationStreet, params.LocationLat, params.LocationLng)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to create location", "error", err)
+		return nil, MapErrToAppError(err)
 	}
+	location := &loc
 
 	var template *domain.SessionTemplate
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
@@ -136,7 +141,7 @@ func (s *SessionTemplateService) CreateSessionTemplate(
 	}
 
 	span.SetStatus(codes.Ok, "session template created")
-	log.Info(ctx, "session template created", "template_id", template.ID())
+	log.Debug(ctx, "session template created", "template_id", template.ID())
 
 	return template, nil
 }
@@ -198,6 +203,11 @@ func (s *SessionTemplateService) UpdateSessionTemplate(
 			return fmt.Errorf("get session template: %w", err)
 		}
 
+		if err := requireCanManageGroup(tCtx, s.memberRepo, template.ActivityGroupID(), params.RequesterID); err != nil {
+			log.Error(tCtx, "user cannot update this session template", "error", err)
+			return err
+		}
+
 		// Build recurrence rule if provided
 		var recurrenceRule *domain.RecurrenceRule
 		if params.RecurrenceFrequency != nil {
@@ -207,15 +217,11 @@ func (s *SessionTemplateService) UpdateSessionTemplate(
 			}
 		}
 
-		// Build location if provided
-		var location *domain.Location
-		if params.LocationCity != nil && params.LocationCountry != nil {
-			loc, err := domain.NewLocation(*params.LocationCity, *params.LocationCountry, 0, 0)
-			if err != nil {
-				return fmt.Errorf("create location: %w", err)
-			}
-			location = &loc
+		loc, err := domain.NewLocation(params.LocationCity, params.LocationCountry, params.LocationStreet, params.LocationLat, params.LocationLng)
+		if err != nil {
+			return fmt.Errorf("create location: %w", err)
 		}
+		location := &loc
 
 		// Update the domain object
 		err = template.Update(
@@ -256,7 +262,7 @@ func (s *SessionTemplateService) UpdateSessionTemplate(
 	}
 
 	span.SetStatus(codes.Ok, "session template updated")
-	log.Info(ctx, "session template updated")
+	log.Debug(ctx, "session template updated")
 
 	return nil
 }
@@ -265,6 +271,7 @@ func (s *SessionTemplateService) UpdateSessionTemplate(
 func (s *SessionTemplateService) ActivateSessionTemplate(
 	ctx context.Context,
 	templateID uuid.UUID,
+	requesterID uuid.UUID,
 ) error {
 	ctx, span := s.tracer.Start(
 		ctx,
@@ -283,6 +290,11 @@ func (s *SessionTemplateService) ActivateSessionTemplate(
 		template, err := s.templateRepo.GetSessionTemplateByID(tCtx, templateID)
 		if err != nil {
 			return fmt.Errorf("get session template: %w", err)
+		}
+
+		if err := requireCanManageGroup(tCtx, s.memberRepo, template.ActivityGroupID(), requesterID); err != nil {
+			log.Error(tCtx, "user cannot activate this session template", "error", err)
+			return err
 		}
 
 		err = template.Activate()
@@ -315,7 +327,7 @@ func (s *SessionTemplateService) ActivateSessionTemplate(
 	}
 
 	span.SetStatus(codes.Ok, "session template activated")
-	log.Info(ctx, "session template activated")
+	log.Debug(ctx, "session template activated")
 
 	return nil
 }
@@ -324,6 +336,7 @@ func (s *SessionTemplateService) ActivateSessionTemplate(
 func (s *SessionTemplateService) DeactivateSessionTemplate(
 	ctx context.Context,
 	templateID uuid.UUID,
+	requesterID uuid.UUID,
 ) error {
 	ctx, span := s.tracer.Start(
 		ctx,
@@ -342,6 +355,11 @@ func (s *SessionTemplateService) DeactivateSessionTemplate(
 		template, err := s.templateRepo.GetSessionTemplateByID(tCtx, templateID)
 		if err != nil {
 			return fmt.Errorf("get session template: %w", err)
+		}
+
+		if err := requireCanManageGroup(tCtx, s.memberRepo, template.ActivityGroupID(), requesterID); err != nil {
+			log.Error(tCtx, "user cannot deactivate this session template", "error", err)
+			return err
 		}
 
 		err = template.Deactivate()
@@ -374,7 +392,7 @@ func (s *SessionTemplateService) DeactivateSessionTemplate(
 	}
 
 	span.SetStatus(codes.Ok, "session template deactivated")
-	log.Info(ctx, "session template deactivated")
+	log.Debug(ctx, "session template deactivated")
 
 	return nil
 }
@@ -383,6 +401,7 @@ func (s *SessionTemplateService) DeactivateSessionTemplate(
 func (s *SessionTemplateService) DeleteSessionTemplate(
 	ctx context.Context,
 	templateID uuid.UUID,
+	requesterID uuid.UUID,
 ) error {
 	ctx, span := s.tracer.Start(
 		ctx,
@@ -401,6 +420,11 @@ func (s *SessionTemplateService) DeleteSessionTemplate(
 		template, err := s.templateRepo.GetSessionTemplateByID(tCtx, templateID)
 		if err != nil {
 			return fmt.Errorf("get session template: %w", err)
+		}
+
+		if err := requireCanManageGroup(tCtx, s.memberRepo, template.ActivityGroupID(), requesterID); err != nil {
+			log.Error(tCtx, "user cannot delete this session template", "error", err)
+			return err
 		}
 
 		template.Delete()
@@ -430,7 +454,7 @@ func (s *SessionTemplateService) DeleteSessionTemplate(
 	}
 
 	span.SetStatus(codes.Ok, "session template deleted")
-	log.Info(ctx, "session template deleted")
+	log.Debug(ctx, "session template deleted")
 
 	return nil
 }
@@ -439,7 +463,7 @@ func (s *SessionTemplateService) DeleteSessionTemplate(
 func (s *SessionTemplateService) ListSessionTemplates(
 	ctx context.Context,
 	params ListSessionTemplatesParams,
-) ([]*domain.SessionTemplate, error) {
+) ([]*domain.SessionTemplate, string, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
 		"activity.service.ListSessionTemplates",
@@ -470,20 +494,20 @@ func (s *SessionTemplateService) ListSessionTemplates(
 		NeedsGeneration: params.NeedsGeneration,
 		LookaheadWindow: params.LookaheadWindow,
 		Limit:           params.Limit,
-		Offset:          params.Offset,
+		PageToken:       params.PageToken,
 	}
 
-	templates, err := s.templateRepo.ListSessionTemplates(ctx, filter)
+	templates, nextPageToken, err := s.templateRepo.ListSessionTemplates(ctx, filter)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to list session templates", "error", err)
-		return nil, mapToAppErr(err)
+		return nil, "", mapToAppErr(err)
 	}
 
 	span.SetStatus(codes.Ok, "session templates listed")
 	log.Debug(ctx, "session templates listed", "count", len(templates))
 
-	return templates, nil
+	return templates, nextPageToken, nil
 }
 
 // buildRecurrenceRule constructs a RecurrenceRule from create params
@@ -560,7 +584,7 @@ func (s *SessionTemplateService) buildRecurrenceRuleFromUpdate(
 func mapToAppErr(err error) *domainerror.AppError {
 	pgErr := postgres.GetPgxError(err)
 	if pgErr != nil {
-		return MapPostgresError(pgErr)
+		return domainerror.MapPostgresError(pgErr)
 	}
 
 	return MapErrToAppError(err)

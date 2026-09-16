@@ -44,6 +44,15 @@ services:
         CMD_PATH: cron
     image: rekreativko/activity-cron:latest
 
+  notifications:
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile
+      args:
+        SERVICE: notifications
+        CMD_PATH: api
+    image: rekreativko/notifications:latest
+
   outbox-publisher:
     build:
       context: .

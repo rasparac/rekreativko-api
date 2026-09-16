@@ -24,9 +24,12 @@ type (
 		AccountID uuid.UUID
 	}
 
+	// Location carries only the fields the client actually included in the
+	// update request (nil = omitted, left untouched). An explicitly empty
+	// City is the sentinel for "clear my location".
 	Location struct {
-		City      string
-		Country   string
+		City      *string
+		Country   *string
 		Latitude  *float64
 		Longitude *float64
 	}
@@ -55,8 +58,8 @@ type (
 		LocationCountry *string
 		LocationCity    *string
 
-		Limit  int
-		Offset int
+		Limit     int
+		PageToken string
 	}
 
 	ProfileFilter struct {

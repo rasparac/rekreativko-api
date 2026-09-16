@@ -117,8 +117,8 @@ func (h *Handler) GetSessionTemplate(w http.ResponseWriter, r *http.Request) {
 //	@Param			status		query		string										false	"Filter by status (active, inactive)"
 //	@Param			is_recurring	query		boolean										false	"Filter by recurring status"
 //	@Param			limit		query		int											false	"Limit number of results (default 20)"
-//	@Param			offset		query		int											false	"Offset for pagination (default 0)"
-//	@Success		200			{object}	api.Response[dtos.SessionTemplateListResponse]	"Templates retrieved successfully"
+//	@Param			page_token	query		string										false	"Token from the previous response's next_page_token, to fetch the next page"
+//	@Success		200			{object}	api.Response[api.Page[dtos.SessionTemplateResponse]]	"Templates retrieved successfully"
 //	@Failure		400			{object}	api.Response[any]									"Invalid request"
 //	@Failure		500			{object}	api.Response[any]									"Internal server error"
 //	@Router			/api/v1/activity-groups/{groupId}/templates [get]
@@ -146,14 +146,14 @@ func (h *Handler) ListSessionTemplates(w http.ResponseWriter, r *http.Request) {
 	params.ActivityGroupID = &groupID
 
 	// List templates
-	templates, err := h.sessionTemplateService.ListSessionTemplates(ctx, *params)
+	templates, nextPageToken, err := h.sessionTemplateService.ListSessionTemplates(ctx, *params)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
 
 	api.WriteOkResponse(w,
-		mapper.DomainListToResponse(templates, params.Limit, params.Offset),
+		api.NewPage(templates, params.Limit, nextPageToken, mapper.DomainToResponse),
 		"")
 }
 
@@ -169,11 +169,13 @@ func (h *Handler) ListSessionTemplates(w http.ResponseWriter, r *http.Request) {
 //	@Param			request	body		dtos.UpdateSessionTemplateRequest		true	"Update data"
 //	@Success		200		{object}	api.Response[dtos.EmptyResponse]		"Template updated successfully"
 //	@Failure		400		{object}	api.Response[any]						"Invalid request"
+//	@Failure		403		{object}	api.Response[any]						"Not authorized to update this template"
 //	@Failure		404		{object}	api.Response[any]						"Template not found"
 //	@Failure		500		{object}	api.Response[any]						"Internal server error"
 //	@Router			/api/v1/templates/{id} [put]
 func (h *Handler) UpdateSessionTemplate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
 
 	// Parse template ID from path
 	templateIDStr := r.PathValue("id")
@@ -193,7 +195,7 @@ func (h *Handler) UpdateSessionTemplate(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Convert to application params
-	params, err := mapper.UpdateRequestToParams(&req)
+	params, err := mapper.UpdateRequestToParams(&req, accountID)
 	if err != nil {
 		h.logger.Error(ctx, "failed to convert request to params", "error", err)
 		api.WriteBadRequestResponse(w, "invalid_params", "Invalid request parameters")
@@ -221,11 +223,13 @@ func (h *Handler) UpdateSessionTemplate(w http.ResponseWriter, r *http.Request) 
 //	@Param			id	path		string							true	"Template ID"
 //	@Success		200	{object}	api.Response[dtos.EmptyResponse]	"Template deleted successfully"
 //	@Failure		400	{object}	api.Response[any]				"Invalid request"
+//	@Failure		403	{object}	api.Response[any]				"Not authorized to delete this template"
 //	@Failure		404	{object}	api.Response[any]				"Template not found"
 //	@Failure		500	{object}	api.Response[any]				"Internal server error"
 //	@Router			/api/v1/templates/{id} [delete]
 func (h *Handler) DeleteSessionTemplate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
 
 	// Parse template ID from path
 	templateIDStr := r.PathValue("id")
@@ -237,7 +241,7 @@ func (h *Handler) DeleteSessionTemplate(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Delete template
-	if err := h.sessionTemplateService.DeleteSessionTemplate(ctx, templateID); err != nil {
+	if err := h.sessionTemplateService.DeleteSessionTemplate(ctx, templateID, accountID); err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
@@ -257,11 +261,13 @@ func (h *Handler) DeleteSessionTemplate(w http.ResponseWriter, r *http.Request) 
 //	@Param			id	path		string							true	"Template ID"
 //	@Success		200	{object}	api.Response[dtos.EmptyResponse]	"Template activated successfully"
 //	@Failure		400	{object}	api.Response[any]				"Invalid request"
+//	@Failure		403	{object}	api.Response[any]				"Not authorized to activate this template"
 //	@Failure		404	{object}	api.Response[any]				"Template not found"
 //	@Failure		500	{object}	api.Response[any]				"Internal server error"
 //	@Router			/api/v1/templates/{id}/activate [post]
 func (h *Handler) ActivateSessionTemplate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
 
 	// Parse template ID from path
 	templateIDStr := r.PathValue("id")
@@ -273,7 +279,7 @@ func (h *Handler) ActivateSessionTemplate(w http.ResponseWriter, r *http.Request
 	}
 
 	// Activate template
-	if err := h.sessionTemplateService.ActivateSessionTemplate(ctx, templateID); err != nil {
+	if err := h.sessionTemplateService.ActivateSessionTemplate(ctx, templateID, accountID); err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
@@ -293,11 +299,13 @@ func (h *Handler) ActivateSessionTemplate(w http.ResponseWriter, r *http.Request
 //	@Param			id	path		string							true	"Template ID"
 //	@Success		200	{object}	api.Response[dtos.EmptyResponse]	"Template deactivated successfully"
 //	@Failure		400	{object}	api.Response[any]				"Invalid request"
+//	@Failure		403	{object}	api.Response[any]				"Not authorized to deactivate this template"
 //	@Failure		404	{object}	api.Response[any]				"Template not found"
 //	@Failure		500	{object}	api.Response[any]				"Internal server error"
 //	@Router			/api/v1/templates/{id}/deactivate [post]
 func (h *Handler) DeactivateSessionTemplate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
 
 	// Parse template ID from path
 	templateIDStr := r.PathValue("id")
@@ -309,7 +317,7 @@ func (h *Handler) DeactivateSessionTemplate(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Deactivate template
-	if err := h.sessionTemplateService.DeactivateSessionTemplate(ctx, templateID); err != nil {
+	if err := h.sessionTemplateService.DeactivateSessionTemplate(ctx, templateID, accountID); err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/rasparac/rekreativko-api/shared/activitycatalog"
 )
 
 type Nickname struct {
@@ -199,8 +201,8 @@ func (p *ProfilePicture) URL() string {
 }
 
 type (
-	ActivityType  string
-	ActivityLevel string
+	ActivityType  = activitycatalog.ActivityType
+	ActivityLevel = activitycatalog.ActivityLevel
 
 	ActivityInterest struct {
 		acitivityType ActivityType
@@ -209,59 +211,36 @@ type (
 )
 
 const (
-	ActivityTypeRunning       ActivityType = "running"
-	ActivityTypeWalking       ActivityType = "walking"
-	ActivityTypeJogging       ActivityType = "jogging"
-	ActivityTypeBasketball    ActivityType = "basketball"
-	ActivityTypeFootball      ActivityType = "football"
-	ActivityTypeTennis        ActivityType = "tennis"
-	ActivityTypeGym           ActivityType = "gym"
-	ActivityTypeDancing       ActivityType = "dancing"
-	ActivityTypeSkiing        ActivityType = "skiing"
-	ActivityTypeClimbing      ActivityType = "climbing"
-	ActivityTypeCycling       ActivityType = "cycling"
-	ActivityTypeSwimming      ActivityType = "swimming"
-	ActivityTypeHiking        ActivityType = "hiking"
-	ActivityTypeYoga          ActivityType = "yoga"
-	ActivityTypeWeightlifting ActivityType = "weightlifting"
+	ActivityTypeRunning       = activitycatalog.ActivityTypeRunning
+	ActivityTypeWalking       = activitycatalog.ActivityTypeWalking
+	ActivityTypeJogging       = activitycatalog.ActivityTypeJogging
+	ActivityTypeBasketball    = activitycatalog.ActivityTypeBasketball
+	ActivityTypeFootball      = activitycatalog.ActivityTypeFootball
+	ActivityTypeTennis        = activitycatalog.ActivityTypeTennis
+	ActivityTypeGym           = activitycatalog.ActivityTypeGym
+	ActivityTypeDancing       = activitycatalog.ActivityTypeDancing
+	ActivityTypeSkiing        = activitycatalog.ActivityTypeSkiing
+	ActivityTypeClimbing      = activitycatalog.ActivityTypeClimbing
+	ActivityTypeCycling       = activitycatalog.ActivityTypeCycling
+	ActivityTypeSwimming      = activitycatalog.ActivityTypeSwimming
+	ActivityTypeHiking        = activitycatalog.ActivityTypeHiking
+	ActivityTypeYoga          = activitycatalog.ActivityTypeYoga
+	ActivityTypeWeightlifting = activitycatalog.ActivityTypeWeightlifting
+	ActivityTypeOther         = activitycatalog.ActivityTypeOther
 )
-
-var validActivityTypes = map[ActivityType]struct{}{
-	ActivityTypeRunning:       {},
-	ActivityTypeWalking:       {},
-	ActivityTypeJogging:       {},
-	ActivityTypeBasketball:    {},
-	ActivityTypeFootball:      {},
-	ActivityTypeTennis:        {},
-	ActivityTypeGym:           {},
-	ActivityTypeDancing:       {},
-	ActivityTypeSkiing:        {},
-	ActivityTypeClimbing:      {},
-	ActivityTypeCycling:       {},
-	ActivityTypeSwimming:      {},
-	ActivityTypeHiking:        {},
-	ActivityTypeYoga:          {},
-	ActivityTypeWeightlifting: {},
-}
 
 const (
-	ActivityLevelBeginner     ActivityLevel = "beginner"
-	ActivityLevelIntermediate ActivityLevel = "intermediate"
-	ActivityLevelAdvanced     ActivityLevel = "advanced"
+	ActivityLevelBeginner     = activitycatalog.ActivityLevelBeginner
+	ActivityLevelIntermediate = activitycatalog.ActivityLevelIntermediate
+	ActivityLevelAdvanced     = activitycatalog.ActivityLevelAdvanced
 )
 
-var validLevels = map[ActivityLevel]struct{}{
-	ActivityLevelBeginner:     {},
-	ActivityLevelIntermediate: {},
-	ActivityLevelAdvanced:     {},
-}
-
 func NewActivityInterest(activityType ActivityType, level ActivityLevel) (*ActivityInterest, error) {
-	if _, ok := validActivityTypes[activityType]; !ok {
+	if !activityType.IsValid() {
 		return nil, ErrInvalidActivityType
 	}
 
-	if _, ok := validLevels[level]; !ok {
+	if !level.IsValid() {
 		return nil, ErrInvalidActivityLevel
 	}
 
