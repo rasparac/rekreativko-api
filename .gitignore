@@ -38,6 +38,10 @@ grafana-data
 !observability/grafana/dashboards
 !observability/grafana/datasources
 
+# real gateway API key used by prometheus.yml's credentials_file - never commit it
+observability/secrets/*
+!observability/secrets/*.example
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

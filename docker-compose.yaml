@@ -270,6 +270,8 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
+    secrets:
+      - gateway_api_key
     depends_on:
       - alertmanager
     networks:
@@ -351,3 +353,7 @@ volumes:
 networks:
   rekreativko:
     driver: bridge
+
+secrets:
+  gateway_api_key:
+    file: ./observability/secrets/gateway_api_key.txt

@@ -25,13 +25,13 @@ scrape_configs:
   # publicly-exposed port (docker-compose maps 8080:8080), so it's the only one
   # that requires a bearer token to scrape - see shared/middleware/metrics_auth.go.
   # The credential here is the same shared GATEWAY_API_KEY used everywhere else
-  # in this stack; in production this file must not be checked in with a real
-  # secret inlined - inject it via templating or a secret-mounted config.
+  # in this stack, read from a mounted secret file (see docker-compose.yaml's
+  # `secrets:` block) so no real value is ever checked into this file.
   - job_name: "rekreativko-gateway"
     scrape_interval: "10s"
     metrics_path: "/metrics"
     authorization:
-      credentials: "468019b5-a863-4e49-b8d8-2c420079ac7b"
+      credentials_file: "/run/secrets/gateway_api_key"
     static_configs:
       - targets: ["gateway:8080"]
         labels:
