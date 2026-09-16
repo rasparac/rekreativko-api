@@ -141,11 +141,18 @@ func newAutoPendingAttendee(
 	}
 }
 
+// NewRSVPManualAttendee creates a brand-new manual RSVP. For status=Going,
+// currentConfirmedCount is checked against the session's capacity up front -
+// unlike UpdateRSVP's identical check, there is no "old status" here for a
+// freshly-created attendee to differ from, so the capacity check must happen
+// during construction rather than via a follow-up UpdateRSVP call (which
+// would be a no-op since newStatus would already equal a.status).
 func NewRSVPManualAttendee(
 	session *Session,
 	activityID *uuid.UUID,
 	userID uuid.UUID,
 	status AttendeeStatus,
+	currentConfirmedCount int,
 ) (*Attendee, error) {
 	if !status.IsValid() {
 		return nil, ErrInvalidAttendeeStatus
@@ -166,6 +173,14 @@ func NewRSVPManualAttendee(
 
 	switch status {
 	case AttendeeStatusGoing:
+		if !session.hasCapacity(currentConfirmedCount) {
+			a.status = AttendeeStatusPending
+			a.addEvent(NewAttendeeRSVPAutoPendingEvent(
+				a,
+				session,
+			))
+			break
+		}
 		a.addEvent(NewAttendeeRSVPGoingEvent(
 			a,
 			session,

@@ -18,6 +18,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// sessionCapacityLockNamespace namespaces the Postgres advisory locks taken
+// by lockSessionCapacity, keeping them out of the way of any other advisory
+// locks the application might take in the future.
+const sessionCapacityLockNamespace = 78233
+
 // AttendeeService handles business logic for session RSVPs
 type AttendeeService struct {
 	logger       *logger.Logger
@@ -50,6 +55,23 @@ func NewAttendeeService(
 		tracer:       telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:      metrics,
 	}
+}
+
+// lockSessionCapacity takes a transaction-scoped Postgres advisory lock keyed
+// on sessionID, serializing concurrent capacity checks/writes for the same
+// session. The lock is released automatically on transaction commit/rollback,
+// so it must be called from within s.txManager.WithTransaction.
+func (s *AttendeeService) lockSessionCapacity(ctx context.Context, sessionID uuid.UUID) error {
+	_, err := s.txManager.Querier(ctx).Exec(
+		ctx,
+		"SELECT pg_advisory_xact_lock($1, hashtext($2))",
+		sessionCapacityLockNamespace,
+		sessionID.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to acquire session capacity lock: %w", err)
+	}
+	return nil
 }
 
 // CreateRSVP creates a new RSVP for a session
@@ -134,6 +156,14 @@ func (s *AttendeeService) CreateRSVP(
 			return domain.ErrAttendeeAlreadyAttending
 		}
 
+		// Lock the session before reading the confirmed count so a
+		// concurrent RSVP/approval for the same session can't read the same
+		// count and both pass the capacity check below.
+		if err := s.lockSessionCapacity(txCtx, params.SessionID); err != nil {
+			log.Error(txCtx, "failed to lock session for capacity check", "error", err)
+			return err
+		}
+
 		// Get current confirmed count for capacity check
 		confirmedCount, err := s.attendeeRepo.CountConfirmedAttendees(txCtx, params.SessionID)
 		if err != nil {
@@ -165,24 +195,19 @@ func (s *AttendeeService) CreateRSVP(
 				managerUserIDs,
 			)
 		} else {
-			// Create attendee with capacity-aware logic
+			// Create attendee with capacity-aware logic - for status=Going,
+			// NewRSVPManualAttendee checks confirmedCount itself and
+			// downgrades to Pending when the session is full.
 			attendee, err = domain.NewRSVPManualAttendee(
 				session,
 				session.ActivityGroupID(),
 				params.UserID,
 				status,
+				confirmedCount,
 			)
 			if err != nil {
 				log.Error(txCtx, "failed to create attendee", "error", err)
 				return err
-			}
-
-			// If RSVPing "going", check capacity and potentially downgrade to pending
-			if status == domain.AttendeeStatusGoing {
-				if err := attendee.UpdateRSVP(status, session, confirmedCount); err != nil {
-					log.Error(txCtx, "failed to update RSVP", "error", err)
-					return err
-				}
 			}
 		}
 
@@ -263,7 +288,12 @@ func (s *AttendeeService) ApproveAttendee(
 
 		// Re-check capacity here, not just at request time - approving is the
 		// moment a slot is actually consumed, and other approvals may have
-		// filled the session in the meantime.
+		// filled the session in the meantime. Lock the session first so a
+		// concurrent RSVP/approval can't read the same count.
+		if err := s.lockSessionCapacity(tCtx, params.SessionID); err != nil {
+			return err
+		}
+
 		confirmedCount, err := s.attendeeRepo.CountConfirmedAttendees(tCtx, params.SessionID)
 		if err != nil {
 			return fmt.Errorf("count confirmed attendees: %w", err)
@@ -502,6 +532,14 @@ func (s *AttendeeService) UpdateRSVP(
 		if err != nil {
 			log.Error(txCtx, "failed to get session", "error", err)
 			return fmt.Errorf("failed to get session: %w", err)
+		}
+
+		// Lock the session before reading the confirmed count so a
+		// concurrent RSVP/approval for the same session can't read the same
+		// count and both pass the capacity check below.
+		if err := s.lockSessionCapacity(txCtx, params.SessionID); err != nil {
+			log.Error(txCtx, "failed to lock session for capacity check", "error", err)
+			return err
 		}
 
 		// Get current confirmed count
