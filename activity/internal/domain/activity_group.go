@@ -310,6 +310,7 @@ func ReconstructActivityGroup(
 		status:          status,
 		location:        location,
 		timezone:        timezone,
+		capacity:        capacity,
 		createdAt:       createdAt,
 		updatedAt:       updatedAt,
 		cancelledAt:     cancelledAt,

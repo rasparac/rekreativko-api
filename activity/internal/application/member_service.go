@@ -18,6 +18,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// groupCapacityLockNamespace namespaces the Postgres advisory locks taken by
+// lockGroupCapacity, distinct from sessionCapacityLockNamespace since they
+// lock different resources (activity groups vs. sessions).
+const groupCapacityLockNamespace = 78234
+
 // MemberService handles business logic for members
 type MemberService struct {
 	logger      *logger.Logger
@@ -47,6 +52,24 @@ func NewMemberService(
 		tracer:      telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:     metrics,
 	}
+}
+
+// lockGroupCapacity takes a transaction-scoped Postgres advisory lock keyed
+// on activityGroupID, serializing concurrent capacity checks/writes for the
+// same group (mirrors AttendeeService.lockSessionCapacity). The lock is
+// released automatically on transaction commit/rollback, so it must be
+// called from within s.txManager.WithTransaction.
+func (s *MemberService) lockGroupCapacity(ctx context.Context, activityGroupID uuid.UUID) error {
+	_, err := s.txManager.Querier(ctx).Exec(
+		ctx,
+		"SELECT pg_advisory_xact_lock($1, hashtext($2))",
+		groupCapacityLockNamespace,
+		activityGroupID.String(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to acquire group capacity lock: %w", err)
+	}
+	return nil
 }
 
 // InviteMember invites a user to join an activity group
@@ -185,8 +208,13 @@ func (s *MemberService) RequestToJoinGroup(
 
 		// Enforce capacity up front so users aren't left waiting on a request
 		// that can never be approved. Re-checked again at approval time, since
-		// that's the moment a slot is actually consumed.
+		// that's the moment a slot is actually consumed. Lock the group first
+		// so a concurrent join request/approval can't read the same count.
 		if capacity := group.DefaultCapacity(); capacity != nil {
+			if err := s.lockGroupCapacity(tCtx, params.ActivityGroupID); err != nil {
+				return err
+			}
+
 			confirmedCount, err := s.memberRepo.CountConfirmedMembers(tCtx, params.ActivityGroupID)
 			if err != nil {
 				return fmt.Errorf("count confirmed members: %w", err)
@@ -534,6 +562,10 @@ func (s *MemberService) ApproveMember(
 			return fmt.Errorf("get activity group: %w", err)
 		}
 		if capacity := group.DefaultCapacity(); capacity != nil {
+			if err := s.lockGroupCapacity(tCtx, params.ActivityGroupID); err != nil {
+				return err
+			}
+
 			confirmedCount, err := s.memberRepo.CountConfirmedMembers(tCtx, params.ActivityGroupID)
 			if err != nil {
 				return fmt.Errorf("count confirmed members: %w", err)
