@@ -83,6 +83,10 @@ func main() {
 			URL:     cfg.NotificationsServiceConfig.URL,
 			Timeout: cfg.NotificationsServiceConfig.Timeout,
 		},
+		"location": {
+			URL:     cfg.LocationServiceConfig.URL,
+			Timeout: cfg.LocationServiceConfig.Timeout,
+		},
 	}
 
 	proxy, err := gateway.NewReverseProxy(serviceConfig, log)

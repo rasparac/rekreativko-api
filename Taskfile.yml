@@ -185,6 +185,20 @@ tasks:
       - echo "Rolling back notifications migration..."
       - migrate -path ./notifications/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}&x-migrations-table=notifications_schema_migrations" down 1
 
+  migrate:location:up:
+    desc: Run location migrations
+    deps: [docker:run:local]
+    cmds:
+      - echo "Running location migrations..."
+      - migrate -path ./location/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}&x-migrations-table=location_schema_migrations" up
+
+  migrate:location:down:
+    desc: Rollback location migration
+    deps: [docker:run:local]
+    cmds:
+      - echo "Rolling back location migration..."
+      - migrate -path ./location/internal/infrastructure/persistence/migrations -database "{{.DB_URL}}&x-migrations-table=location_schema_migrations" down 1
+
   migrate:all:up:
     desc: Run all service migrations
     deps: [docker:run:local]
@@ -194,6 +208,7 @@ tasks:
       - task: migrate:identity:up
       - task: migrate:account-profile:up
       - task: migrate:notifications:up
+      - task: migrate:location:up
       - echo "✓ All migrations applied"
 
   migrate:all:down:
@@ -205,6 +220,7 @@ tasks:
       - task: migrate:identity:down
       - task: migrate:account-profile:down
       - task: migrate:notifications:down
+      - task: migrate:location:down
       - echo "✓ All migrations rolled back"
 
   migrate:create:
@@ -307,6 +323,12 @@ tasks:
       - echo "Building notifications Docker image..."
       - docker compose -f docker-compose.build.yml build notifications
 
+  docker:build:location:
+    desc: Build location Docker image
+    cmds:
+      - echo "Building location Docker image..."
+      - docker compose -f docker-compose.build.yml build location
+
   docker:build:outbox:
     desc: Build outbox-publisher Docker image
     cmds:
@@ -392,11 +414,26 @@ tasks:
       - echo "Starting notifications service..."
       - go run ./notifications/cmd/api/main.go
 
+  run:location:
+    desc: Run location service locally
+    cmds:
+      - echo "Starting location service..."
+      - go run ./location/cmd/api/main.go
+
   run:outbox:
     desc: Run outbox-publisher service locally
     cmds:
       - echo "Starting outbox-publisher service..."
       - go run ./outbox-publisher/cmd/worker/main.go
+
+  # ============================================================================
+  # Seeding
+  # ============================================================================
+
+  seed:users:
+    desc: "Register + verify 3 dev users via the real API (requires gateway, identity, account-profile, outbox-publisher, nats, db running)"
+    cmds:
+      - ./dev/scripts/seed_users.sh
 
   # ============================================================================
   # Dependencies & tools
@@ -436,6 +473,7 @@ tasks:
       - task: docs:swagger:identity
       - task: docs:swagger:account-profile
       - task: docs:swagger:notifications
+      - task: docs:swagger:location
       - echo "✓ All swagger docs generated successfully"
 
   docs:swagger:notifications:
@@ -444,6 +482,13 @@ tasks:
       - echo "Generating swagger docs for notifications service..."
       - GOFLAGS="-mod=mod" swag init -g cmd/api/main.go -o ./notifications/docs --parseDependency --parseInternal -d ./notifications
       - echo "✓ Notifications swagger docs generated"
+
+  docs:swagger:location:
+    desc: Generate swagger docs for location service
+    cmds:
+      - echo "Generating swagger docs for location service..."
+      - GOFLAGS="-mod=mod" swag init -g cmd/api/main.go -o ./location/docs --parseDependency --parseInternal -d ./location
+      - echo "✓ Location swagger docs generated"
 
   docs:swagger:activity:
     desc: Generate swagger docs for activity service

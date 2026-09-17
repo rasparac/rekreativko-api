@@ -53,6 +53,15 @@ services:
         CMD_PATH: api
     image: rekreativko/notifications:latest
 
+  location:
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile
+      args:
+        SERVICE: location
+        CMD_PATH: api
+    image: rekreativko/location:latest
+
   outbox-publisher:
     build:
       context: .

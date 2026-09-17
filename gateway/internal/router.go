@@ -97,6 +97,19 @@ func (r *Router) loadRoutes() {
 			},
 		},
 	})
+
+	r.addRoute(Route{
+		Prefix:      "/location",
+		Service:     "location",
+		StripPrefix: true,
+		Methods:     []string{"GET"},
+		AuthRule: []AuthRule{
+			{
+				PathPattern: "^/location/api/v1/.*",
+				RequireAuth: true,
+			},
+		},
+	})
 }
 
 func (r *Router) addRoute(route Route) {

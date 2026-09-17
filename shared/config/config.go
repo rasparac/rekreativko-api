@@ -27,6 +27,9 @@ type (
 		AccountProfileServiceConfig AccountProfileServiceConfig
 		ActivityServiceConfig       ActivityServiceConfig
 		NotificationsServiceConfig  NotificationsServiceConfig
+		LocationServiceConfig       LocationServiceConfig
+
+		Nominatim NominatimConfig
 
 		Features FeaturesConfig
 	}
@@ -114,6 +117,16 @@ type (
 
 	NatsConfig struct {
 		URL string `envconfig:"NATS_URL" required:"true" default:"nats://localhost:4222"`
+	}
+
+	// NominatimConfig configures the outbound client the location service uses
+	// to call Nominatim's public API. MinRequestInterval enforces Nominatim's
+	// usage policy of at most 1 request/second across this process.
+	NominatimConfig struct {
+		BaseURL            string        `envconfig:"NOMINATIM_BASE_URL" default:"https://nominatim.openstreetmap.org"`
+		UserAgent          string        `envconfig:"NOMINATIM_USER_AGENT" default:"rekreativko-api/1.0 (+https://github.com/rasparac/rekreativko-api)"`
+		RequestTimeout     time.Duration `envconfig:"NOMINATIM_REQUEST_TIMEOUT" default:"10s"`
+		MinRequestInterval time.Duration `envconfig:"NOMINATIM_MIN_REQUEST_INTERVAL" default:"1s"`
 	}
 )
 

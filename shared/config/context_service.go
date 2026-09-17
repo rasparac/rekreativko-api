@@ -26,4 +26,10 @@ type (
 		Timeout time.Duration `envconfig:"NOTIFICATIONS_SERVICE_TIMEOUT" default:"30s"`
 		Version string        `envconfig:"NOTIFICATIONS_SERVICE_VERSION" default:"1.0.0"`
 	}
+
+	LocationServiceConfig struct {
+		URL     string        `envconfig:"LOCATION_SERVICE_URL" default:"http://localhost:8085"`
+		Timeout time.Duration `envconfig:"LOCATION_SERVICE_TIMEOUT" default:"30s"`
+		Version string        `envconfig:"LOCATION_SERVICE_VERSION" default:"1.0.0"`
+	}
 )
