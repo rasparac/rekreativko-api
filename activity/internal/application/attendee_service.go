@@ -128,14 +128,18 @@ func (s *AttendeeService) CreateRSVP(
 				*session.ActivityGroupID(),
 				params.UserID,
 			)
+			if err != nil && !errors.Is(err, domain.ErrMemberNotFound) {
+				log.Error(txCtx, "failed to get member", "error", err)
+				return fmt.Errorf("failed to get member: %w", err)
+			}
 		}
 		switch {
-		case err == nil && member != nil && member.IsConfirmed():
+		case member != nil && member.IsConfirmed():
 			isPriorityMember = member.IsPriority()
 		case session.IsPublic():
 			// non-member joining a public session as an attendee only
 		default:
-			log.Error(txCtx, "user is not a group member and session is not public", "error", err)
+			log.Error(txCtx, "user is not a group member and session is not public")
 			return domain.ErrAttendeeNotGroupMember
 		}
 
