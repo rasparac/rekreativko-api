@@ -84,9 +84,11 @@ func main() {
 
 	outboxPublisher := events.NewOutboxPublisher(
 		domainEventMgr,
+		txManager,
 		messageBroker,
 		log,
 		cfg.Outbox.ReadLimit,
+		cfg.Outbox.MaxRetries,
 		cfg.Outbox.PollIntervalS,
 		appMetrics,
 		schemas,

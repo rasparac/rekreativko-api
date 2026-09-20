@@ -113,6 +113,7 @@ type (
 		PollIntervalS time.Duration `envconfig:"OUTBOX_POLL_INTERVAL" default:"5s"`
 		ReadLimit     int           `envconfig:"OUTBOX_READ_LIMIT" default:"100"`
 		Schemas       string        `envconfig:"OUTBOX_SCHEMAS" required:"true"`
+		MaxRetries    int           `envconfig:"OUTBOX_MAX_RETRIES" default:"5"`
 	}
 
 	NatsConfig struct {

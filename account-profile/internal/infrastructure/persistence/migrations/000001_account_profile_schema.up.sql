@@ -111,7 +111,11 @@ CREATE TABLE IF NOT EXISTS account_profile.event_outbox(
     aggregate_id uuid NOT NULL,
     payload jsonb NOT NULL,
     created_at timestamptz NOT NULL DEFAULT NOW(),
-    published_at timestamptz DEFAULT NULL
+    published_at timestamptz DEFAULT NULL,
+    -- publish failure tracking; failed_at set = dead-lettered, no longer polled
+    retry_count integer NOT NULL DEFAULT 0,
+    last_error text DEFAULT NULL,
+    failed_at timestamptz DEFAULT NULL
 );
 
 CREATE UNIQUE INDEX idx_account_profile_event_outbox_event_id ON account_profile.event_outbox(event_id);
@@ -119,3 +123,7 @@ CREATE UNIQUE INDEX idx_account_profile_event_outbox_event_id ON account_profile
 CREATE INDEX idx_account_profile_event_outbox_created_at ON account_profile.event_outbox(created_at);
 
 CREATE INDEX idx_account_profile_event_outbox_published_at ON account_profile.event_outbox(published_at);
+
+-- Pending (not published, not dead-lettered) events, in publish order.
+CREATE INDEX idx_account_profile_event_outbox_pending ON account_profile.event_outbox(created_at)
+    WHERE published_at IS NULL AND failed_at IS NULL;

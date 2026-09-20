@@ -98,6 +98,10 @@ type BrokerEvent struct {
 	Payload   json.RawMessage
 }
 
+// ReadEvents returns up to limit pending events (not published and not
+// dead-lettered), oldest first. The rows are locked with FOR UPDATE SKIP LOCKED
+// so concurrent publishers never pick up the same events; the locks are held
+// until the surrounding transaction ends, so it MUST be called within one.
 func (dem *domainEventManager) ReadEvents(
 	ctx context.Context,
 	schema string,
@@ -111,8 +115,10 @@ func (dem *domainEventManager) ReadEvents(
 		FROM %s.event_outbox
 		WHERE
 			published_at IS NULL
+			AND failed_at IS NULL
 		ORDER BY created_at ASC
 		LIMIT $1
+		FOR UPDATE SKIP LOCKED
 	`, schema)
 
 	rows, err := dem.txManager.Querier(ctx).Query(ctx, query, limit)
@@ -131,7 +137,7 @@ func (dem *domainEventManager) ReadEvents(
 		events = append(events, be)
 	}
 
-	return events, nil
+	return events, rows.Err()
 }
 
 func (dem *domainEventManager) MarkEventAsPublished(
@@ -148,4 +154,30 @@ func (dem *domainEventManager) MarkEventAsPublished(
 
 	_, err := dem.txManager.Querier(ctx).Exec(ctx, query, eventID)
 	return err
+}
+
+// MarkEventAsFailed records a failed publish attempt. Once the event has failed
+// maxRetries times it is dead-lettered (failed_at is set) and no longer read by
+// ReadEvents. It reports whether the event was dead-lettered by this call.
+func (dem *domainEventManager) MarkEventAsFailed(
+	ctx context.Context,
+	schema string,
+	eventID uuid.UUID,
+	publishErr error,
+	maxRetries int,
+) (deadLettered bool, err error) {
+	query := fmt.Sprintf(`
+		UPDATE %s.event_outbox
+		SET
+			retry_count = retry_count + 1,
+			last_error = $2,
+			failed_at = CASE WHEN retry_count + 1 >= $3 THEN NOW() ELSE NULL END
+		WHERE event_id = $1
+		RETURNING failed_at IS NOT NULL
+	`, schema)
+
+	err = dem.txManager.Querier(ctx).
+		QueryRow(ctx, query, eventID, publishErr.Error(), maxRetries).
+		Scan(&deadLettered)
+	return deadLettered, err
 }
