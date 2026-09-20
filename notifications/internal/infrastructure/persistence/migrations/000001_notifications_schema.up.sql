@@ -4,6 +4,10 @@ CREATE SCHEMA IF NOT EXISTS notifications;
 
 CREATE TABLE notifications.notification(
     id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    -- id of the domain event that produced this notification. NATS delivers
+    -- at-least-once, so (event_id, recipient_account_id) is unique to make
+    -- redelivery of an event a no-op instead of a duplicate notification.
+    event_id uuid NOT NULL,
     recipient_account_id uuid NOT NULL,
     -- e.g. 'join_request_created', 'invite_accepted' - open-ended on purpose,
     -- see domain.NotificationType.
@@ -12,7 +16,8 @@ CREATE TABLE notifications.notification(
     -- schemaless so new notification types don't need a migration.
     data jsonb NOT NULL DEFAULT '{}',
     read_at timestamptz DEFAULT NULL,
-    created_at timestamptz NOT NULL DEFAULT NOW()
+    created_at timestamptz NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_notification_event_recipient UNIQUE (event_id, recipient_account_id)
 );
 
 -- feed query: a recipient's notifications, newest first, optionally unread-only

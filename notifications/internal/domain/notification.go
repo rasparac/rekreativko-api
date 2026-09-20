@@ -37,6 +37,7 @@ const (
 // migration.
 type Notification struct {
 	id                uuid.UUID
+	eventID           uuid.UUID
 	recipientAccontID uuid.UUID
 	notificationType  NotificationType
 	data              map[string]any
@@ -46,12 +47,14 @@ type Notification struct {
 
 // New creates a new, unread Notification.
 func New(
+	eventID uuid.UUID,
 	recipientAccountID uuid.UUID,
 	notificationType NotificationType,
 	data map[string]any,
 ) *Notification {
 	return &Notification{
 		id:                uuid.New(),
+		eventID:           eventID,
 		recipientAccontID: recipientAccountID,
 		notificationType:  notificationType,
 		data:              data,
@@ -62,6 +65,7 @@ func New(
 // Reconstruct rebuilds a Notification from persisted data.
 func Reconstruct(
 	id uuid.UUID,
+	eventID uuid.UUID,
 	recipientAccountID uuid.UUID,
 	notificationType NotificationType,
 	data map[string]any,
@@ -70,6 +74,7 @@ func Reconstruct(
 ) *Notification {
 	return &Notification{
 		id:                id,
+		eventID:           eventID,
 		recipientAccontID: recipientAccountID,
 		notificationType:  notificationType,
 		data:              data,
@@ -80,6 +85,11 @@ func Reconstruct(
 
 func (n *Notification) ID() uuid.UUID {
 	return n.id
+}
+
+// EventID is the id of the domain event this notification was created for.
+func (n *Notification) EventID() uuid.UUID {
+	return n.eventID
 }
 
 func (n *Notification) RecipientAccountID() uuid.UUID {

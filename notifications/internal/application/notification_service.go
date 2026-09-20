@@ -45,6 +45,7 @@ func NewNotificationService(
 // CreateNotification creates a single notification for a single recipient.
 // Called once per recipient by the event consumers - fan-out to multiple
 // recipients (e.g. every manager of a group) happens at the call site.
+// Idempotent per (EventID, recipient): a redelivered event creates nothing new.
 func (s *NotificationService) CreateNotification(
 	ctx context.Context,
 	params CreateNotificationParams,
@@ -64,15 +65,24 @@ func (s *NotificationService) CreateNotification(
 	)
 
 	notification := domain.New(
+		params.EventID,
 		params.RecipientAccountID,
 		domain.NotificationType(params.Type),
 		params.Data,
 	)
 
-	if err := s.repo.Create(ctx, notification); err != nil {
+	created, err := s.repo.Create(ctx, notification)
+	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to create notification", "error", err)
 		return nil, mapToAppErr(err)
+	}
+
+	if !created {
+		// The event was redelivered and this recipient was already notified.
+		span.SetStatus(codes.Ok, "notification already exists")
+		log.Debug(ctx, "duplicate event, notification already exists", "event_id", params.EventID)
+		return notification, nil
 	}
 
 	s.metrics.NotificationCreated.Inc()

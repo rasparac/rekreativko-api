@@ -17,6 +17,7 @@ import (
 
 type notificationModel struct {
 	id                 uuid.UUID
+	eventID            uuid.UUID
 	recipientAccountID uuid.UUID
 	notificationType   string
 	data               []byte
@@ -34,7 +35,9 @@ type NotificationFilter struct {
 
 // NotificationRepository defines the interface for notification persistence
 type NotificationRepository interface {
-	Create(ctx context.Context, notification *domain.Notification) error
+	// Create inserts the notification. It is idempotent per (event_id, recipient):
+	// created is false when one already exists for that event and recipient.
+	Create(ctx context.Context, notification *domain.Notification) (created bool, err error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Notification, error)
 	ListByRecipient(ctx context.Context, filter NotificationFilter) ([]*domain.Notification, string, error)
 	CountUnread(ctx context.Context, recipientAccountID uuid.UUID) (int, error)
@@ -57,26 +60,28 @@ func NewNotificationRepository(
 	}
 }
 
-func (m *notificationManager) Create(ctx context.Context, notification *domain.Notification) error {
+func (m *notificationManager) Create(ctx context.Context, notification *domain.Notification) (bool, error) {
 	model, err := notificationModelFromDomain(notification)
 	if err != nil {
-		return fmt.Errorf("build notification model: %w", err)
+		return false, fmt.Errorf("build notification model: %w", err)
 	}
 
 	query := `
 		INSERT INTO notifications.notification (
-			id, recipient_account_id, type, data, read_at, created_at
+			id, event_id, recipient_account_id, type, data, read_at, created_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6
+			$1, $2, $3, $4, $5, $6, $7
 		)
+		ON CONFLICT (event_id, recipient_account_id) DO NOTHING
 	`
 
 	q := m.tx.Querier(ctx)
 
-	_, err = q.Exec(
+	tag, err := q.Exec(
 		ctx,
 		query,
 		model.id,
+		model.eventID,
 		model.recipientAccountID,
 		model.notificationType,
 		model.data,
@@ -84,15 +89,15 @@ func (m *notificationManager) Create(ctx context.Context, notification *domain.N
 		model.createdAt,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create notification: %w", err)
+		return false, fmt.Errorf("failed to create notification: %w", err)
 	}
 
-	return nil
+	return tag.RowsAffected() > 0, nil
 }
 
 func (m *notificationManager) GetByID(ctx context.Context, id uuid.UUID) (*domain.Notification, error) {
 	query := `
-		SELECT id, recipient_account_id, type, data, read_at, created_at
+		SELECT id, event_id, recipient_account_id, type, data, read_at, created_at
 		FROM notifications.notification
 		WHERE id = $1
 	`
@@ -102,6 +107,7 @@ func (m *notificationManager) GetByID(ctx context.Context, id uuid.UUID) (*domai
 	var model notificationModel
 	err := q.QueryRow(ctx, query, id).Scan(
 		&model.id,
+		&model.eventID,
 		&model.recipientAccountID,
 		&model.notificationType,
 		&model.data,
@@ -124,7 +130,7 @@ func (m *notificationManager) ListByRecipient(
 ) ([]*domain.Notification, string, error) {
 	qb := &postgres.QueryBuilder{
 		BaseQuery: `
-			SELECT id, recipient_account_id, type, data, read_at, created_at
+			SELECT id, event_id, recipient_account_id, type, data, read_at, created_at
 			FROM notifications.notification
 			WHERE 1=1`,
 		Args: make([]any, 0),
@@ -171,6 +177,7 @@ func (m *notificationManager) ListByRecipient(
 		var model notificationModel
 		err := rows.Scan(
 			&model.id,
+			&model.eventID,
 			&model.recipientAccountID,
 			&model.notificationType,
 			&model.data,
@@ -249,6 +256,7 @@ func notificationModelFromDomain(n *domain.Notification) (*notificationModel, er
 
 	model := &notificationModel{
 		id:                 n.ID(),
+		eventID:            n.EventID(),
 		recipientAccountID: n.RecipientAccountID(),
 		notificationType:   string(n.Type()),
 		data:               data,
@@ -277,6 +285,7 @@ func notificationModelToDomain(model *notificationModel) (*domain.Notification, 
 
 	return domain.Reconstruct(
 		model.id,
+		model.eventID,
 		model.recipientAccountID,
 		domain.NotificationType(model.notificationType),
 		data,

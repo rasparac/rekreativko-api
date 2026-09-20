@@ -32,6 +32,7 @@ func (h *memberJoinRequestedHandler) Handle(ctx context.Context, payload []byte)
 	// Fan-out: every manager of the group gets their own notification row.
 	for _, managerID := range event.ManagerUserIDs {
 		_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+			EventID:            event.EventID,
 			RecipientAccountID: managerID,
 			Type:               string(domain.NotificationTypeJoinRequestCreated),
 			Data: map[string]any{
@@ -62,6 +63,7 @@ func (h *memberApprovedHandler) Handle(ctx context.Context, payload []byte) erro
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
 	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
 		RecipientAccountID: event.UserID,
 		Type:               string(domain.NotificationTypeJoinRequestApproved),
 		Data: map[string]any{
@@ -88,6 +90,7 @@ func (h *memberRejectedHandler) Handle(ctx context.Context, payload []byte) erro
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
 	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
 		RecipientAccountID: event.UserID,
 		Type:               string(domain.NotificationTypeJoinRequestRejected),
 		Data: map[string]any{
@@ -120,6 +123,7 @@ func (h *attendeePromotedHandler) Handle(ctx context.Context, payload []byte) er
 	}
 
 	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
 		RecipientAccountID: event.UserID,
 		Type:               string(domain.NotificationTypeAttendeePromoted),
 		Data: map[string]any{
@@ -148,6 +152,7 @@ func (h *attendeeJoinRequestedHandler) Handle(ctx context.Context, payload []byt
 	// standalone session) gets their own notification row.
 	for _, managerID := range event.ManagerUserIDs {
 		_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+			EventID:            event.EventID,
 			RecipientAccountID: managerID,
 			Type:               string(domain.NotificationTypeSessionJoinRequestCreated),
 			Data: map[string]any{
@@ -178,6 +183,7 @@ func (h *attendeeJoinApprovedHandler) Handle(ctx context.Context, payload []byte
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
 	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
 		RecipientAccountID: event.UserID,
 		Type:               string(domain.NotificationTypeSessionJoinRequestApproved),
 		Data: map[string]any{
@@ -204,6 +210,7 @@ func (h *attendeeJoinRejectedHandler) Handle(ctx context.Context, payload []byte
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
 	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
 		RecipientAccountID: event.UserID,
 		Type:               string(domain.NotificationTypeSessionJoinRequestRejected),
 		Data: map[string]any{
@@ -230,6 +237,7 @@ func (h *attendeeRemovedHandler) Handle(ctx context.Context, payload []byte) err
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
 	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
 		RecipientAccountID: event.UserID,
 		Type:               string(domain.NotificationTypeSessionAttendeeRemoved),
 		Data: map[string]any{
@@ -256,6 +264,7 @@ func (h *memberRemovedHandler) Handle(ctx context.Context, payload []byte) error
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
 	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
 		RecipientAccountID: event.UserID,
 		Type:               string(domain.NotificationTypeMemberRemoved),
 		Data: map[string]any{
@@ -285,6 +294,7 @@ func (h *sessionCancelledHandler) Handle(ctx context.Context, payload []byte) er
 	// notification row.
 	for _, userID := range event.AttendeeUserIDs {
 		_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+			EventID:            event.EventID,
 			RecipientAccountID: userID,
 			Type:               string(domain.NotificationTypeSessionCancelled),
 			Data: map[string]any{
@@ -316,6 +326,7 @@ func (h *inviteSentHandler) Handle(ctx context.Context, payload []byte) error {
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
 	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
 		RecipientAccountID: event.InvitedUserID,
 		Type:               string(domain.NotificationTypeInviteSent),
 		Data: map[string]any{
@@ -347,6 +358,7 @@ func (h *inviteAcceptedHandler) Handle(ctx context.Context, payload []byte) erro
 	}
 
 	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
 		RecipientAccountID: event.InvitedBy,
 		Type:               string(domain.NotificationTypeInviteAccepted),
 		Data: map[string]any{
@@ -377,6 +389,7 @@ func (h *inviteDeclinedHandler) Handle(ctx context.Context, payload []byte) erro
 	}
 
 	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
 		RecipientAccountID: event.InvitedBy,
 		Type:               string(domain.NotificationTypeInviteDeclined),
 		Data: map[string]any{
@@ -407,6 +420,7 @@ func (h *inviteExpiredHandler) Handle(ctx context.Context, payload []byte) error
 	}
 
 	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
 		RecipientAccountID: event.InvitedBy,
 		Type:               string(domain.NotificationTypeInviteExpired),
 		Data: map[string]any{

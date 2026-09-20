@@ -6,6 +6,9 @@ import "github.com/google/uuid"
 // Fan-out (one event -> many recipients) is the event handler's job, not this
 // service's - each call here creates exactly one row for exactly one recipient.
 type CreateNotificationParams struct {
+	// EventID is the id of the domain event that triggered the notification;
+	// together with RecipientAccountID it makes creation idempotent.
+	EventID            uuid.UUID
 	RecipientAccountID uuid.UUID
 	Type               string
 	Data               map[string]any
