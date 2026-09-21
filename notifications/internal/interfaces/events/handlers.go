@@ -9,6 +9,7 @@ import (
 	"github.com/rasparac/rekreativko-api/notifications/internal/application"
 	"github.com/rasparac/rekreativko-api/notifications/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/api"
+	"github.com/rasparac/rekreativko-api/shared/events"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 )
 
@@ -25,7 +26,7 @@ type memberJoinRequestedHandler struct {
 func (h *memberJoinRequestedHandler) Handle(ctx context.Context, payload []byte) error {
 	var event memberJoinRequestedEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
@@ -58,7 +59,7 @@ type memberApprovedHandler struct {
 func (h *memberApprovedHandler) Handle(ctx context.Context, payload []byte) error {
 	var event memberApprovedEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
@@ -85,7 +86,7 @@ type memberRejectedHandler struct {
 func (h *memberRejectedHandler) Handle(ctx context.Context, payload []byte) error {
 	var event memberRejectedEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
@@ -112,7 +113,7 @@ type attendeePromotedHandler struct {
 func (h *attendeePromotedHandler) Handle(ctx context.Context, payload []byte) error {
 	var event attendeePromotedEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
@@ -144,7 +145,7 @@ type attendeeJoinRequestedHandler struct {
 func (h *attendeeJoinRequestedHandler) Handle(ctx context.Context, payload []byte) error {
 	var event attendeeJoinRequestedEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
@@ -178,7 +179,7 @@ type attendeeJoinApprovedHandler struct {
 func (h *attendeeJoinApprovedHandler) Handle(ctx context.Context, payload []byte) error {
 	var event attendeeJoinApprovedEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
@@ -205,7 +206,7 @@ type attendeeJoinRejectedHandler struct {
 func (h *attendeeJoinRejectedHandler) Handle(ctx context.Context, payload []byte) error {
 	var event attendeeJoinRejectedEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
@@ -232,7 +233,7 @@ type attendeeRemovedHandler struct {
 func (h *attendeeRemovedHandler) Handle(ctx context.Context, payload []byte) error {
 	var event attendeeRemovedEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
@@ -259,7 +260,7 @@ type memberRemovedHandler struct {
 func (h *memberRemovedHandler) Handle(ctx context.Context, payload []byte) error {
 	var event memberRemovedEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
@@ -286,7 +287,7 @@ type sessionCancelledHandler struct {
 func (h *sessionCancelledHandler) Handle(ctx context.Context, payload []byte) error {
 	var event sessionCancelledEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
@@ -321,7 +322,7 @@ type inviteSentHandler struct {
 func (h *inviteSentHandler) Handle(ctx context.Context, payload []byte) error {
 	var event inviteSentEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
@@ -349,7 +350,7 @@ type inviteAcceptedHandler struct {
 func (h *inviteAcceptedHandler) Handle(ctx context.Context, payload []byte) error {
 	var event inviteAcceptedEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
@@ -380,7 +381,7 @@ type inviteDeclinedHandler struct {
 func (h *inviteDeclinedHandler) Handle(ctx context.Context, payload []byte) error {
 	var event inviteDeclinedEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
@@ -411,7 +412,7 @@ type inviteExpiredHandler struct {
 func (h *inviteExpiredHandler) Handle(ctx context.Context, payload []byte) error {
 	var event inviteExpiredEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 

@@ -8,6 +8,7 @@ import (
 	"github.com/rasparac/rekreativko-api/account-profile/internal/application"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/api"
+	"github.com/rasparac/rekreativko-api/shared/events"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
 	"github.com/rasparac/rekreativko-api/shared/telemetry"
@@ -61,7 +62,7 @@ func (avh *createProfileEventHandler) Handle(ctx context.Context, payload []byte
 	if err != nil {
 		avh.logger.Error(ctx, "decode payload", "error", err)
 		span.RecordError(err)
-		return fmt.Errorf("decode payload: %w", err)
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
 	}
 
 	ctx = api.WithEventID(ctx, event.EventID.String())
