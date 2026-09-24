@@ -82,6 +82,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	memberRepo := persistence.NewMemberRepository(txManager, log)
 	groupInviteRepo := persistence.NewGroupInviteRepository(txManager, log)
 	attendeeRepo := persistence.NewAttendeeRepository(txManager, log)
+	sessionInviteRepo := persistence.NewSessionInviteRepository(txManager, log)
 
 	// Initialize session generator service
 	// Lookahead window: generate sessions for the next 14 days
@@ -115,6 +116,22 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	log.Info(ctx, "expiring stale group invites")
 	if _, err := inviteService.ExpireStaleInvites(ctx); err != nil {
+		return err
+	}
+
+	// Expire session invites that have passed their expiry window
+	sessionInviteService := application.NewSessionInviteService(
+		log,
+		txManager,
+		sessionInviteRepo,
+		sessionRepo,
+		attendeeRepo,
+		domainEventMgr,
+		appMetrics,
+	)
+
+	log.Info(ctx, "expiring stale session invites")
+	if _, err := sessionInviteService.ExpireStaleInvites(ctx); err != nil {
 		return err
 	}
 

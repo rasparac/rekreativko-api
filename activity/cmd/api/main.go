@@ -134,6 +134,10 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		txManager,
 		log,
 	)
+	sessionInviteRepo := persistence.NewSessionInviteRepository(
+		txManager,
+		log,
+	)
 
 	// Initialize services
 	sessionTemplateService := application.NewSessionTemplateService(
@@ -187,6 +191,15 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		domainEventMgr,
 		appMetrics,
 	)
+	sessionInviteService := application.NewSessionInviteService(
+		log,
+		txManager,
+		sessionInviteRepo,
+		sessionRepo,
+		attendeeRepo,
+		domainEventMgr,
+		appMetrics,
+	)
 
 	mux := http.NewServeMux()
 
@@ -198,6 +211,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		memberService,
 		attendeeService,
 		inviteService,
+		sessionInviteService,
 		log,
 	)
 

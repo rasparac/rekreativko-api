@@ -178,6 +178,8 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.Conflict("invite_expired", "Invite has expired", err)
 	case errors.Is(err, domain.ErrCannotInviteCreator):
 		return domainerror.ValidationError("cannot_invite_self", "Cannot invite yourself", err)
+	case errors.Is(err, domain.ErrSessionNotStandalone):
+		return domainerror.ValidationError("session_not_standalone", "Invites are only supported for standalone sessions; group sessions are joined through the group", err)
 	}
 
 	// Default to internal error with wrapped error for debugging

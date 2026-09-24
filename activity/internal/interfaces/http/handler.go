@@ -83,6 +83,14 @@ type (
 		ListMyInvites(ctx context.Context, userID uuid.UUID, params application.ListMyInvitesParams) ([]*domain.GroupInvite, string, error)
 	}
 
+	// sessionInviteService defines the interface for standalone session invite operations
+	sessionInviteService interface {
+		SendInvite(ctx context.Context, params application.SendSessionInviteParams) (*domain.SessionInvite, error)
+		AcceptInvite(ctx context.Context, inviteID uuid.UUID, userID uuid.UUID) (*domain.Attendee, error)
+		DeclineInvite(ctx context.Context, inviteID uuid.UUID, userID uuid.UUID) error
+		ListMyInvites(ctx context.Context, userID uuid.UUID, params application.ListMyInvitesParams) ([]*domain.SessionInvite, string, error)
+	}
+
 	// Handler handles HTTP requests for the activity module
 	Handler struct {
 		sessionTemplateService sessionTemplateService
@@ -91,6 +99,7 @@ type (
 		memberService          memberService
 		attendeeService        attendeeService
 		inviteService          inviteService
+		sessionInviteService   sessionInviteService
 		logger                 *logger.Logger
 	}
 )
@@ -103,6 +112,7 @@ func NewHandler(
 	memberService memberService,
 	attendeeService attendeeService,
 	inviteService inviteService,
+	sessionInviteService sessionInviteService,
 	logger *logger.Logger,
 ) *Handler {
 	return &Handler{
@@ -112,6 +122,7 @@ func NewHandler(
 		memberService:          memberService,
 		attendeeService:        attendeeService,
 		inviteService:          inviteService,
+		sessionInviteService:   sessionInviteService,
 		logger:                 logger.WithName("activity.http.handler"),
 	}
 }
@@ -273,6 +284,24 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"POST /api/v1/invites/{id}/decline",
 		middlewares.ThenFunc(h.DeclineInvite),
+	)
+
+	// Session invite routes (standalone sessions only)
+	mux.Handle(
+		"POST /api/v1/sessions/{sessionId}/invites",
+		middlewares.ThenFunc(h.SendSessionInvite),
+	)
+	mux.Handle(
+		"GET /api/v1/session-invites",
+		middlewares.ThenFunc(h.ListMySessionInvites),
+	)
+	mux.Handle(
+		"POST /api/v1/session-invites/{id}/accept",
+		middlewares.ThenFunc(h.AcceptSessionInvite),
+	)
+	mux.Handle(
+		"POST /api/v1/session-invites/{id}/decline",
+		middlewares.ThenFunc(h.DeclineSessionInvite),
 	)
 
 	// RSVP/Attendee routes

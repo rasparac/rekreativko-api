@@ -293,6 +293,30 @@ WHERE (status = 'confirmed') AND (deleted_at IS NULL);
 CREATE INDEX idx_attendees_user ON activity.session_attendee(account_id, status)
 WHERE (deleted_at IS NULL);
 
+-- session invites (direct - specific user, standalone sessions only)
+CREATE TABLE IF NOT EXISTS activity.session_invites(
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id uuid NOT NULL REFERENCES activity.session(id),
+    invited_user_id uuid NOT NULL,
+    invited_by_user_id uuid NOT NULL,
+    status varchar(100) NOT NULL DEFAULT 'pending',
+    expires_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT NOW(),
+    responded_at timestamptz DEFAULT NULL
+);
+
+-- one pending invite per user per session at a time
+CREATE UNIQUE INDEX uq_session_invites_pending ON activity.session_invites(session_id, invited_user_id)
+WHERE (status = 'pending');
+
+-- list a user's pending invites
+CREATE INDEX idx_session_invites_user_pending ON activity.session_invites(invited_user_id, created_at DESC)
+WHERE (status = 'pending');
+
+-- cron job: find expired invites
+CREATE INDEX idx_session_invites_expired ON activity.session_invites(expires_at)
+WHERE (status = 'pending');
+
 -- group statistics
 CREATE TABLE IF NOT EXISTS activity.activity_group_statistics(
     activity_group_id uuid PRIMARY KEY NOT NULL REFERENCES activity.activity_group(id),

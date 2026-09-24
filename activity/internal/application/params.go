@@ -234,6 +234,13 @@ type SendInviteParams struct {
 	InvitedUserID   uuid.UUID
 }
 
+// SendSessionInviteParams contains parameters for inviting a user to a standalone session
+type SendSessionInviteParams struct {
+	SessionID     uuid.UUID
+	RequesterID   uuid.UUID
+	InvitedUserID uuid.UUID
+}
+
 // RemoveMemberParams contains parameters for removing a member from a group
 type RemoveMemberParams struct {
 	ActivityGroupID uuid.UUID

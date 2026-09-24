@@ -35,6 +35,12 @@ const (
 	EventActivityInviteDeclined = "activity.invite.declined"
 	EventActivityInviteExpired  = "activity.invite.expired"
 
+	// Session invite events (standalone sessions only)
+	EventActivitySessionInviteSent     = "activity.session_invite.sent"
+	EventActivitySessionInviteAccepted = "activity.session_invite.accepted"
+	EventActivitySessionInviteDeclined = "activity.session_invite.declined"
+	EventActivitySessionInviteExpired  = "activity.session_invite.expired"
+
 	// Session events
 	EventActivitySessionCreated             = "activity.session.created"
 	EventActivitySessionUpdated             = "activity.session.updated"
@@ -557,6 +563,92 @@ func NewInviteExpiredEvent(invite *GroupInvite) *InviteExpiredEvent {
 		},
 		InvitedBy:     invite.InvitedByID(),
 		ActivityID:    invite.ActivityGroupID(),
+		InvitedUserID: invite.InvitedUserID(),
+	}
+}
+
+type SessionInviteSentEvent struct {
+	domainevent.BaseEvent
+	SessionID     uuid.UUID `json:"session_id"`
+	InvitedBy     uuid.UUID `json:"invited_by"`
+	InvitedUserID uuid.UUID `json:"invited_user_id"`
+	ExpiresAt     time.Time `json:"expires_at"`
+}
+
+func NewSessionInviteSentEvent(invite *SessionInvite) *SessionInviteSentEvent {
+	return &SessionInviteSentEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionInviteSent,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: invite.ID(),
+		},
+		SessionID:     invite.SessionID(),
+		InvitedBy:     invite.InvitedByID(),
+		InvitedUserID: invite.InvitedUserID(),
+		ExpiresAt:     invite.ExpiresAt(),
+	}
+}
+
+type SessionInviteAcceptedEvent struct {
+	domainevent.BaseEvent
+	SessionID     uuid.UUID `json:"session_id"`
+	InvitedBy     uuid.UUID `json:"invited_by"`
+	InvitedUserID uuid.UUID `json:"invited_user_id"`
+}
+
+func NewSessionInviteAcceptedEvent(invite *SessionInvite) *SessionInviteAcceptedEvent {
+	return &SessionInviteAcceptedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionInviteAccepted,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: invite.ID(),
+		},
+		SessionID:     invite.SessionID(),
+		InvitedBy:     invite.InvitedByID(),
+		InvitedUserID: invite.InvitedUserID(),
+	}
+}
+
+type SessionInviteDeclinedEvent struct {
+	domainevent.BaseEvent
+	SessionID     uuid.UUID `json:"session_id"`
+	InvitedBy     uuid.UUID `json:"invited_by"`
+	InvitedUserID uuid.UUID `json:"invited_user_id"`
+}
+
+func NewSessionInviteDeclinedEvent(invite *SessionInvite) *SessionInviteDeclinedEvent {
+	return &SessionInviteDeclinedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionInviteDeclined,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: invite.ID(),
+		},
+		SessionID:     invite.SessionID(),
+		InvitedBy:     invite.InvitedByID(),
+		InvitedUserID: invite.InvitedUserID(),
+	}
+}
+
+type SessionInviteExpiredEvent struct {
+	domainevent.BaseEvent
+	SessionID     uuid.UUID `json:"session_id"`
+	InvitedBy     uuid.UUID `json:"invited_by"`
+	InvitedUserID uuid.UUID `json:"invited_user_id"`
+}
+
+func NewSessionInviteExpiredEvent(invite *SessionInvite) *SessionInviteExpiredEvent {
+	return &SessionInviteExpiredEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionInviteExpired,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: invite.ID(),
+		},
+		SessionID:     invite.SessionID(),
+		InvitedBy:     invite.InvitedByID(),
 		InvitedUserID: invite.InvitedUserID(),
 	}
 }

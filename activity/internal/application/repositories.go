@@ -43,6 +43,16 @@ type GroupInviteRepository interface {
 	FindExpiredPendingInvites(ctx context.Context) ([]*domain.GroupInvite, error)
 }
 
+// SessionInviteRepository defines the interface for session invite persistence
+type SessionInviteRepository interface {
+	CreateInvite(ctx context.Context, invite *domain.SessionInvite) error
+	UpdateInvite(ctx context.Context, invite *domain.SessionInvite) error
+	GetInviteByID(ctx context.Context, id uuid.UUID) (*domain.SessionInvite, error)
+	GetPendingInviteBySessionAndUser(ctx context.Context, sessionID, invitedUserID uuid.UUID) (*domain.SessionInvite, error)
+	ListPendingInvitesForUser(ctx context.Context, filter persistence.ListPendingInvitesFilter) ([]*domain.SessionInvite, string, error)
+	FindExpiredPendingInvites(ctx context.Context) ([]*domain.SessionInvite, error)
+}
+
 // SessionRepository defines the interface for session persistence
 type SessionRepository interface {
 	CreateSession(ctx context.Context, session *domain.Session) error

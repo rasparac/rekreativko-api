@@ -45,6 +45,7 @@ const (
 	AttendeeSourceAutoPending   AttendeeSource = "auto_pending"   // added automatically by the system but pending (e.g. auto-pending from capacity)
 	AttendeeSourceRSVPManual    AttendeeSource = "rsvp_manual"    // member RSVPed themselves manually
 	AttendeeSourceRequested     AttendeeSource = "requested"      // RSVPed "going" on a session that requires creator/admin approval
+	AttendeeSourceInvited       AttendeeSource = "invited"        // accepted a session invite from the creator (standalone sessions)
 )
 
 type Attendee struct {
@@ -200,6 +201,29 @@ func NewRSVPManualAttendee(
 	}
 
 	return a, nil
+}
+
+// NewInvitedAttendee creates the attendee for an accepted session invite.
+// Capacity is handled exactly like a "going" RSVP: a full session puts the
+// invitee on the waitlist (pending) rather than rejecting the acceptance.
+// Invites bypass RequiresApproval, since the creator already vetted the user
+// by inviting them.
+func NewInvitedAttendee(
+	session *Session,
+	userID uuid.UUID,
+	currentConfirmedCount int,
+) *Attendee {
+	// Going is always a valid status, so the error branch is unreachable.
+	a, _ := NewRSVPManualAttendee(
+		session,
+		session.ActivityGroupID(),
+		userID,
+		AttendeeStatusGoing,
+		currentConfirmedCount,
+	)
+	a.source = AttendeeSourceInvited
+
+	return a
 }
 
 // NewRequestedAttendee creates a pending join request for a session that

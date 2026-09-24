@@ -69,6 +69,7 @@ var (
 	ErrSessionFull                     = errors.New("session has reached its capacity")
 	ErrInvalidDiscoveryRadius          = errors.New("discovery radius must be greater than 0")
 	ErrSessionNotOpen                  = errors.New("session is not open for regular members yet")
+	ErrSessionNotStandalone            = errors.New("invites are only supported for standalone sessions")
 )
 
 // Attendee errors

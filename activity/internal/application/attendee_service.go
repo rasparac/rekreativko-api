@@ -62,7 +62,14 @@ func NewAttendeeService(
 // session. The lock is released automatically on transaction commit/rollback,
 // so it must be called from within s.txManager.WithTransaction.
 func (s *AttendeeService) lockSessionCapacity(ctx context.Context, sessionID uuid.UUID) error {
-	_, err := s.txManager.Querier(ctx).Exec(
+	return lockSessionCapacity(ctx, s.txManager, sessionID)
+}
+
+// lockSessionCapacity is the shared implementation, so every code path that
+// consumes a session slot (RSVPs, approvals, accepted session invites) takes
+// the same lock.
+func lockSessionCapacity(ctx context.Context, txManager *postgres.TransactionManager, sessionID uuid.UUID) error {
+	_, err := txManager.Querier(ctx).Exec(
 		ctx,
 		"SELECT pg_advisory_xact_lock($1, hashtext($2))",
 		sessionCapacityLockNamespace,

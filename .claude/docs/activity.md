@@ -200,6 +200,41 @@ Two types of invites: **Direct Invites** (specific user) and **Invite Links** (s
 
 ====================================================================================================
 
+## Session Invites (Standalone Sessions)
+
+A standalone session (no `activity_group_id`) has no group, so group invites can't cover it, and if it is
+private nobody but its creator could ever attend (`CreateRSVP` only admits confirmed group members or, for
+public sessions, anyone). Session invites let the creator bring specific users into it. The invitee must
+accept - nobody is added to a session without consenting.
+
+**Rules:**
+- Standalone sessions only (`ErrSessionNotStandalone` otherwise); group sessions are joined via the group
+- Only the session creator can invite (standalone sessions have no group roles)
+- Session must be `scheduled`
+- Cannot invite yourself, someone already attending, or someone with a pending invite
+- Expires after 7 days (same as group invites); cron marks stale invites `expired`
+- Only the invited user can accept or decline
+- Accept creates the attendee (source `invited`) under the session capacity advisory lock:
+  going if there is capacity, otherwise pending (waitlist) - same as a "going" RSVP
+- Invites bypass `requires_approval` (the creator already vetted the user by inviting them)
+- Decline/expire creates no attendee
+
+**States:** pending -> accepted | declined | expired (same `InviteStatus` as group invites)
+
+**Endpoints:**
+- `POST /api/v1/sessions/{sessionId}/invites` - creator invites `{user_id}`
+- `GET /api/v1/session-invites` - caller's pending, unexpired invites
+- `POST /api/v1/session-invites/{id}/accept` - returns the created attendee
+- `POST /api/v1/session-invites/{id}/decline`
+
+**Events:** `activity.session_invite.sent | accepted | declined | expired`. Accepting also emits the usual
+`activity.session.attendee.rsvp_going` / `rsvp_auto_pending` event for the new attendee.
+
+**Note:** a pending invitee can't `GET` a private session until they accept (visibility is
+creator/attendees only); the invite response carries `session_id` only.
+
+====================================================================================================
+
 ## Domain Value Objects
 
 The implementation uses rich value objects for type safety and validation:
@@ -343,9 +378,13 @@ All activity tables use the `activity` schema for namespace isolation (DDD bound
 8. **session_attendee** - Session participants
    - Links account_id to session_id
    - status: going, pending, not_going, maybe, promoted
-   - source: auto_confirmed, auto_pending, rsvp_manual
+   - source: auto_confirmed, auto_pending, rsvp_manual, requested, invited
    - Indexed for waitlist FIFO (session_id, created_at)
    - Unique: one active attendance per user per session
+
+   - **session_invites** - Direct invitations to standalone sessions
+     - Same shape as group_invites, keyed on session_id instead of activity_group_id
+     - Partial unique index: one pending invite per user per session
 
 9. **activity_group_statistics** - Group stats
    - total_members, total_pending, total_left, total_rejected
