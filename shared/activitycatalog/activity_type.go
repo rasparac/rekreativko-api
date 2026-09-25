@@ -12,6 +12,7 @@ const (
 	ActivityTypeBasketball    ActivityType = "basketball"
 	ActivityTypeFootball      ActivityType = "football"
 	ActivityTypeTennis        ActivityType = "tennis"
+	ActivityTypeVolleyball    ActivityType = "volleyball"
 	ActivityTypeGym           ActivityType = "gym"
 	ActivityTypeDancing       ActivityType = "dancing"
 	ActivityTypeSkiing        ActivityType = "skiing"
@@ -31,6 +32,7 @@ var validActivityTypes = map[ActivityType]struct{}{
 	ActivityTypeBasketball:    {},
 	ActivityTypeFootball:      {},
 	ActivityTypeTennis:        {},
+	ActivityTypeVolleyball:    {},
 	ActivityTypeGym:           {},
 	ActivityTypeDancing:       {},
 	ActivityTypeSkiing:        {},
@@ -45,6 +47,21 @@ var validActivityTypes = map[ActivityType]struct{}{
 
 func (t ActivityType) IsValid() bool {
 	_, ok := validActivityTypes[t]
+	return ok
+}
+
+// teamSports are the team-vs-team activity types a session can be split into
+// teams for.
+var teamSports = map[ActivityType]struct{}{
+	ActivityTypeBasketball: {},
+	ActivityTypeFootball:   {},
+	ActivityTypeVolleyball: {},
+}
+
+// IsTeamSport reports whether sessions of this activity type can be split
+// into teams.
+func (t ActivityType) IsTeamSport() bool {
+	_, ok := teamSports[t]
 	return ok
 }
 

@@ -413,3 +413,130 @@ func (h *Handler) RemoveAttendee(w http.ResponseWriter, r *http.Request) {
 
 	api.WriteOkResponse(w, struct{}{}, "Attendee removed")
 }
+
+// AssignAttendeeTeam handles PUT /api/v1/sessions/{sessionId}/rsvp/{userId}/team
+//
+//	@Summary		Assign an attendee to a team
+//	@Description	Puts a confirmed (going/promoted) attendee on one of the session's teams, or moves them there from another team. Session creator or group admin/creator only. Rejected with 409 when the team already has players_per_team members.
+//	@Tags			RSVPs
+//	@Accept			json
+//	@Produce		json
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			sessionId	path		string								true	"Session ID"
+//	@Param			userId		path		string								true	"User ID of the attendee"
+//	@Param			request		body		dtos.AssignTeamRequest				true	"Target team"
+//	@Success		200			{object}	api.Response[dtos.AttendeeResponse]	"Attendee assigned to team"
+//	@Failure		400			{object}	api.Response[any]					"Invalid request"
+//	@Failure		401			{object}	api.Response[any]					"Unauthorized"
+//	@Failure		404			{object}	api.Response[any]					"Session, attendee or team not found"
+//	@Failure		409			{object}	api.Response[any]					"Session has no teams, attendee not confirmed, team full, or session canceled/completed"
+//	@Failure		500			{object}	api.Response[any]					"Internal server error"
+//	@Router			/api/v1/sessions/{sessionId}/rsvp/{userId}/team [put]
+func (h *Handler) AssignAttendeeTeam(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
+
+	sessionID, err := uuid.Parse(r.PathValue("sessionId"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid session ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_session_id", "Invalid session ID")
+		return
+	}
+
+	userID, err := uuid.Parse(r.PathValue("userId"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid user ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_user_id", "Invalid user ID")
+		return
+	}
+
+	var req dtos.AssignTeamRequest
+	if err := api.DecodeJSONBody(r, &req); err != nil {
+		h.logger.Error(ctx, "failed to decode request body", "error", err)
+		api.WriteValidationErrorResponse(w, err)
+		return
+	}
+
+	session, err := h.sessionService.GetSession(ctx, sessionID, accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	requesterRole, err := h.getUserRole(ctx, session.ActivityGroupID(), accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	params := mapper.AssignTeamRequestToParams(&req, sessionID, userID, accountID, requesterRole)
+
+	attendee, err := h.attendeeService.AssignAttendeeTeam(ctx, *params)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	h.logger.Info(ctx, "attendee assigned to team", "session_id", sessionID, "user_id", userID, "team_id", req.TeamID)
+
+	api.WriteOkResponse(w, mapper.AttendeeToResponse(attendee), "")
+}
+
+// UnassignAttendeeTeam handles DELETE /api/v1/sessions/{sessionId}/rsvp/{userId}/team
+//
+//	@Summary		Remove an attendee from their team
+//	@Description	Takes an attendee off their team, back to the unassigned pool (they stay attending the session). Session creator or group admin/creator only. A no-op if the attendee isn't on a team.
+//	@Tags			RSVPs
+//	@Produce		json
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			sessionId	path		string								true	"Session ID"
+//	@Param			userId		path		string								true	"User ID of the attendee"
+//	@Success		200			{object}	api.Response[dtos.AttendeeResponse]	"Attendee unassigned from team"
+//	@Failure		400			{object}	api.Response[any]					"Invalid request"
+//	@Failure		401			{object}	api.Response[any]					"Unauthorized"
+//	@Failure		404			{object}	api.Response[any]					"Session or attendee not found"
+//	@Failure		409			{object}	api.Response[any]					"Session has no teams, or session canceled/completed"
+//	@Failure		500			{object}	api.Response[any]					"Internal server error"
+//	@Router			/api/v1/sessions/{sessionId}/rsvp/{userId}/team [delete]
+func (h *Handler) UnassignAttendeeTeam(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
+
+	sessionID, err := uuid.Parse(r.PathValue("sessionId"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid session ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_session_id", "Invalid session ID")
+		return
+	}
+
+	userID, err := uuid.Parse(r.PathValue("userId"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid user ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_user_id", "Invalid user ID")
+		return
+	}
+
+	session, err := h.sessionService.GetSession(ctx, sessionID, accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	requesterRole, err := h.getUserRole(ctx, session.ActivityGroupID(), accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	params := mapper.UnassignTeamRequestToParams(sessionID, userID, accountID, requesterRole)
+
+	attendee, err := h.attendeeService.UnassignAttendeeTeam(ctx, *params)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	h.logger.Info(ctx, "attendee unassigned from team", "session_id", sessionID, "user_id", userID)
+
+	api.WriteOkResponse(w, mapper.AttendeeToResponse(attendee), "")
+}

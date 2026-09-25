@@ -86,4 +86,6 @@ type AttendeeRepository interface {
 	GetFirstPendingAttendee(ctx context.Context, sessionID uuid.UUID) (*domain.Attendee, error)
 	CountConfirmedAttendees(ctx context.Context, sessionID uuid.UUID) (int, error)
 	GetAttendeeStatusesForUser(ctx context.Context, userID uuid.UUID, sessionIDs []uuid.UUID) (map[uuid.UUID]domain.AttendeeStatus, error)
+	CountTeamMembers(ctx context.Context, teamID uuid.UUID) (int, error)
+	ListTeamMembers(ctx context.Context, sessionID uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
 }

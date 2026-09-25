@@ -162,6 +162,13 @@ CREATE TABLE IF NOT EXISTS activity.session_template(
     location_lng DECIMAL(9, 6) NOT NULL,
     -- optional venue/address line, e.g. "Ada Ciganlija bb, Court 3"
     location_street varchar(255) DEFAULT NULL,
+    -- team config inherited by every generated session (team sports only)
+    -- NULL team_count = generated sessions have no teams
+    team_count smallint DEFAULT NULL CHECK (team_count IS NULL OR team_count >= 2),
+    -- optional per-team player limit, independent of capacity (NULL = no limit)
+    players_per_team smallint DEFAULT NULL CHECK (players_per_team IS NULL OR players_per_team > 0),
+    -- optional '#RRGGBB' color per team (e.g. shirts), NULL = no colors
+    team_colors text[] DEFAULT NULL,
     -- tracks how far ahead sessions have been generated
     -- cron job generates sessions from this point forward
     generated_up_to timestamptz DEFAULT NULL,
@@ -227,6 +234,11 @@ CREATE TABLE IF NOT EXISTS activity.session(
     -- open_at: when regular members can start RSVPing (NULL = immediately open)
     -- priority members can RSVP anytime regardless of this timestamp
     open_at timestamptz DEFAULT NULL,
+    -- team config (team sports only): NULL team_count = session has no teams.
+    -- Set at creation only; the teams themselves live in session_team.
+    team_count smallint DEFAULT NULL CHECK (team_count IS NULL OR team_count >= 2),
+    -- optional per-team player limit, independent of capacity (NULL = no limit)
+    players_per_team smallint DEFAULT NULL CHECK (players_per_team IS NULL OR players_per_team > 0),
     created_at timestamptz NOT NULL DEFAULT NOW(),
     updated_at timestamptz NOT NULL DEFAULT NOW(),
     cancelled_at timestamptz DEFAULT NULL,
@@ -262,6 +274,20 @@ WHERE (session_template_id IS NOT NULL);
 CREATE INDEX idx_session_open_at ON activity.session(open_at)
 WHERE (open_at IS NOT NULL) AND (status = 'scheduled');
 
+-- session teams, created together with the session (Team A, Team B, ...)
+CREATE TABLE IF NOT EXISTS activity.session_team(
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id uuid NOT NULL REFERENCES activity.session(id),
+    name varchar(50) NOT NULL,
+    -- optional '#RRGGBB' color (e.g. shirts)
+    color varchar(7) DEFAULT NULL,
+    position smallint NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_session_team_position UNIQUE (session_id, position),
+    -- target of the session_attendee composite FK
+    CONSTRAINT uq_session_team_id_session UNIQUE (id, session_id)
+);
+
 -- session attendees
 CREATE TABLE IF NOT EXISTS activity.session_attendee(
     id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -271,10 +297,14 @@ CREATE TABLE IF NOT EXISTS activity.session_attendee(
     account_id uuid NOT NULL,
     status varchar(100) NOT NULL DEFAULT 'pending',
     source varchar(100) NOT NULL DEFAULT 'auto_pending',
+    -- team the attendee plays for, NULL = unassigned (or session has no teams)
+    team_id uuid DEFAULT NULL,
     created_at timestamptz NOT NULL DEFAULT NOW(),
     updated_at timestamptz NOT NULL DEFAULT NOW(),
     deleted_at timestamptz DEFAULT NULL,
-    CONSTRAINT uq_active_attendees UNIQUE NULLS NOT DISTINCT (session_id, account_id, deleted_at)
+    CONSTRAINT uq_active_attendees UNIQUE NULLS NOT DISTINCT (session_id, account_id, deleted_at),
+    -- composite FK: an attendee can only be on a team of their own session
+    CONSTRAINT fk_session_attendee_team FOREIGN KEY (team_id, session_id) REFERENCES activity.session_team(id, session_id)
 );
 
 -- permission + rsvp check: find attendee by session + user
@@ -292,6 +322,10 @@ WHERE (status = 'confirmed') AND (deleted_at IS NULL);
 -- find all sessions a user is attending
 CREATE INDEX idx_attendees_user ON activity.session_attendee(account_id, status)
 WHERE (deleted_at IS NULL);
+
+-- count/list members of a team
+CREATE INDEX idx_attendees_team ON activity.session_attendee(team_id)
+WHERE (team_id IS NOT NULL) AND (deleted_at IS NULL);
 
 -- session invites (direct - specific user, standalone sessions only)
 CREATE TABLE IF NOT EXISTS activity.session_invites(

@@ -490,6 +490,171 @@ func (s *AttendeeService) RemoveAttendee(
 	return nil
 }
 
+// AssignAttendeeTeam puts a confirmed attendee on one of the session's teams,
+// or moves them there from another team. Only the session creator or a group
+// admin/creator may do this.
+func (s *AttendeeService) AssignAttendeeTeam(
+	ctx context.Context,
+	params AssignAttendeeTeamParams,
+) (*domain.Attendee, error) {
+	ctx, span := s.tracer.Start(
+		ctx,
+		"activity.service.AssignAttendeeTeam",
+	)
+	defer span.End()
+
+	log := s.logger.WithValues(
+		"method", "AssignAttendeeTeam",
+		"session_id", params.SessionID,
+		"requester_id", params.RequesterID,
+		"user_id", params.UserID,
+		"team_id", params.TeamID,
+	)
+
+	span.SetAttributes(
+		attribute.String("session_id", params.SessionID.String()),
+		attribute.String("requester_id", params.RequesterID.String()),
+		attribute.String("user_id", params.UserID.String()),
+		attribute.String("team_id", params.TeamID.String()),
+	)
+
+	requesterRole, err := parseMemberRole(params.RequesterRole)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "invalid requester role", "error", err)
+		return nil, MapErrToAppError(err)
+	}
+
+	var attendee *domain.Attendee
+
+	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
+		if err != nil {
+			return fmt.Errorf("get session: %w", err)
+		}
+
+		// Same lock as every capacity check: serializes assignments for this
+		// session so two concurrent assignments can't both read the same team
+		// size and overfill the team. Taken before reading the attendee so a
+		// concurrent RSVP change (which also holds it) is seen.
+		if err := s.lockSessionCapacity(tCtx, params.SessionID); err != nil {
+			return err
+		}
+
+		attendee, err = s.attendeeRepo.GetAttendeeBySessionAndUser(tCtx, params.SessionID, params.UserID)
+		if err != nil {
+			return fmt.Errorf("get attendee: %w", err)
+		}
+
+		teamSize, err := s.attendeeRepo.CountTeamMembers(tCtx, params.TeamID)
+		if err != nil {
+			return fmt.Errorf("count team members: %w", err)
+		}
+
+		if err := attendee.AssignToTeam(session, params.TeamID, params.RequesterID, requesterRole, teamSize); err != nil {
+			return fmt.Errorf("assign attendee to team: %w", err)
+		}
+
+		if err := s.attendeeRepo.UpdateAttendee(tCtx, attendee); err != nil {
+			return fmt.Errorf("persist team assignment: %w", err)
+		}
+
+		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, attendee.Events()); err != nil {
+			return fmt.Errorf("insert domain events: %w", err)
+		}
+		attendee.ClearEvents()
+
+		return nil
+	})
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to assign attendee to team", "error", err)
+		return nil, mapToAppErr(err)
+	}
+
+	span.SetStatus(codes.Ok, "attendee assigned to team")
+	log.Debug(ctx, "attendee assigned to team")
+
+	return attendee, nil
+}
+
+// UnassignAttendeeTeam takes an attendee off their team, back to the
+// unassigned pool. Only the session creator or a group admin/creator may do
+// this.
+func (s *AttendeeService) UnassignAttendeeTeam(
+	ctx context.Context,
+	params UnassignAttendeeTeamParams,
+) (*domain.Attendee, error) {
+	ctx, span := s.tracer.Start(
+		ctx,
+		"activity.service.UnassignAttendeeTeam",
+	)
+	defer span.End()
+
+	log := s.logger.WithValues(
+		"method", "UnassignAttendeeTeam",
+		"session_id", params.SessionID,
+		"requester_id", params.RequesterID,
+		"user_id", params.UserID,
+	)
+
+	span.SetAttributes(
+		attribute.String("session_id", params.SessionID.String()),
+		attribute.String("requester_id", params.RequesterID.String()),
+		attribute.String("user_id", params.UserID.String()),
+	)
+
+	requesterRole, err := parseMemberRole(params.RequesterRole)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "invalid requester role", "error", err)
+		return nil, MapErrToAppError(err)
+	}
+
+	var attendee *domain.Attendee
+
+	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
+		if err != nil {
+			return fmt.Errorf("get session: %w", err)
+		}
+
+		if err := s.lockSessionCapacity(tCtx, params.SessionID); err != nil {
+			return err
+		}
+
+		attendee, err = s.attendeeRepo.GetAttendeeBySessionAndUser(tCtx, params.SessionID, params.UserID)
+		if err != nil {
+			return fmt.Errorf("get attendee: %w", err)
+		}
+
+		if err := attendee.UnassignFromTeam(session, params.RequesterID, requesterRole); err != nil {
+			return fmt.Errorf("unassign attendee from team: %w", err)
+		}
+
+		if err := s.attendeeRepo.UpdateAttendee(tCtx, attendee); err != nil {
+			return fmt.Errorf("persist team unassignment: %w", err)
+		}
+
+		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, attendee.Events()); err != nil {
+			return fmt.Errorf("insert domain events: %w", err)
+		}
+		attendee.ClearEvents()
+
+		return nil
+	})
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to unassign attendee from team", "error", err)
+		return nil, mapToAppErr(err)
+	}
+
+	span.SetStatus(codes.Ok, "attendee unassigned from team")
+	log.Debug(ctx, "attendee unassigned from team")
+
+	return attendee, nil
+}
+
 // UpdateRSVP updates an existing RSVP
 func (s *AttendeeService) UpdateRSVP(
 	ctx context.Context,
@@ -647,11 +812,21 @@ func (s *AttendeeService) CancelRSVP(
 
 		oldStatus := attendee.Status()
 
+		// Free their team slot, if any - the soft delete below clears
+		// team_id, this records the event.
+		attendee.LeaveTeam()
+
 		// Soft delete
 		if err := s.attendeeRepo.DeleteAttendee(txCtx, attendee.ID()); err != nil {
 			log.Error(txCtx, "failed to delete attendee", "error", err)
 			return fmt.Errorf("failed to delete attendee: %w", err)
 		}
+
+		if err := s.eventWriter.InsertEvents(txCtx, activitySchema, attendee.Events()); err != nil {
+			log.Error(txCtx, "failed to publish events", "error", err)
+			return fmt.Errorf("failed to publish events: %w", err)
+		}
+		attendee.ClearEvents()
 
 		// If they had a confirmed spot, promote next pending
 		if oldStatus.HoldSpot() {

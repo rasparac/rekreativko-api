@@ -63,6 +63,9 @@ const (
 	EventActivitySessionAttendeeJoinApproved    = "activity.session.attendee.join_approved"
 	EventActivitySessionAttendeeJoinRejected    = "activity.session.attendee.join_rejected"
 	EventActivitySessionAttendeeRemoved         = "activity.session.attendee.removed"
+	EventActivitySessionAttendeeTeamAssigned    = "activity.session.attendee.team_assigned"
+	EventActivitySessionAttendeeTeamChanged     = "activity.session.attendee.team_changed"
+	EventActivitySessionAttendeeTeamUnassigned  = "activity.session.attendee.team_unassigned"
 
 	// Invite link events
 	EventActivityInviteLinkCreated = "activity.invite_link.created"
@@ -1175,6 +1178,103 @@ func NewAttendeeRemovedEvent(a *Attendee, s *Session, removedBy uuid.UUID) *Atte
 		SessionID:  s.ID(),
 		UserID:     a.UserID(),
 		RemovedBy:  removedBy,
+	}
+}
+
+// TeamUnassignReason tells consumers why an attendee left their team - an
+// explicit unassignment by a manager, or a side effect of the attendee
+// giving up their spot.
+type TeamUnassignReason string
+
+const (
+	TeamUnassignReasonManual  TeamUnassignReason = "manual"  // manager unassigned them
+	TeamUnassignReasonLeft    TeamUnassignReason = "left"    // RSVP changed away from going, or cancelled
+	TeamUnassignReasonRemoved TeamUnassignReason = "removed" // manager removed them from the session
+)
+
+// AttendeeTeamAssignedEvent is raised when an unassigned attendee is put on a
+// team.
+type AttendeeTeamAssignedEvent struct {
+	domainevent.BaseEvent
+	ActivityID *uuid.UUID `json:"activity_id"`
+	SessionID  uuid.UUID  `json:"session_id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	TeamID     uuid.UUID  `json:"team_id"`
+	AssignedBy uuid.UUID  `json:"assigned_by"`
+}
+
+func NewAttendeeTeamAssignedEvent(a *Attendee, teamID, assignedBy uuid.UUID) *AttendeeTeamAssignedEvent {
+	return &AttendeeTeamAssignedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionAttendeeTeamAssigned,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: a.ID(),
+		},
+		ActivityID: a.ActivityID(),
+		SessionID:  a.SessionID(),
+		UserID:     a.UserID(),
+		TeamID:     teamID,
+		AssignedBy: assignedBy,
+	}
+}
+
+// AttendeeTeamChangedEvent is raised when an attendee is moved from one team
+// to another.
+type AttendeeTeamChangedEvent struct {
+	domainevent.BaseEvent
+	ActivityID     *uuid.UUID `json:"activity_id"`
+	SessionID      uuid.UUID  `json:"session_id"`
+	UserID         uuid.UUID  `json:"user_id"`
+	TeamID         uuid.UUID  `json:"team_id"`
+	PreviousTeamID uuid.UUID  `json:"previous_team_id"`
+	ChangedBy      uuid.UUID  `json:"changed_by"`
+}
+
+func NewAttendeeTeamChangedEvent(a *Attendee, previousTeamID, teamID, changedBy uuid.UUID) *AttendeeTeamChangedEvent {
+	return &AttendeeTeamChangedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionAttendeeTeamChanged,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: a.ID(),
+		},
+		ActivityID:     a.ActivityID(),
+		SessionID:      a.SessionID(),
+		UserID:         a.UserID(),
+		TeamID:         teamID,
+		PreviousTeamID: previousTeamID,
+		ChangedBy:      changedBy,
+	}
+}
+
+// AttendeeTeamUnassignedEvent is raised when an attendee leaves their team,
+// freeing the slot. UnassignedBy is uuid.Nil when the attendee left on their
+// own (Reason "left").
+type AttendeeTeamUnassignedEvent struct {
+	domainevent.BaseEvent
+	ActivityID   *uuid.UUID         `json:"activity_id"`
+	SessionID    uuid.UUID          `json:"session_id"`
+	UserID       uuid.UUID          `json:"user_id"`
+	TeamID       uuid.UUID          `json:"team_id"`
+	Reason       TeamUnassignReason `json:"reason"`
+	UnassignedBy uuid.UUID          `json:"unassigned_by"`
+}
+
+func NewAttendeeTeamUnassignedEvent(a *Attendee, teamID uuid.UUID, reason TeamUnassignReason, unassignedBy uuid.UUID) *AttendeeTeamUnassignedEvent {
+	return &AttendeeTeamUnassignedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionAttendeeTeamUnassigned,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: a.ID(),
+		},
+		ActivityID:   a.ActivityID(),
+		SessionID:    a.SessionID(),
+		UserID:       a.UserID(),
+		TeamID:       teamID,
+		Reason:       reason,
+		UnassignedBy: unassignedBy,
 	}
 }
 

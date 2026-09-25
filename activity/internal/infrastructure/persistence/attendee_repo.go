@@ -21,6 +21,7 @@ type attendeeModel struct {
 	userID          uuid.UUID
 	status          string
 	source          string
+	teamID          uuid.NullUUID
 	createdAt       time.Time
 	updatedAt       time.Time
 }
@@ -36,6 +37,8 @@ type AttendeeRepository interface {
 	GetFirstPendingAttendee(ctx context.Context, sessionID uuid.UUID) (*domain.Attendee, error)
 	CountConfirmedAttendees(ctx context.Context, sessionID uuid.UUID) (int, error)
 	GetAttendeeStatusesForUser(ctx context.Context, userID uuid.UUID, sessionIDs []uuid.UUID) (map[uuid.UUID]domain.AttendeeStatus, error)
+	CountTeamMembers(ctx context.Context, teamID uuid.UUID) (int, error)
+	ListTeamMembers(ctx context.Context, sessionID uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
 }
 
 // AttendeeFilter defines query filters for listing attendees
@@ -76,9 +79,10 @@ func (a *attendeeManager) CreateAttendee(ctx context.Context, attendee *domain.A
 			account_id,
 			status,
 			source,
+			team_id,
 			created_at,
 			updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 
 	q := a.tx.Querier(ctx)
@@ -92,6 +96,7 @@ func (a *attendeeManager) CreateAttendee(ctx context.Context, attendee *domain.A
 		model.userID,
 		model.status,
 		model.source,
+		model.teamID,
 		model.createdAt,
 		model.updatedAt,
 	)
@@ -109,7 +114,8 @@ func (a *attendeeManager) UpdateAttendee(ctx context.Context, attendee *domain.A
 		UPDATE activity.session_attendee
 		SET
 			status = $1,
-			updated_at = $2
+			updated_at = $2,
+			team_id = $4
 		WHERE id = $3
 	`
 
@@ -121,6 +127,7 @@ func (a *attendeeManager) UpdateAttendee(ctx context.Context, attendee *domain.A
 		model.status,
 		model.updatedAt,
 		model.id,
+		model.teamID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update attendee: %w", err)
@@ -138,6 +145,7 @@ func (a *attendeeManager) GetAttendeeByID(ctx context.Context, id uuid.UUID) (*d
 			account_id,
 			status,
 			source,
+			team_id,
 			created_at,
 			updated_at
 		FROM activity.session_attendee
@@ -154,6 +162,7 @@ func (a *attendeeManager) GetAttendeeByID(ctx context.Context, id uuid.UUID) (*d
 		&model.userID,
 		&model.status,
 		&model.source,
+		&model.teamID,
 		&model.createdAt,
 		&model.updatedAt,
 	)
@@ -179,6 +188,7 @@ func (a *attendeeManager) GetAttendeeBySessionAndUser(
 			account_id,
 			status,
 			source,
+			team_id,
 			created_at,
 			updated_at
 		FROM activity.session_attendee
@@ -197,6 +207,7 @@ func (a *attendeeManager) GetAttendeeBySessionAndUser(
 		&model.userID,
 		&model.status,
 		&model.source,
+		&model.teamID,
 		&model.createdAt,
 		&model.updatedAt,
 	)
@@ -226,6 +237,7 @@ func (a *attendeeManager) ListAttendees(ctx context.Context, filter AttendeeFilt
 			account_id,
 			status,
 			source,
+			team_id,
 			created_at,
 			updated_at
 		FROM activity.session_attendee
@@ -311,6 +323,7 @@ func (a *attendeeManager) ListAttendees(ctx context.Context, filter AttendeeFilt
 			&model.userID,
 			&model.status,
 			&model.source,
+			&model.teamID,
 			&model.createdAt,
 			&model.updatedAt,
 		)
@@ -340,7 +353,7 @@ func (a *attendeeManager) ListAttendees(ctx context.Context, filter AttendeeFilt
 func (a *attendeeManager) DeleteAttendee(ctx context.Context, id uuid.UUID) error {
 	query := `
 		UPDATE activity.session_attendee
-		SET deleted_at = NOW()
+		SET deleted_at = NOW(), team_id = NULL
 		WHERE id = $1
 	`
 
@@ -363,6 +376,7 @@ func (a *attendeeManager) GetFirstPendingAttendee(ctx context.Context, sessionID
 			account_id,
 			status,
 			source,
+			team_id,
 			created_at,
 			updated_at
 		FROM activity.session_attendee
@@ -383,6 +397,7 @@ func (a *attendeeManager) GetFirstPendingAttendee(ctx context.Context, sessionID
 		&model.userID,
 		&model.status,
 		&model.source,
+		&model.teamID,
 		&model.createdAt,
 		&model.updatedAt,
 	)
@@ -414,6 +429,55 @@ func (a *attendeeManager) CountConfirmedAttendees(ctx context.Context, sessionID
 	}
 
 	return count, nil
+}
+
+// CountTeamMembers counts the active attendees currently assigned to a team.
+func (a *attendeeManager) CountTeamMembers(ctx context.Context, teamID uuid.UUID) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM activity.session_attendee
+		WHERE team_id = $1 AND deleted_at IS NULL
+	`
+
+	var count int
+	if err := a.tx.Querier(ctx).QueryRow(ctx, query, teamID).Scan(&count); err != nil {
+		return 0, fmt.Errorf("failed to count team members: %w", err)
+	}
+
+	return count, nil
+}
+
+// ListTeamMembers returns the user IDs on each team of a session, keyed by
+// team ID, in the order they joined the session. Teams nobody is on have no
+// entry.
+func (a *attendeeManager) ListTeamMembers(ctx context.Context, sessionID uuid.UUID) (map[uuid.UUID][]uuid.UUID, error) {
+	query := `
+		SELECT team_id, account_id
+		FROM activity.session_attendee
+		WHERE session_id = $1 AND team_id IS NOT NULL AND deleted_at IS NULL
+		ORDER BY created_at ASC, id ASC
+	`
+
+	rows, err := a.tx.Querier(ctx).Query(ctx, query, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list team members: %w", err)
+	}
+	defer rows.Close()
+
+	members := make(map[uuid.UUID][]uuid.UUID)
+	for rows.Next() {
+		var teamID, userID uuid.UUID
+		if err := rows.Scan(&teamID, &userID); err != nil {
+			return nil, fmt.Errorf("failed to scan team member: %w", err)
+		}
+		members[teamID] = append(members[teamID], userID)
+	}
+
+	if rows.Err() != nil {
+		return nil, fmt.Errorf("error iterating team members: %w", rows.Err())
+	}
+
+	return members, nil
 }
 
 // GetAttendeeStatusesForUser returns the requesting user's attendee status for
@@ -467,6 +531,11 @@ func attendeeModelFromDomain(attendee *domain.Attendee) *attendeeModel {
 		activityGroupID = uuid.NullUUID{UUID: *groupID, Valid: true}
 	}
 
+	var teamID uuid.NullUUID
+	if t := attendee.TeamID(); t != nil {
+		teamID = uuid.NullUUID{UUID: *t, Valid: true}
+	}
+
 	return &attendeeModel{
 		id:              attendee.ID(),
 		sessionID:       attendee.SessionID(),
@@ -474,6 +543,7 @@ func attendeeModelFromDomain(attendee *domain.Attendee) *attendeeModel {
 		userID:          attendee.UserID(),
 		status:          string(attendee.Status()),
 		source:          string(attendee.Source()),
+		teamID:          teamID,
 		createdAt:       attendee.CreatedAt(),
 		updatedAt:       attendee.UpdatedAt(),
 	}
@@ -493,6 +563,11 @@ func attendeeModelToDomain(model *attendeeModel) (*domain.Attendee, error) {
 		activityGroupID = &model.activityGroupID.UUID
 	}
 
+	var teamID *uuid.UUID
+	if model.teamID.Valid {
+		teamID = &model.teamID.UUID
+	}
+
 	return domain.ReconstructAttendee(
 		model.id,
 		model.sessionID,
@@ -500,6 +575,7 @@ func attendeeModelToDomain(model *attendeeModel) (*domain.Attendee, error) {
 		model.userID,
 		status,
 		source,
+		teamID,
 		model.createdAt,
 		model.updatedAt,
 	), nil

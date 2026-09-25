@@ -10,7 +10,7 @@ import (
 type CreateActivityGroupRequest struct {
 	Title           string `json:"title" validate:"required,min=3,max=100" example:"Morning Running Group"`
 	Description     string `json:"description" validate:"max=1000" example:"A group for early morning runners in Belgrade"`
-	ActivityType    string `json:"activity_type" validate:"required,oneof=running walking jogging basketball football tennis gym dancing skiing climbing cycling swimming hiking yoga weightlifting other" example:"running"`
+	ActivityType    string `json:"activity_type" validate:"required,oneof=running walking jogging basketball football tennis volleyball gym dancing skiing climbing cycling swimming hiking yoga weightlifting other" example:"running"`
 	DifficultyLevel string `json:"difficulty_level" validate:"required,oneof=beginner intermediate advanced" example:"beginner"`
 	Visibility      string `json:"visibility" validate:"required,oneof=public private" example:"public"`
 	LocationCity    string `json:"location_city" validate:"required,min=2,max=100" example:"Belgrade"`
@@ -23,7 +23,7 @@ type CreateActivityGroupRequest struct {
 type UpdateActivityGroupRequest struct {
 	Title           string `json:"title" validate:"required,min=3,max=100" example:"Morning Running Group"`
 	Description     string `json:"description" validate:"max=1000" example:"A group for early morning runners in Belgrade"`
-	ActivityType    string `json:"activity_type" validate:"required,oneof=running walking jogging basketball football tennis gym dancing skiing climbing cycling swimming hiking yoga weightlifting other" example:"running"`
+	ActivityType    string `json:"activity_type" validate:"required,oneof=running walking jogging basketball football tennis volleyball gym dancing skiing climbing cycling swimming hiking yoga weightlifting other" example:"running"`
 	DifficultyLevel string `json:"difficulty_level" validate:"required,oneof=beginner intermediate advanced" example:"beginner"`
 	LocationCity    string `json:"location_city" validate:"required,min=2,max=100" example:"Belgrade"`
 	LocationCountry string `json:"location_country" validate:"required,min=2,max=100" example:"Serbia"`

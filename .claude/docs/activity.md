@@ -235,6 +235,52 @@ creator/attendees only); the invite response carries `session_id` only.
 
 ====================================================================================================
 
+## Teams (team sports)
+
+A session can optionally be split into teams - only for team sports (`ActivityType.IsTeamSport()`:
+basketball, football, volleyball; `ErrTeamsNotSupported` otherwise). A session without team config
+behaves exactly as before. Later work builds on this model: captain draft (6gg.2), proposals/voting
+(6gg.3), live updates over SSE (6gg.4).
+
+**TeamConfig** (value object, `*TeamConfig` nil = no teams):
+- `team_count`: 2..8, defaults to 2
+- `players_per_team`: optional per-team limit, nil = unlimited. Deliberately independent of session
+  `capacity` - capacity still bounds the confirmed pool/waitlist; extra confirmed attendees simply stay
+  unassigned
+- `colors`: optional `#RRGGBB` per team (shirts/bibs) - none, or exactly one per team
+
+**Where config lives:**
+- One-off sessions: `teams` on `POST /sessions`. Fixed at creation - `PUT /sessions/{id}` never changes it
+- Templates: `teams` on create/update template; validated against the group's activity type. Generated
+  sessions inherit it (the generator drops it with a warning if the group is no longer a team sport).
+  Changing it only affects sessions generated afterwards
+
+**Team** (entity inside the Session aggregate): created with the session as `Team A`, `Team B`, ...
+(`position` 0..n-1, color from config). Loaded by `GetSessionByID` only; list/discover queries carry the
+config but not the teams.
+
+**Assignment** is stored on the attendee (`session_attendee.team_id`, NULL = unassigned):
+- `Attendee.AssignToTeam` / `UnassignFromTeam`, by session creator or group admin/creator only
+- Only confirmed attendees (going/promoted) can be on a team; one team per attendee (moving = reassign)
+- `players_per_team` enforced; team size is counted under the same session advisory lock as capacity
+  (`lockSessionCapacity`), so concurrent assignments can't overfill a team
+- Allowed while the session is scheduled or started; not once canceled/completed
+- Slot is freed automatically when the attendee leaves: RSVP -> not_going/maybe, RSVP cancelled
+  (`LeaveTeam`, row soft-deleted with `team_id` cleared), or removed by a manager
+- Promotion from the waitlist does not assign a team
+
+**Endpoints:**
+- `PUT /api/v1/sessions/{sessionId}/rsvp/{userId}/team` `{team_id}` - assign or move, returns attendee
+- `DELETE /api/v1/sessions/{sessionId}/rsvp/{userId}/team` - unassign (no-op if not on a team)
+- `GET /api/v1/sessions/{id}` includes `team_config` and `teams[]` with `member_user_ids`; list/discover
+  include `team_config` only; attendee responses include `team_id`
+
+**Events** (`activity.session.attendee.*`, via outbox):
+- `team_assigned` (was unassigned), `team_changed` (carries `previous_team_id`)
+- `team_unassigned` with `reason`: `manual` | `left` | `removed`
+
+====================================================================================================
+
 ## Domain Value Objects
 
 The implementation uses rich value objects for type safety and validation:
@@ -262,7 +308,9 @@ The implementation uses rich value objects for type safety and validation:
 - All times converted to UTC
 
 **ActivityType:**
-- Predefined enum: hiking, cycling, running, swimming, yoga, gym, other
+- Predefined enum from `shared/activitycatalog` (running, walking, jogging, basketball, football, tennis,
+  volleyball, gym, dancing, skiing, climbing, cycling, swimming, hiking, yoga, weightlifting, other)
+- `IsTeamSport()`: basketball, football, volleyball
 - Type-safe, prevents invalid activity types
 
 **DifficultyLevel:**
@@ -366,6 +414,7 @@ All activity tables use the `activity` schema for namespace isolation (DDD bound
    - Has default capacity for generated sessions
    - Tracks generated_up_to for cron jobs
    - status: active, inactive
+   - team_count, players_per_team, team_colors: team config inherited by generated sessions
 
 7. **session** - Individual session instances
    - Can be manual or generated from template
@@ -374,6 +423,10 @@ All activity tables use the `activity` schema for namespace isolation (DDD bound
    - status: scheduled, started, cancelled, completed
    - is_recurring flag
    - Indexed for upcoming sessions and location queries
+   - team_count, players_per_team (NULL team_count = no teams)
+
+   - **session_team** - Teams of a session (Team A, Team B, ...)
+     - name, optional color, position (unique per session)
 
 8. **session_attendee** - Session participants
    - Links account_id to session_id
@@ -381,6 +434,8 @@ All activity tables use the `activity` schema for namespace isolation (DDD bound
    - source: auto_confirmed, auto_pending, rsvp_manual, requested, invited
    - Indexed for waitlist FIFO (session_id, created_at)
    - Unique: one active attendance per user per session
+   - team_id: nullable, composite FK (team_id, session_id) -> session_team so an attendee can only be on
+     a team of their own session
 
    - **session_invites** - Direct invitations to standalone sessions
      - Same shape as group_invites, keyed on session_id instead of activity_group_id
@@ -406,4 +461,4 @@ All activity tables use the `activity` schema for namespace isolation (DDD bound
 - Token lookup: token on group_invite_links
 - Recurring jobs: recurrence_frequency, generated_up_to on session_template
 
-For complete schema, see: `migrations/000004_activity_schema.up.sql`
+For complete schema, see: `activity/internal/infrastructure/persistence/migrations/000001_activity_schema.up.sql`

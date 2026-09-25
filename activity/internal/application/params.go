@@ -29,6 +29,7 @@ type CreateSessionTemplateParams struct {
 	LocationStreet  string // optional
 	LocationLat     float64
 	LocationLng     float64
+	Teams           *TeamConfigParams // nil = generated sessions have no teams
 }
 
 // UpdateSessionTemplateParams contains parameters for updating a session template
@@ -53,6 +54,7 @@ type UpdateSessionTemplateParams struct {
 	LocationStreet  string // optional
 	LocationLat     float64
 	LocationLng     float64
+	Teams           *TeamConfigParams // nil = generated sessions have no teams
 }
 
 // ListSessionTemplatesParams contains parameters for listing session templates
@@ -164,6 +166,16 @@ type CreateSessionParams struct {
 	// sessions.
 	Visibility       string
 	RequiresApproval bool
+	// Teams splits the session into teams (team sports only); nil = no teams.
+	// Fixed at creation - UpdateSessionParams has no counterpart.
+	Teams *TeamConfigParams
+}
+
+// TeamConfigParams is the optional team setup of a session or template
+type TeamConfigParams struct {
+	TeamCount      *int     // nil = domain.DefaultTeamCount
+	PlayersPerTeam *int     // nil = no per-team limit
+	Colors         []string // optional "#RRGGBB", one per team
 }
 
 // UpdateSessionParams contains parameters for updating a session
@@ -315,6 +327,25 @@ type RejectAttendeeParams struct {
 
 // RemoveAttendeeParams contains parameters for removing an already-confirmed attendee from a session
 type RemoveAttendeeParams struct {
+	SessionID     uuid.UUID
+	UserID        uuid.UUID
+	RequesterID   uuid.UUID
+	RequesterRole string
+}
+
+// AssignAttendeeTeamParams contains parameters for putting an attendee on a
+// team (or moving them to another one)
+type AssignAttendeeTeamParams struct {
+	SessionID     uuid.UUID
+	UserID        uuid.UUID
+	TeamID        uuid.UUID
+	RequesterID   uuid.UUID
+	RequesterRole string
+}
+
+// UnassignAttendeeTeamParams contains parameters for taking an attendee off
+// their team
+type UnassignAttendeeTeamParams struct {
 	SessionID     uuid.UUID
 	UserID        uuid.UUID
 	RequesterID   uuid.UUID

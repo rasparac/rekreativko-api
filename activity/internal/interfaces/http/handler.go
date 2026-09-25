@@ -47,6 +47,7 @@ type (
 		SetSessionVisibility(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID, requesterRole string, visibility string) error
 		ListSessions(ctx context.Context, params application.ListSessionsParams, requesterID uuid.UUID) ([]*domain.Session, string, map[uuid.UUID]domain.AttendeeStatus, error)
 		DiscoverSessions(ctx context.Context, params application.DiscoverSessionsParams, requesterID uuid.UUID) ([]persistence.SessionWithDistance, string, map[uuid.UUID]domain.AttendeeStatus, error)
+		ListTeamMembers(ctx context.Context, sessionID uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
 	}
 
 	// memberService defines the interface for member operations
@@ -73,6 +74,8 @@ type (
 		ApproveAttendee(ctx context.Context, params application.ApproveAttendeeParams) error
 		RejectAttendee(ctx context.Context, params application.RejectAttendeeParams) error
 		RemoveAttendee(ctx context.Context, params application.RemoveAttendeeParams) error
+		AssignAttendeeTeam(ctx context.Context, params application.AssignAttendeeTeamParams) (*domain.Attendee, error)
+		UnassignAttendeeTeam(ctx context.Context, params application.UnassignAttendeeTeamParams) (*domain.Attendee, error)
 	}
 
 	// inviteService defines the interface for group invite operations
@@ -336,5 +339,13 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"DELETE /api/v1/sessions/{sessionId}/rsvp/{userId}",
 		middlewares.ThenFunc(h.RemoveAttendee),
+	)
+	mux.Handle(
+		"PUT /api/v1/sessions/{sessionId}/rsvp/{userId}/team",
+		middlewares.ThenFunc(h.AssignAttendeeTeam),
+	)
+	mux.Handle(
+		"DELETE /api/v1/sessions/{sessionId}/rsvp/{userId}/team",
+		middlewares.ThenFunc(h.UnassignAttendeeTeam),
 	)
 }

@@ -16,7 +16,7 @@ type CreateSessionRequest struct {
 	// ActivityType and DifficultyLevel are required only for a standalone session
 	// (no activity_group_id) - for a grouped session both are always inherited
 	// from the group and any value sent here is ignored.
-	ActivityType    string `json:"activity_type,omitempty" validate:"omitempty,oneof=running walking jogging basketball football tennis gym dancing skiing climbing cycling swimming hiking yoga weightlifting other" example:"running"`
+	ActivityType    string `json:"activity_type,omitempty" validate:"omitempty,oneof=running walking jogging basketball football tennis volleyball gym dancing skiing climbing cycling swimming hiking yoga weightlifting other" example:"running"`
 	DifficultyLevel string `json:"difficulty_level,omitempty" validate:"omitempty,oneof=beginner intermediate advanced" example:"beginner"`
 	LocationCity    string `json:"location_city" validate:"required,min=2,max=100" example:"Belgrade"`
 	LocationCountry string `json:"location_country" validate:"required,min=2,max=100" example:"Serbia"`
@@ -37,6 +37,39 @@ type CreateSessionRequest struct {
 	// RequiresApproval: if true, RSVPing "going" creates a pending join request
 	// that the creator/admin must approve rather than joining immediately.
 	RequiresApproval bool `json:"requires_approval,omitempty" example:"false"`
+	// Teams optionally splits the session into teams - team sports only
+	// (basketball, football, volleyball). Set at creation only; omit for a
+	// plain session without teams.
+	Teams *TeamConfigRequest `json:"teams,omitempty"`
+}
+
+// TeamConfigRequest is the optional team setup of a session or template
+type TeamConfigRequest struct {
+	// TeamCount defaults to 2 when omitted.
+	TeamCount *int `json:"team_count,omitempty" validate:"omitempty,min=2,max=8" example:"2"`
+	// PlayersPerTeam is an optional per-team limit, independent of capacity.
+	// Omit for no limit.
+	PlayersPerTeam *int `json:"players_per_team,omitempty" validate:"omitempty,min=1,max=100" example:"5"`
+	// Colors are optional "#RRGGBB" team colors (e.g. shirts) - omit, or give
+	// exactly one per team, in team order.
+	Colors []string `json:"colors,omitempty" validate:"omitempty,max=8,dive,hexcolor" example:"#FF0000,#0000FF"`
+}
+
+// TeamConfigResponse is the team setup of a session
+type TeamConfigResponse struct {
+	TeamCount      int  `json:"team_count" example:"2"`
+	PlayersPerTeam *int `json:"players_per_team,omitempty" example:"5"`
+}
+
+// TeamResponse is one team of a session with its current members
+type TeamResponse struct {
+	ID       uuid.UUID `json:"id" example:"123e4567-e89b-12d3-a456-426655440000"`
+	Name     string    `json:"name" example:"Team A"`
+	Color    string    `json:"color,omitempty" example:"#FF0000"`
+	Position int       `json:"position" example:"0"`
+	// MemberUserIDs are the users currently on this team, in the order they
+	// joined the session.
+	MemberUserIDs []uuid.UUID `json:"member_user_ids"`
 }
 
 // UpdateSessionRequest is a request to update an existing session
@@ -94,6 +127,11 @@ type SessionResponse struct {
 	// sets it - fetch the attendee list separately if you need this for a
 	// single session.
 	AttendeeStatus *string `json:"attendee_status,omitempty" example:"going"`
+	// TeamConfig is set when the session is split into teams.
+	TeamConfig *TeamConfigResponse `json:"team_config,omitempty"`
+	// Teams (with members) are only populated on GET /sessions/{id} - list
+	// and discover responses carry TeamConfig only.
+	Teams []TeamResponse `json:"teams,omitempty"`
 }
 
 // CreateSessionResponse is a response after creating a session

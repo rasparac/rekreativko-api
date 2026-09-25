@@ -51,6 +51,38 @@ func ApproveAttendeeRequestToParams(
 	}
 }
 
+// AssignTeamRequestToParams builds params for assigning an attendee to a team
+func AssignTeamRequestToParams(
+	req *dtos.AssignTeamRequest,
+	sessionID uuid.UUID,
+	userID uuid.UUID,
+	requesterID uuid.UUID,
+	requesterRole string,
+) *application.AssignAttendeeTeamParams {
+	return &application.AssignAttendeeTeamParams{
+		SessionID:     sessionID,
+		UserID:        userID,
+		TeamID:        req.TeamID,
+		RequesterID:   requesterID,
+		RequesterRole: requesterRole,
+	}
+}
+
+// UnassignTeamRequestToParams builds params for taking an attendee off their team
+func UnassignTeamRequestToParams(
+	sessionID uuid.UUID,
+	userID uuid.UUID,
+	requesterID uuid.UUID,
+	requesterRole string,
+) *application.UnassignAttendeeTeamParams {
+	return &application.UnassignAttendeeTeamParams{
+		SessionID:     sessionID,
+		UserID:        userID,
+		RequesterID:   requesterID,
+		RequesterRole: requesterRole,
+	}
+}
+
 // RejectAttendeeRequestToParams builds params for rejecting a pending join request
 func RejectAttendeeRequestToParams(
 	sessionID uuid.UUID,
@@ -90,6 +122,7 @@ func AttendeeToResponse(attendee *domain.Attendee) *dtos.AttendeeResponse {
 		UserID:          attendee.UserID(),
 		Status:          string(attendee.Status()),
 		Source:          string(attendee.Source()),
+		TeamID:          attendee.TeamID(),
 		CreatedAt:       attendee.CreatedAt(),
 		UpdatedAt:       attendee.UpdatedAt(),
 	}

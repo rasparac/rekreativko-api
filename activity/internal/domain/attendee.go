@@ -55,6 +55,7 @@ type Attendee struct {
 	userID     uuid.UUID
 	status     AttendeeStatus
 	source     AttendeeSource
+	teamID     *uuid.UUID // nil = not on a team (or the session has no teams)
 
 	createdAt time.Time
 	updatedAt time.Time
@@ -94,6 +95,10 @@ func (a *Attendee) Status() AttendeeStatus {
 
 func (a *Attendee) Source() AttendeeSource {
 	return a.source
+}
+
+func (a *Attendee) TeamID() *uuid.UUID {
+	return a.teamID
 }
 
 func (a *Attendee) CreatedAt() time.Time {
@@ -296,6 +301,7 @@ func (a *Attendee) UpdateRSVP(
 			session,
 			oldStatus.HoldSpot(), // signals service layer to promote next pending attendee
 		))
+		a.releaseTeam(TeamUnassignReasonLeft, uuid.Nil)
 
 	case AttendeeStatusMaybe:
 		a.status = AttendeeStatusMaybe
@@ -305,7 +311,7 @@ func (a *Attendee) UpdateRSVP(
 			session,
 			oldStatus.HoldSpot(), // signals service layer to promote next pending attendee
 		))
-
+		a.releaseTeam(TeamUnassignReasonLeft, uuid.Nil)
 	}
 
 	return nil
@@ -370,8 +376,96 @@ func (a *Attendee) Remove(session *Session, removerID uuid.UUID, removerRole Mem
 	}
 
 	a.addEvent(NewAttendeeRemovedEvent(a, session, removerID))
+	a.releaseTeam(TeamUnassignReasonRemoved, removerID)
 
 	return nil
+}
+
+// AssignToTeam puts a confirmed attendee on one of the session's teams, or
+// moves them there from another team. currentTeamSize is the number of
+// attendees already on teamID - the caller must read it under the session
+// capacity lock so concurrent assignments can't both squeeze into the last
+// slot. Assigning to the team the attendee is already on is a no-op.
+func (a *Attendee) AssignToTeam(
+	session *Session,
+	teamID uuid.UUID,
+	requesterID uuid.UUID,
+	requesterRole MemberRole,
+	currentTeamSize int,
+) error {
+	if !session.canManageSession(requesterID, requesterRole) {
+		return ErrUnauthorized
+	}
+
+	if err := session.requireTeamsEditable(); err != nil {
+		return err
+	}
+
+	if _, ok := session.Team(teamID); !ok {
+		return ErrTeamNotFound
+	}
+
+	if !a.status.IsConfirmed() {
+		return ErrAttendeeNotGoing
+	}
+
+	if a.teamID != nil && *a.teamID == teamID {
+		return nil
+	}
+
+	if !session.teamConfig.hasRoomFor(currentTeamSize) {
+		return ErrTeamFull
+	}
+
+	previous := a.teamID
+	a.teamID = &teamID
+	a.updatedAt = time.Now().UTC()
+
+	if previous == nil {
+		a.addEvent(NewAttendeeTeamAssignedEvent(a, teamID, requesterID))
+	} else {
+		a.addEvent(NewAttendeeTeamChangedEvent(a, *previous, teamID, requesterID))
+	}
+
+	return nil
+}
+
+// UnassignFromTeam takes an attendee off their team, back to the unassigned
+// pool. A no-op when they aren't on a team.
+func (a *Attendee) UnassignFromTeam(
+	session *Session,
+	requesterID uuid.UUID,
+	requesterRole MemberRole,
+) error {
+	if !session.canManageSession(requesterID, requesterRole) {
+		return ErrUnauthorized
+	}
+
+	if err := session.requireTeamsEditable(); err != nil {
+		return err
+	}
+
+	a.releaseTeam(TeamUnassignReasonManual, requesterID)
+
+	return nil
+}
+
+// LeaveTeam frees the attendee's team slot when their RSVP is cancelled
+// outright (the row is deleted, so there is no status change to hook into).
+func (a *Attendee) LeaveTeam() {
+	a.releaseTeam(TeamUnassignReasonLeft, uuid.Nil)
+}
+
+func (a *Attendee) releaseTeam(reason TeamUnassignReason, by uuid.UUID) {
+	if a.teamID == nil {
+		return
+	}
+
+	teamID := *a.teamID
+	a.teamID = nil
+	a.updatedAt = time.Now().UTC()
+
+	a.addEvent(NewAttendeeTeamUnassignedEvent(a, teamID, reason, by))
 }
 
 // Reject declines a pending join request, moving the attendee to "not_going".
@@ -446,6 +540,7 @@ func ReconstructAttendee(
 	userID uuid.UUID,
 	status AttendeeStatus,
 	source AttendeeSource,
+	teamID *uuid.UUID,
 	createdAt time.Time,
 	updatedAt time.Time,
 ) *Attendee {
@@ -456,6 +551,7 @@ func ReconstructAttendee(
 		userID:     userID,
 		status:     status,
 		source:     source,
+		teamID:     teamID,
 		createdAt:  createdAt,
 		updatedAt:  updatedAt,
 		events:     make([]domainevent.Event, 0),

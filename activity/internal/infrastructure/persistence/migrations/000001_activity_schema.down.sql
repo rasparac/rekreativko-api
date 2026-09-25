@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS activity.session_statistics;
 DROP TABLE IF EXISTS activity.activity_group_statistics;
 DROP TABLE IF EXISTS activity.session_invites;
 DROP TABLE IF EXISTS activity.session_attendee;
+DROP TABLE IF EXISTS activity.session_team;
 DROP TABLE IF EXISTS activity.session;
 DROP TABLE IF EXISTS activity.session_template;
 DROP TABLE IF EXISTS activity.recurrence_rule;

@@ -37,6 +37,8 @@ type sessionModel struct {
 	visibility        string
 	requiresApproval  bool
 	isRecurring       bool
+	teamCount         sql.NullInt32 // NULL = session has no teams
+	playersPerTeam    sql.NullInt32
 	note              sql.NullString
 	createdAt         sql.NullTime
 	updatedAt         sql.NullTime
@@ -110,9 +112,9 @@ func (m *sessionManager) CreateSession(ctx context.Context, session *domain.Sess
 			location_city, location_country, location_lat, location_lng,
 			start_time, end_time, capacity, status, visibility, is_recurring, note,
 			created_at, updated_at, title, activity_type, difficulty_level, location_street,
-			requires_approval
+			requires_approval, team_count, players_per_team
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24
 		)
 	`
 
@@ -143,13 +145,86 @@ func (m *sessionManager) CreateSession(ctx context.Context, session *domain.Sess
 		model.difficultyLevel,
 		model.locationStreet,
 		model.requiresApproval,
+		model.teamCount,
+		model.playersPerTeam,
 	)
 
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}
 
+	for _, team := range session.Teams() {
+		if err := m.createTeam(ctx, team); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func (m *sessionManager) createTeam(ctx context.Context, team *domain.Team) error {
+	query := `
+		INSERT INTO activity.session_team (id, session_id, name, color, position, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`
+
+	var color sql.NullString
+	if team.Color() != "" {
+		color = sql.NullString{String: team.Color(), Valid: true}
+	}
+
+	_, err := m.tx.Querier(ctx).Exec(
+		ctx,
+		query,
+		team.ID(),
+		team.SessionID(),
+		team.Name(),
+		color,
+		team.Position(),
+		team.CreatedAt(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create session team: %w", err)
+	}
+
+	return nil
+}
+
+// listTeams loads a session's teams in position order.
+func (m *sessionManager) listTeams(ctx context.Context, sessionID uuid.UUID) ([]*domain.Team, error) {
+	query := `
+		SELECT id, session_id, name, color, position, created_at
+		FROM activity.session_team
+		WHERE session_id = $1
+		ORDER BY position ASC
+	`
+
+	rows, err := m.tx.Querier(ctx).Query(ctx, query, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list session teams: %w", err)
+	}
+	defer rows.Close()
+
+	var teams []*domain.Team
+	for rows.Next() {
+		var (
+			id, teamSessionID uuid.UUID
+			name              string
+			color             sql.NullString
+			position          int
+			createdAt         time.Time
+		)
+		if err := rows.Scan(&id, &teamSessionID, &name, &color, &position, &createdAt); err != nil {
+			return nil, fmt.Errorf("failed to scan session team: %w", err)
+		}
+		teams = append(teams, domain.ReconstructTeam(id, teamSessionID, name, color.String, position, createdAt))
+	}
+
+	if rows.Err() != nil {
+		return nil, fmt.Errorf("error iterating session teams: %w", rows.Err())
+	}
+
+	return teams, nil
 }
 
 func (m *sessionManager) UpdateSession(ctx context.Context, session *domain.Session) error {
@@ -219,7 +294,8 @@ func (m *sessionManager) GetSessionByID(ctx context.Context, id uuid.UUID) (*dom
 			location_city, location_country, location_lat, location_lng,
 			start_time, end_time, capacity, status, visibility, is_recurring, note,
 			created_at, updated_at, cancelled_at, started_at, completed_at,
-			title, activity_type, difficulty_level, location_street, requires_approval
+			title, activity_type, difficulty_level, location_street, requires_approval,
+			team_count, players_per_team
 		FROM activity.session
 		WHERE id = $1
 	`
@@ -253,6 +329,8 @@ func (m *sessionManager) GetSessionByID(ctx context.Context, id uuid.UUID) (*dom
 		&model.difficultyLevel,
 		&model.locationStreet,
 		&model.requiresApproval,
+		&model.teamCount,
+		&model.playersPerTeam,
 	)
 
 	if err != nil {
@@ -262,7 +340,15 @@ func (m *sessionManager) GetSessionByID(ctx context.Context, id uuid.UUID) (*dom
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
 
-	return sessionModelToDomain(&model)
+	var teams []*domain.Team
+	if model.teamCount.Valid {
+		teams, err = m.listTeams(ctx, model.id)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return sessionModelToDomain(&model, teams)
 }
 
 // FindSessionsPastEndTime returns every non-terminal session whose end time has
@@ -275,7 +361,8 @@ func (m *sessionManager) FindSessionsPastEndTime(ctx context.Context) ([]*domain
 			location_city, location_country, location_lat, location_lng,
 			start_time, end_time, capacity, status, visibility, is_recurring, note,
 			created_at, updated_at, cancelled_at, started_at, completed_at,
-			title, activity_type, difficulty_level, location_street, requires_approval
+			title, activity_type, difficulty_level, location_street, requires_approval,
+			team_count, players_per_team
 		FROM activity.session
 		WHERE status IN ('scheduled', 'started') AND end_time IS NOT NULL AND end_time < now()
 	`
@@ -317,12 +404,14 @@ func (m *sessionManager) FindSessionsPastEndTime(ctx context.Context) ([]*domain
 			&model.difficultyLevel,
 			&model.locationStreet,
 			&model.requiresApproval,
+			&model.teamCount,
+			&model.playersPerTeam,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan session: %w", err)
 		}
 
-		session, err := sessionModelToDomain(&model)
+		session, err := sessionModelToDomain(&model, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build session from model: %w", err)
 		}
@@ -365,7 +454,9 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 			activity_type,
 			difficulty_level,
 			location_street,
-			requires_approval
+			requires_approval,
+			team_count,
+			players_per_team
 		FROM activity.session
 		WHERE 1=1`,
 		Args: make([]any, 0),
@@ -518,12 +609,14 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 			&model.difficultyLevel,
 			&model.locationStreet,
 			&model.requiresApproval,
+			&model.teamCount,
+			&model.playersPerTeam,
 		)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to scan session: %w", err)
 		}
 
-		session, err := sessionModelToDomain(&model)
+		session, err := sessionModelToDomain(&model, nil)
 		if err != nil {
 			m.logger.Error(ctx, "failed to convert session model to domain", "error", err, "session_id", model.id)
 			continue
@@ -658,6 +751,8 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter DiscoverSe
 				difficulty_level,
 				location_street,
 				requires_approval,
+				team_count,
+				players_per_team,
 				(6371 * acos(LEAST(1, GREATEST(-1,
 					cos(radians($1)) * cos(radians(location_lat)) *
 					cos(radians(location_lng) - radians($2)) +
@@ -727,13 +822,15 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter DiscoverSe
 			&model.difficultyLevel,
 			&model.locationStreet,
 			&model.requiresApproval,
+			&model.teamCount,
+			&model.playersPerTeam,
 			&distanceKM,
 		)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to scan nearby session: %w", err)
 		}
 
-		session, err := sessionModelToDomain(&model)
+		session, err := sessionModelToDomain(&model, nil)
 		if err != nil {
 			m.logger.Error(ctx, "failed to convert session model to domain", "error", err, "session_id", model.id)
 			continue
@@ -828,6 +925,14 @@ func sessionModelFromDomain(s *domain.Session) *sessionModel {
 		model.capacity = sql.NullInt32{Int32: int32(*cap), Valid: true}
 	}
 
+	// Team config
+	if tc := s.TeamConfig(); tc != nil {
+		model.teamCount = sql.NullInt32{Int32: int32(tc.TeamCount()), Valid: true}
+		if ppt := tc.PlayersPerTeam(); ppt != nil {
+			model.playersPerTeam = sql.NullInt32{Int32: int32(*ppt), Valid: true}
+		}
+	}
+
 	// Created at
 	if !s.CreatedAt().IsZero() {
 		model.createdAt = sql.NullTime{Time: s.CreatedAt(), Valid: true}
@@ -856,7 +961,9 @@ func sessionModelFromDomain(s *domain.Session) *sessionModel {
 	return model
 }
 
-func sessionModelToDomain(model *sessionModel) (*domain.Session, error) {
+// sessionModelToDomain converts a session row to the domain Session. teams is
+// nil when they weren't loaded (list queries).
+func sessionModelToDomain(model *sessionModel, teams []*domain.Team) (*domain.Session, error) {
 	location, err := domain.NewSessionLocation(
 		model.locationCity,
 		model.locationCountry,
@@ -891,6 +998,25 @@ func sessionModelToDomain(model *sessionModel) (*domain.Session, error) {
 	if model.capacity.Valid {
 		c := int(model.capacity.Int32)
 		capacity = &c
+	}
+
+	var teamConfig *domain.TeamConfig
+	if model.teamCount.Valid {
+		var playersPerTeam *int
+		if model.playersPerTeam.Valid {
+			p := int(model.playersPerTeam.Int32)
+			playersPerTeam = &p
+		}
+
+		colors := make([]string, 0, len(teams))
+		for _, t := range teams {
+			if t.Color() != "" {
+				colors = append(colors, t.Color())
+			}
+		}
+
+		tc := domain.ReconstructTeamConfig(int(model.teamCount.Int32), playersPerTeam, colors)
+		teamConfig = &tc
 	}
 
 	var cancelledAt *time.Time
@@ -935,6 +1061,8 @@ func sessionModelToDomain(model *sessionModel) (*domain.Session, error) {
 		model.isRecurring,
 		model.note.String,
 		nil, // openAt is not persisted yet
+		teamConfig,
+		teams,
 		model.createdAt.Time,
 		model.updatedAt.Time,
 		cancelledAt,

@@ -50,8 +50,9 @@ type SessionTemplate struct {
 
 	recurrenceRule  *RecurrenceRule
 	defaultCapacity *int
-	defaultLocation *Location  // required; inherited by every session generated from this template
-	generatedUpTo   *time.Time // tracks how far ahead sessions have been generated
+	defaultLocation *Location   // required; inherited by every session generated from this template
+	teamConfig      *TeamConfig // optional; inherited by every session generated from this template
+	generatedUpTo   *time.Time  // tracks how far ahead sessions have been generated
 
 	createdAt time.Time
 	updatedAt time.Time
@@ -89,6 +90,7 @@ func NewSessionTemplate(
 	recurrenceRule *RecurrenceRule,
 	defaultCapacity *int,
 	defaultLocation *Location,
+	teamConfig *TeamConfig,
 ) (*SessionTemplate, error) {
 	if err := validateFields(title, defaultCapacity, defaultLocation, recurrenceRule); err != nil {
 		return nil, err
@@ -105,6 +107,7 @@ func NewSessionTemplate(
 		recurrenceRule:  recurrenceRule,
 		defaultCapacity: defaultCapacity,
 		defaultLocation: defaultLocation,
+		teamConfig:      teamConfig,
 		createdAt:       now,
 		updatedAt:       now,
 	}
@@ -125,6 +128,7 @@ func ReconstructSessionTemplate(
 	recurrenceRule *RecurrenceRule,
 	defaultCapacity *int,
 	defaultLocation *Location,
+	teamConfig *TeamConfig,
 	generatedUpTo *time.Time,
 	createdAt time.Time,
 	updatedAt time.Time,
@@ -140,6 +144,7 @@ func ReconstructSessionTemplate(
 		recurrenceRule:  recurrenceRule,
 		defaultCapacity: defaultCapacity,
 		defaultLocation: defaultLocation,
+		teamConfig:      teamConfig,
 		generatedUpTo:   generatedUpTo,
 		createdAt:       createdAt,
 		updatedAt:       updatedAt,
@@ -154,6 +159,7 @@ func (st *SessionTemplate) Update(
 	recurrenceRule *RecurrenceRule,
 	defaultCapacity *int,
 	defaultLocation *Location,
+	teamConfig *TeamConfig,
 ) error {
 	if err := st.requiredNotDeleted(); err != nil {
 		return err
@@ -168,6 +174,7 @@ func (st *SessionTemplate) Update(
 	st.recurrenceRule = recurrenceRule
 	st.defaultCapacity = defaultCapacity
 	st.defaultLocation = defaultLocation
+	st.teamConfig = teamConfig
 	st.updatedAt = time.Now().UTC()
 
 	st.addEvent(NewSessionTemplateUpdatedEvent(st))
@@ -272,6 +279,13 @@ func (st *SessionTemplate) DefaultCapacity() *int {
 
 func (st *SessionTemplate) DefaultLocation() *Location {
 	return st.defaultLocation
+}
+
+// TeamConfig is the team setup inherited by generated sessions - nil means
+// generated sessions have no teams. Changing it only affects sessions
+// generated afterwards.
+func (st *SessionTemplate) TeamConfig() *TeamConfig {
+	return st.teamConfig
 }
 
 func (st *SessionTemplate) GeneratedUpTo() *time.Time {

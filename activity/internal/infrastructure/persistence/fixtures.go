@@ -156,6 +156,7 @@ func (b *SessionTemplateBuilder) Build() *domain.SessionTemplate {
 		b.recurrenceRule,
 		b.capacity,
 		location,
+		nil, // teamConfig
 		nil, // generatedUpTo
 		testutil.NowUTC(),
 		testutil.NowUTC(),

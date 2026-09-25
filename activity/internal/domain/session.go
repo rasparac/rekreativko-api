@@ -185,6 +185,13 @@ type Session struct {
 	// openAt is the UTC timestamp when this session transitions from "collecting" to "scheduled" status.
 	openAt *time.Time
 
+	// teamConfig is nil for a session that isn't split into teams. It is set
+	// at creation only - UpdateSession never changes it.
+	teamConfig *TeamConfig
+	// teams is only populated when loaded for a single session (see
+	// SessionRepository.GetSessionByID) - list queries leave it empty.
+	teams []*Team
+
 	createdAt   time.Time
 	updatedAt   time.Time
 	cancelledAt *time.Time
@@ -212,6 +219,9 @@ type SessionInput struct {
 	RequiresApproval bool
 	OpenAt           *time.Time // When regular members can start RSVPing (nil = immediately open)
 	AutoAttendeeIDs  []uuid.UUID
+	// TeamConfig splits the session into teams (team sports only) - nil
+	// keeps the plain, team-less attendee pool.
+	TeamConfig *TeamConfig
 }
 
 func NewSession(
@@ -228,6 +238,12 @@ func NewSession(
 			return nil, nil, ErrInvalidSessionVisibility
 		}
 		visibility = *input.Visibility
+	}
+
+	if input.TeamConfig != nil {
+		if err := input.TeamConfig.EnsureSupportedBy(input.ActivityType); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	now := time.Now().UTC()
@@ -248,8 +264,13 @@ func NewSession(
 		isRecurring:      input.IsRecurring,
 		note:             input.Note,
 		openAt:           input.OpenAt,
+		teamConfig:       input.TeamConfig,
 		createdAt:        now,
 		updatedAt:        now,
+	}
+
+	if input.TeamConfig != nil {
+		s.teams = newTeams(s.id, *input.TeamConfig, now)
 	}
 
 	// First N auto-confirmed attendees based on capacity, then the rest are auto-pending
@@ -280,6 +301,8 @@ func ReconstructSession(
 	isRecurring bool,
 	note string,
 	openAt *time.Time,
+	teamConfig *TeamConfig,
+	teams []*Team,
 	createdAt time.Time,
 	updatedAt time.Time,
 	cancelledAt *time.Time,
@@ -303,6 +326,8 @@ func ReconstructSession(
 		isRecurring:      isRecurring,
 		note:             note,
 		openAt:           openAt,
+		teamConfig:       teamConfig,
+		teams:            teams,
 		createdAt:        createdAt,
 		updatedAt:        updatedAt,
 		cancelledAt:      cancelledAt,
@@ -419,6 +444,49 @@ func (s *Session) Note() string {
 
 func (s *Session) OpenAt() *time.Time {
 	return s.openAt
+}
+
+func (s *Session) TeamConfig() *TeamConfig {
+	return s.teamConfig
+}
+
+// HasTeams reports whether this session is split into teams.
+func (s *Session) HasTeams() bool {
+	return s.teamConfig != nil
+}
+
+// Teams returns the session's teams ordered by position. Empty for a session
+// without teams, and for sessions loaded by list queries.
+func (s *Session) Teams() []*Team {
+	return s.teams
+}
+
+// Team looks up one of this session's teams by ID.
+func (s *Session) Team(teamID uuid.UUID) (*Team, bool) {
+	for _, t := range s.teams {
+		if t.id == teamID {
+			return t, true
+		}
+	}
+	return nil, false
+}
+
+// requireTeamsEditable checks the session is split into teams and still in a
+// state where team membership can change - teams may be (re)arranged right up
+// until and during the game, but not once it is over or called off.
+func (s *Session) requireTeamsEditable() error {
+	if !s.HasTeams() {
+		return ErrSessionHasNoTeams
+	}
+
+	switch s.status {
+	case SessionStatusCanceled:
+		return ErrSessionCanceled
+	case SessionStatusCompleted:
+		return ErrSessionCompleted
+	default:
+		return nil
+	}
 }
 
 func (s *Session) HasStarted() bool {

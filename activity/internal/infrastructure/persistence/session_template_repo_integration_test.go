@@ -154,6 +154,7 @@ func TestSessionTemplateRepository_Update(t *testing.T) {
 			nil, // no change to recurrence
 			testutil.Ptr(30),
 			nil, // no change to location
+			nil, // no teams
 		)
 		require.NoError(t, err)
 

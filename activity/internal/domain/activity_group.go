@@ -25,6 +25,7 @@ const (
 	ActivityTypeBasketball    = activitycatalog.ActivityTypeBasketball
 	ActivityTypeFootball      = activitycatalog.ActivityTypeFootball
 	ActivityTypeTennis        = activitycatalog.ActivityTypeTennis
+	ActivityTypeVolleyball    = activitycatalog.ActivityTypeVolleyball
 	ActivityTypeDancing       = activitycatalog.ActivityTypeDancing
 	ActivityTypeSkiing        = activitycatalog.ActivityTypeSkiing
 	ActivityTypeClimbing      = activitycatalog.ActivityTypeClimbing

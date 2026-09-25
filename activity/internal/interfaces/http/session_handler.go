@@ -61,7 +61,7 @@ func (h *Handler) CreateSession(w http.ResponseWriter, r *http.Request) {
 // GetSession handles GET /api/v1/sessions/{id}
 //
 //	@Summary		Get a session
-//	@Description	Retrieves a session by ID
+//	@Description	Retrieves a session by ID. For a session split into teams, the response also carries every team with its current members.
 //	@Tags			Sessions
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
@@ -91,7 +91,18 @@ func (h *Handler) GetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.WriteOkResponse(w, mapper.SessionToResponse(session, nil), "")
+	if !session.HasTeams() {
+		api.WriteOkResponse(w, mapper.SessionToResponse(session, nil), "")
+		return
+	}
+
+	teamMembers, err := h.sessionService.ListTeamMembers(ctx, sessionID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	api.WriteOkResponse(w, mapper.SessionWithTeamsToResponse(session, teamMembers), "")
 }
 
 // UpdateSession handles PUT /api/v1/sessions/{id}

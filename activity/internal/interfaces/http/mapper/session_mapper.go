@@ -37,6 +37,21 @@ func CreateSessionRequestToParams(
 		IsRecurring:      req.IsRecurring,
 		Visibility:       req.Visibility,
 		RequiresApproval: req.RequiresApproval,
+		Teams:            TeamConfigRequestToParams(req.Teams),
+	}
+}
+
+// TeamConfigRequestToParams converts an optional team config request to
+// application params - nil stays nil (no teams).
+func TeamConfigRequestToParams(req *dtos.TeamConfigRequest) *application.TeamConfigParams {
+	if req == nil {
+		return nil
+	}
+
+	return &application.TeamConfigParams{
+		TeamCount:      req.TeamCount,
+		PlayersPerTeam: req.PlayersPerTeam,
+		Colors:         req.Colors,
 	}
 }
 
@@ -99,6 +114,37 @@ func SessionToResponse(session *domain.Session, attendeeStatuses map[uuid.UUID]d
 	if status, ok := attendeeStatuses[session.ID()]; ok {
 		statusStr := string(status)
 		resp.AttendeeStatus = &statusStr
+	}
+
+	if tc := session.TeamConfig(); tc != nil {
+		resp.TeamConfig = &dtos.TeamConfigResponse{
+			TeamCount:      tc.TeamCount(),
+			PlayersPerTeam: tc.PlayersPerTeam(),
+		}
+	}
+
+	return resp
+}
+
+// SessionWithTeamsToResponse converts a single session to a SessionResponse
+// including its teams and their members (GET /sessions/{id}). teamMembers is
+// keyed by team ID.
+func SessionWithTeamsToResponse(session *domain.Session, teamMembers map[uuid.UUID][]uuid.UUID) *dtos.SessionResponse {
+	resp := SessionToResponse(session, nil)
+
+	for _, team := range session.Teams() {
+		members := teamMembers[team.ID()]
+		if members == nil {
+			members = []uuid.UUID{}
+		}
+
+		resp.Teams = append(resp.Teams, dtos.TeamResponse{
+			ID:            team.ID(),
+			Name:          team.Name(),
+			Color:         team.Color(),
+			Position:      team.Position(),
+			MemberUserIDs: members,
+		})
 	}
 
 	return resp

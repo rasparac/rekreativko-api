@@ -95,6 +95,24 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.Conflict("session_full", "Session has reached its capacity", err)
 	}
 
+	// Team errors
+	switch {
+	case errors.Is(err, domain.ErrTeamsNotSupported):
+		return domainerror.ValidationError("teams_not_supported", "Teams are only supported for team sports (basketball, football, volleyball)", err)
+	case errors.Is(err, domain.ErrInvalidTeamCount):
+		return domainerror.ValidationError("invalid_team_count", "Team count must be between 2 and 8", err)
+	case errors.Is(err, domain.ErrInvalidPlayersPerTeam):
+		return domainerror.ValidationError("invalid_players_per_team", "Players per team must be a positive integer", err)
+	case errors.Is(err, domain.ErrInvalidTeamColors):
+		return domainerror.ValidationError("invalid_team_colors", "Team colors must be #RRGGBB hex values, one per team", err)
+	case errors.Is(err, domain.ErrSessionHasNoTeams):
+		return domainerror.Conflict("session_has_no_teams", "Session is not split into teams", err)
+	case errors.Is(err, domain.ErrTeamNotFound):
+		return domainerror.NotFound("team_not_found", "Team not found", err)
+	case errors.Is(err, domain.ErrTeamFull):
+		return domainerror.Conflict("team_full", "Team has reached its player limit", err)
+	}
+
 	// Attendee errors
 	switch {
 	case errors.Is(err, domain.ErrAttendeeNotFound):

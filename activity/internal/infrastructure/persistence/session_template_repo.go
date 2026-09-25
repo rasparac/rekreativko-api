@@ -75,6 +75,11 @@ type (
 		locationLng     sql.NullFloat64
 		generatedUpTo   sql.NullTime
 
+		// Team config - NULL teamCount = generated sessions have no teams
+		teamCount      sql.NullInt32
+		playersPerTeam sql.NullInt32
+		teamColors     []string
+
 		// Recurrence fields
 		recurrenceFrequency  sql.NullString
 		recurrenceInterval   sql.NullInt32
@@ -129,10 +134,14 @@ func (m *sessionTemplateManager) CreateSessionTemplate(
 			updated_at,
 			location_lat,
 			location_lng,
-			location_street
+			location_street,
+			team_count,
+			players_per_team,
+			team_colors
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-			$11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+			$11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22,
+			$23, $24, $25
 		)
 	`
 
@@ -161,6 +170,9 @@ func (m *sessionTemplateManager) CreateSessionTemplate(
 		model.locationLat,
 		model.locationLng,
 		model.locationStreet,
+		model.teamCount,
+		model.playersPerTeam,
+		model.teamColors,
 	)
 
 	if err != nil {
@@ -196,6 +208,9 @@ func (m *sessionTemplateManager) UpdateSessionTemplate(
 			location_lat = $15,
 			location_lng = $16,
 			location_street = $17,
+			team_count = $18,
+			players_per_team = $19,
+			team_colors = $20,
 			updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -220,6 +235,9 @@ func (m *sessionTemplateManager) UpdateSessionTemplate(
 		model.locationLat,
 		model.locationLng,
 		model.locationStreet,
+		model.teamCount,
+		model.playersPerTeam,
+		model.teamColors,
 	)
 
 	if err != nil {
@@ -301,7 +319,10 @@ func (m *sessionTemplateManager) GetSessionTemplateByID(
 			updated_at,
 			location_lat,
 			location_lng,
-			location_street
+			location_street,
+			team_count,
+			players_per_team,
+			team_colors
 		FROM activity.session_template
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -333,6 +354,9 @@ func (m *sessionTemplateManager) GetSessionTemplateByID(
 		&model.locationLat,
 		&model.locationLng,
 		&model.locationStreet,
+		&model.teamCount,
+		&model.playersPerTeam,
+		&model.teamColors,
 	)
 
 	if err != nil {
@@ -398,6 +422,9 @@ func (m *sessionTemplateManager) ListSessionTemplates(
 			&model.locationLat,
 			&model.locationLng,
 			&model.locationStreet,
+			&model.teamCount,
+			&model.playersPerTeam,
+			&model.teamColors,
 		)
 
 		if err != nil {
@@ -449,7 +476,10 @@ func buildSessionTemplateQuery(filter SessionTemplateFilter) (string, []interfac
 			updated_at,
 			location_lat,
 			location_lng,
-			location_street
+			location_street,
+			team_count,
+			players_per_team,
+			team_colors
 		FROM activity.session_template
 		WHERE deleted_at IS NULL`,
 		Args: make([]any, 0),
@@ -584,6 +614,17 @@ func sessionTemplateModelFromDomain(st *domain.SessionTemplate) *sessionTemplate
 		}
 	}
 
+	// Team config
+	if tc := st.TeamConfig(); tc != nil {
+		model.teamCount = sql.NullInt32{Int32: int32(tc.TeamCount()), Valid: true}
+		if ppt := tc.PlayersPerTeam(); ppt != nil {
+			model.playersPerTeam = sql.NullInt32{Int32: int32(*ppt), Valid: true}
+		}
+		if colors := tc.Colors(); len(colors) > 0 {
+			model.teamColors = colors
+		}
+	}
+
 	// Generated up to
 	if genUpTo := st.GeneratedUpTo(); genUpTo != nil {
 		model.generatedUpTo = sql.NullTime{Time: *genUpTo, Valid: true}
@@ -710,6 +751,18 @@ func sessionTemplateToDomain(model *sessionTemplateModel) (*domain.SessionTempla
 		recurrenceRule = &rule
 	}
 
+	// Reconstruct team config
+	var teamConfig *domain.TeamConfig
+	if model.teamCount.Valid {
+		var playersPerTeam *int
+		if model.playersPerTeam.Valid {
+			ppt := int(model.playersPerTeam.Int32)
+			playersPerTeam = &ppt
+		}
+		tc := domain.ReconstructTeamConfig(int(model.teamCount.Int32), playersPerTeam, model.teamColors)
+		teamConfig = &tc
+	}
+
 	// Reconstruct generated up to
 	var generatedUpTo *time.Time
 	if model.generatedUpTo.Valid {
@@ -736,6 +789,7 @@ func sessionTemplateToDomain(model *sessionTemplateModel) (*domain.SessionTempla
 		recurrenceRule,
 		capacity,
 		location,
+		teamConfig,
 		generatedUpTo,
 		model.createdAt,
 		model.updatedAt,

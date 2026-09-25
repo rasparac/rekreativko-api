@@ -24,8 +24,16 @@ type AttendeeResponse struct {
 	UserID          uuid.UUID  `json:"user_id" example:"123e4567-e89b-12d3-a456-426655440000"`
 	Status          string     `json:"status" example:"going"`
 	Source          string     `json:"source" example:"rsvp_manual"`
-	CreatedAt       time.Time  `json:"created_at" example:"2024-01-01T00:00:00Z"`
-	UpdatedAt       time.Time  `json:"updated_at" example:"2024-01-01T00:00:00Z"`
+	// TeamID is the team the attendee plays for - omitted when unassigned or
+	// the session has no teams.
+	TeamID    *uuid.UUID `json:"team_id,omitempty" example:"123e4567-e89b-12d3-a456-426655440000"`
+	CreatedAt time.Time  `json:"created_at" example:"2024-01-01T00:00:00Z"`
+	UpdatedAt time.Time  `json:"updated_at" example:"2024-01-01T00:00:00Z"`
+}
+
+// AssignTeamRequest puts an attendee on a team, or moves them to it
+type AssignTeamRequest struct {
+	TeamID uuid.UUID `json:"team_id" validate:"required" example:"123e4567-e89b-12d3-a456-426655440000"`
 }
 
 // CreateRSVPResponse is a response after creating an RSVP

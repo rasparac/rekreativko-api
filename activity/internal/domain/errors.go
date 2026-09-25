@@ -74,14 +74,25 @@ var (
 
 // Attendee errors
 var (
-	ErrAttendeeNotFound          = errors.New("attendee not found")
-	ErrAttendeeNotGroupMember    = errors.New("attendee is not a member of the activity group")
-	ErrAttendeeAlreadyAttending  = errors.New("attendee is already attending this session")
-	ErrAttendeeNotGoing          = errors.New("attendee is not marked as going to this session")
-	ErrAttendeeCannotPromote     = errors.New("no pending attendees to promote to confirmed status")
+	ErrAttendeeNotFound            = errors.New("attendee not found")
+	ErrAttendeeNotGroupMember      = errors.New("attendee is not a member of the activity group")
+	ErrAttendeeAlreadyAttending    = errors.New("attendee is already attending this session")
+	ErrAttendeeNotGoing            = errors.New("attendee is not marked as going to this session")
+	ErrAttendeeCannotPromote       = errors.New("no pending attendees to promote to confirmed status")
 	ErrInvalidAttendeeTransition   = errors.New("invalid attendee status transition")
 	ErrInvalidAttendeeStatus       = errors.New("invalid attendee status")
 	ErrAttendeeNotAwaitingApproval = errors.New("attendee is not awaiting approval")
+)
+
+// Team errors
+var (
+	ErrTeamsNotSupported     = errors.New("teams are only supported for team sports")
+	ErrInvalidTeamCount      = errors.New("team count must be between 2 and 8")
+	ErrInvalidPlayersPerTeam = errors.New("players per team must be a positive integer or nil for no limit")
+	ErrInvalidTeamColors     = errors.New("team colors must be #RRGGBB hex values, one per team")
+	ErrSessionHasNoTeams     = errors.New("session is not split into teams")
+	ErrTeamNotFound          = errors.New("team not found")
+	ErrTeamFull              = errors.New("team has reached its player limit")
 )
 
 // Recurrence errors

@@ -50,6 +50,21 @@ func parseMemberRole(roleStr string) (domain.MemberRole, error) {
 	return role, nil
 }
 
+// buildTeamConfig converts optional team params into a validated domain team
+// config - nil params means no teams.
+func buildTeamConfig(params *TeamConfigParams) (*domain.TeamConfig, error) {
+	if params == nil {
+		return nil, nil
+	}
+
+	config, err := domain.NewTeamConfig(params.TeamCount, params.PlayersPerTeam, params.Colors)
+	if err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
 // NewSessionService creates a new session service
 func NewSessionService(
 	logger *logger.Logger,
@@ -169,6 +184,13 @@ func (s *SessionService) CreateSession(
 		return nil, MapErrToAppError(err)
 	}
 
+	teamConfig, err := buildTeamConfig(params.Teams)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "invalid team config", "error", err)
+		return nil, MapErrToAppError(err)
+	}
+
 	var session *domain.Session
 	visibility := domain.SessionVisibility(params.Visibility)
 
@@ -188,6 +210,7 @@ func (s *SessionService) CreateSession(
 			Visibility:       &visibility,
 			RequiresApproval: params.RequiresApproval,
 			AutoAttendeeIDs:  []uuid.UUID{params.CreatedByID}, // creator is auto-attending their own session
+			TeamConfig:       teamConfig,
 		}
 
 		var attendees []*domain.Attendee
@@ -279,6 +302,33 @@ func (s *SessionService) GetSession(
 	log.Debug(ctx, "session found")
 
 	return session, nil
+}
+
+// ListTeamMembers returns the user IDs on each of a session's teams, keyed by
+// team ID. It does no visibility check of its own - callers fetch the session
+// through GetSession first.
+func (s *SessionService) ListTeamMembers(
+	ctx context.Context,
+	sessionID uuid.UUID,
+) (map[uuid.UUID][]uuid.UUID, error) {
+	ctx, span := s.tracer.Start(
+		ctx,
+		"activity.service.ListTeamMembers",
+	)
+	defer span.End()
+
+	span.SetAttributes(attribute.String("session_id", sessionID.String()))
+
+	members, err := s.attendeeRepo.ListTeamMembers(ctx, sessionID)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		s.logger.Error(ctx, "failed to list team members", "session_id", sessionID, "error", err)
+		return nil, mapToAppErr(err)
+	}
+
+	span.SetStatus(codes.Ok, "team members listed")
+
+	return members, nil
 }
 
 // isSessionRelated reports whether userID is either an attendee of this
