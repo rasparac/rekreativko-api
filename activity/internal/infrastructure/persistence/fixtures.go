@@ -31,6 +31,9 @@ func NewSessionTemplateBuilder() *SessionTemplateBuilder {
 		title:           "Test Session Template",
 		description:     "Test description",
 		capacity:        testutil.Ptr(20),
+		// location is required by the schema (location_city/country NOT NULL)
+		locationCity:    testutil.Ptr("Belgrade"),
+		locationCountry: testutil.Ptr("RS"),
 		status:          domain.SessionTemplateStatusActive,
 	}
 }

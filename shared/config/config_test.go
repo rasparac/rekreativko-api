@@ -32,6 +32,9 @@ func Test_config_Load(t *testing.T) {
 		t.Setenv("JWT_SECRET", "secret")
 		t.Setenv("JWT_ACCESS_TOKEN_DURATION", "15m")
 		t.Setenv("JWT_REFRESH_TOKEN_DURATION", "360h")
+		t.Setenv("GATEWAY_API_KEY", "test-gateway-key")
+		t.Setenv("GATEWAY_API_KEYS", "test-gateway-key")
+		t.Setenv("OUTBOX_SCHEMAS", "activity")
 
 		cfg, err := Load()
 		if err != nil {
@@ -46,6 +49,9 @@ func Test_config_Load(t *testing.T) {
 		}
 		if cfg.Service.Environment != "production" {
 			t.Errorf("expected service environment 'production', got %s", cfg.Service.Environment)
+		}
+		if cfg.Service.GatewayKey != "test-gateway-key" {
+			t.Errorf("expected gateway key 'test-gateway-key', got %s", cfg.Service.GatewayKey)
 		}
 		if cfg.Server.Host != "localhost" {
 			t.Errorf("expected server host 'localhost', got %s", cfg.Server.Host)

@@ -153,8 +153,8 @@ func TestSessionTemplateRepository_Update(t *testing.T) {
 			"Updated Description",
 			nil, // no change to recurrence
 			testutil.Ptr(30),
-			nil, // no change to location
-			nil, // no teams
+			template.DefaultLocation(), // Update replaces every field; location is required
+			nil,                        // no teams
 		)
 		require.NoError(t, err)
 
