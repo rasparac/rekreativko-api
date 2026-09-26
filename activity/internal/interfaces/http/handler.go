@@ -48,6 +48,7 @@ type (
 		ListSessions(ctx context.Context, params application.ListSessionsParams, requesterID uuid.UUID) ([]*domain.Session, string, map[uuid.UUID]domain.AttendeeStatus, error)
 		DiscoverSessions(ctx context.Context, params application.DiscoverSessionsParams, requesterID uuid.UUID) ([]persistence.SessionWithDistance, string, map[uuid.UUID]domain.AttendeeStatus, error)
 		ListTeamMembers(ctx context.Context, sessionID uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
+		CreateTeams(ctx context.Context, params application.CreateTeamsParams) (*domain.Session, error)
 	}
 
 	// memberService defines the interface for member operations
@@ -231,6 +232,10 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"PATCH /api/v1/sessions/{id}/visibility",
 		middlewares.ThenFunc(h.SetSessionVisibility),
+	)
+	mux.Handle(
+		"POST /api/v1/sessions/{id}/teams",
+		middlewares.ThenFunc(h.CreateTeams),
 	)
 
 	// Member routes (ordered from most specific to least specific)

@@ -162,13 +162,6 @@ CREATE TABLE IF NOT EXISTS activity.session_template(
     location_lng DECIMAL(9, 6) NOT NULL,
     -- optional venue/address line, e.g. "Ada Ciganlija bb, Court 3"
     location_street varchar(255) DEFAULT NULL,
-    -- team config inherited by every generated session (team sports only)
-    -- NULL team_count = generated sessions have no teams
-    team_count smallint DEFAULT NULL CHECK (team_count IS NULL OR team_count >= 2),
-    -- optional per-team player limit, independent of capacity (NULL = no limit)
-    players_per_team smallint DEFAULT NULL CHECK (players_per_team IS NULL OR players_per_team > 0),
-    -- optional '#RRGGBB' color per team (e.g. shirts), NULL = no colors
-    team_colors text[] DEFAULT NULL,
     -- tracks how far ahead sessions have been generated
     -- cron job generates sessions from this point forward
     generated_up_to timestamptz DEFAULT NULL,
@@ -234,8 +227,9 @@ CREATE TABLE IF NOT EXISTS activity.session(
     -- open_at: when regular members can start RSVPing (NULL = immediately open)
     -- priority members can RSVP anytime regardless of this timestamp
     open_at timestamptz DEFAULT NULL,
-    -- team config (team sports only): NULL team_count = session has no teams.
-    -- Set at creation only; the teams themselves live in session_team.
+    -- team config (team sports only): NULL team_count = session has no teams
+    -- yet. Set when the creator/admin creates teams (after people have
+    -- joined); the teams themselves live in session_team.
     team_count smallint DEFAULT NULL CHECK (team_count IS NULL OR team_count >= 2),
     -- optional per-team player limit, independent of capacity (NULL = no limit)
     players_per_team smallint DEFAULT NULL CHECK (players_per_team IS NULL OR players_per_team > 0),

@@ -29,10 +29,6 @@ type CreateSessionTemplateRequest struct {
 	LocationStreet string  `json:"location_street,omitempty" validate:"omitempty,max=255" example:"Ada Ciganlija bb, Court 3"`
 	LocationLat    float64 `json:"location_lat" validate:"required,min=-90,max=90" example:"44.8176"`
 	LocationLng    float64 `json:"location_lng" validate:"required,min=-180,max=180" example:"20.4633"`
-	// Teams is the optional team setup inherited by every generated session -
-	// only allowed when the group's activity is a team sport. Changing it
-	// only affects sessions generated afterwards.
-	Teams *TeamConfigRequest `json:"teams,omitempty"`
 }
 
 // UpdateSessionTemplateRequest is a request to update a session template
@@ -58,10 +54,6 @@ type UpdateSessionTemplateRequest struct {
 	LocationStreet string  `json:"location_street,omitempty" validate:"omitempty,max=255" example:"Ada Ciganlija bb, Court 3"`
 	LocationLat    float64 `json:"location_lat" validate:"required,min=-90,max=90" example:"44.8176"`
 	LocationLng    float64 `json:"location_lng" validate:"required,min=-180,max=180" example:"20.4633"`
-	// Teams is the optional team setup inherited by every generated session -
-	// only allowed when the group's activity is a team sport. Changing it
-	// only affects sessions generated afterwards.
-	Teams *TeamConfigRequest `json:"teams,omitempty"`
 }
 
 // RecurrenceInfo contains recurrence rule information
@@ -74,13 +66,6 @@ type RecurrenceInfo struct {
 	TimeHour    *int       `json:"time_hour,omitempty" example:"7"`     // 0-23
 	TimeMinute  *int       `json:"time_minute,omitempty" example:"0"`   // 0-59
 	EndsAt      *time.Time `json:"ends_at,omitempty" example:"2025-12-31T23:59:59Z"`
-}
-
-// TemplateTeamConfigResponse is the team setup of a session template
-type TemplateTeamConfigResponse struct {
-	TeamCount      int      `json:"team_count" example:"2"`
-	PlayersPerTeam *int     `json:"players_per_team,omitempty" example:"5"`
-	Colors         []string `json:"colors,omitempty" example:"#FF0000,#0000FF"`
 }
 
 // SessionTemplateResponse is a response containing session template data
@@ -98,9 +83,6 @@ type SessionTemplateResponse struct {
 	LocationLat     float64    `json:"location_lat" example:"44.8176"`
 	LocationLng     float64    `json:"location_lng" example:"20.4633"`
 	GeneratedUpTo   *time.Time `json:"generated_up_to,omitempty" example:"2025-12-31T23:59:59Z"`
-
-	// Teams is the team setup inherited by generated sessions (omitted if none)
-	Teams *TemplateTeamConfigResponse `json:"teams,omitempty"`
 
 	// Recurrence information (omitted if template is not recurring)
 	Recurrence *RecurrenceInfo `json:"recurrence,omitempty"`

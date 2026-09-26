@@ -475,3 +475,65 @@ func (h *Handler) DiscoverSessions(w http.ResponseWriter, r *http.Request) {
 		}),
 		"")
 }
+
+// CreateTeams handles POST /api/v1/sessions/{id}/teams
+//
+//	@Summary		Split a session into teams
+//	@Description	Creates teams (Team A, Team B, ...) for a session, normally once people have joined; attendees are then assigned via PUT /sessions/{sessionId}/rsvp/{userId}/team. Team sports only (basketball, football, volleyball). If the session already has teams they are replaced and every attendee becomes unassigned. Session creator or group admin/creator only, while the session is scheduled or started.
+//	@Tags			Sessions
+//	@Accept			json
+//	@Produce		json
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			id		path		string								true	"Session ID"
+//	@Param			request	body		dtos.CreateTeamsRequest				true	"Team setup"
+//	@Success		201		{object}	api.Response[dtos.SessionResponse]	"Teams created; the session with its (empty) teams"
+//	@Failure		400		{object}	api.Response[any]					"Invalid request, or activity is not a team sport"
+//	@Failure		401		{object}	api.Response[any]					"Unauthorized"
+//	@Failure		404		{object}	api.Response[any]					"Session not found"
+//	@Failure		409		{object}	api.Response[any]					"Session is canceled or completed"
+//	@Failure		500		{object}	api.Response[any]					"Internal server error"
+//	@Router			/api/v1/sessions/{id}/teams [post]
+func (h *Handler) CreateTeams(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
+
+	sessionID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid session ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_session_id", "Invalid session ID")
+		return
+	}
+
+	var req dtos.CreateTeamsRequest
+	if err := api.DecodeJSONBody(r, &req); err != nil {
+		h.logger.Error(ctx, "failed to decode request body", "error", err)
+		api.WriteValidationErrorResponse(w, err)
+		return
+	}
+
+	// Get the session so we know which group (if any) to check the requester's role against
+	existing, err := h.sessionService.GetSession(ctx, sessionID, accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	requesterRole, err := h.getUserRole(ctx, existing.ActivityGroupID(), accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	params := mapper.CreateTeamsRequestToParams(&req, sessionID, accountID, requesterRole)
+
+	session, err := h.sessionService.CreateTeams(ctx, *params)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	h.logger.Info(ctx, "session teams created", "session_id", sessionID, "team_count", len(session.Teams()))
+
+	// Freshly created teams are always empty.
+	api.WriteCreatedResponse(w, mapper.SessionWithTeamsToResponse(session, nil), "Teams created successfully")
+}

@@ -145,7 +145,6 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		txManager,
 		sessionTemplateRepo,
 		memberRepo,
-		activityGroupRepo,
 		domainEventMgr,
 		appMetrics,
 	)

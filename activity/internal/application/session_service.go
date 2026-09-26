@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,21 +49,6 @@ func parseMemberRole(roleStr string) (domain.MemberRole, error) {
 		return "", fmt.Errorf("invalid member role: %s", roleStr)
 	}
 	return role, nil
-}
-
-// buildTeamConfig converts optional team params into a validated domain team
-// config - nil params means no teams.
-func buildTeamConfig(params *TeamConfigParams) (*domain.TeamConfig, error) {
-	if params == nil {
-		return nil, nil
-	}
-
-	config, err := domain.NewTeamConfig(params.TeamCount, params.PlayersPerTeam, params.Colors)
-	if err != nil {
-		return nil, err
-	}
-
-	return &config, nil
 }
 
 // NewSessionService creates a new session service
@@ -184,13 +170,6 @@ func (s *SessionService) CreateSession(
 		return nil, MapErrToAppError(err)
 	}
 
-	teamConfig, err := buildTeamConfig(params.Teams)
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		log.Error(ctx, "invalid team config", "error", err)
-		return nil, MapErrToAppError(err)
-	}
-
 	var session *domain.Session
 	visibility := domain.SessionVisibility(params.Visibility)
 
@@ -210,7 +189,6 @@ func (s *SessionService) CreateSession(
 			Visibility:       &visibility,
 			RequiresApproval: params.RequiresApproval,
 			AutoAttendeeIDs:  []uuid.UUID{params.CreatedByID}, // creator is auto-attending their own session
-			TeamConfig:       teamConfig,
 		}
 
 		var attendees []*domain.Attendee
@@ -300,6 +278,119 @@ func (s *SessionService) GetSession(
 
 	span.SetStatus(codes.Ok, "session found")
 	log.Debug(ctx, "session found")
+
+	return session, nil
+}
+
+// CreateTeams splits a session into teams - normally once people have joined.
+// If the session already has teams they are replaced: every assigned attendee
+// is unassigned first (team_unassigned, reason teams_replaced), then the old
+// teams are deleted and new, empty ones created.
+func (s *SessionService) CreateTeams(
+	ctx context.Context,
+	params CreateTeamsParams,
+) (*domain.Session, error) {
+	ctx, span := s.tracer.Start(
+		ctx,
+		"activity.service.CreateTeams",
+	)
+	defer span.End()
+
+	log := s.logger.WithValues(
+		"method", "CreateTeams",
+		"session_id", params.SessionID,
+		"requester_id", params.RequesterID,
+	)
+
+	span.SetAttributes(
+		attribute.String("session_id", params.SessionID.String()),
+		attribute.String("requester_id", params.RequesterID.String()),
+	)
+
+	requesterRole, err := parseMemberRole(params.RequesterRole)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "invalid requester role", "error", err)
+		return nil, MapErrToAppError(err)
+	}
+
+	teamConfig, err := domain.NewTeamConfig(params.TeamCount, params.PlayersPerTeam, params.Colors)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "invalid team config", "error", err)
+		return nil, MapErrToAppError(err)
+	}
+
+	var session *domain.Session
+
+	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		session, err = s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
+		if err != nil {
+			return fmt.Errorf("get session: %w", err)
+		}
+
+		// Same lock as team assignment and capacity checks, so nobody can be
+		// assigned to an old team while it is being replaced.
+		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
+			return err
+		}
+
+		hadTeams := session.HasTeams()
+
+		if err := session.CreateTeams(params.RequesterID, requesterRole, teamConfig); err != nil {
+			return fmt.Errorf("create teams: %w", err)
+		}
+
+		var unassigned []*domain.Attendee
+		if hadTeams {
+			attendees, _, err := s.attendeeRepo.ListAttendees(tCtx, persistence.AttendeeFilter{
+				SessionID: &params.SessionID,
+			})
+			if err != nil {
+				return fmt.Errorf("list attendees: %w", err)
+			}
+
+			for _, a := range attendees {
+				if a.TeamID() == nil {
+					continue
+				}
+				a.UnassignForReplacedTeams(params.RequesterID)
+				unassigned = append(unassigned, a)
+			}
+		}
+
+		// Clears every attendee's team_id, deletes the old teams and inserts
+		// the new ones along with the session's team config.
+		if err := s.sessionRepo.ReplaceTeams(tCtx, session); err != nil {
+			return fmt.Errorf("persist teams: %w", err)
+		}
+
+		// One insert for the teams_created event and every attendee's
+		// team_unassigned event.
+		events := slices.Clone(session.Events())
+		for _, a := range unassigned {
+			events = append(events, a.Events()...)
+		}
+
+		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, events); err != nil {
+			return fmt.Errorf("insert domain events: %w", err)
+		}
+
+		session.ClearEvents()
+		for _, a := range unassigned {
+			a.ClearEvents()
+		}
+
+		return nil
+	})
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to create teams", "error", err)
+		return nil, mapToAppErr(err)
+	}
+
+	span.SetStatus(codes.Ok, "teams created")
+	log.Debug(ctx, "teams created", "team_count", teamConfig.TeamCount())
 
 	return session, nil
 }

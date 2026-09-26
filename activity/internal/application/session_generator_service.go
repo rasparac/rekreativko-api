@@ -146,18 +146,6 @@ func (s *SessionGeneratorService) generateSessionsForTemplate(
 		return 0, fmt.Errorf("failed to build session title from template: %w", err)
 	}
 
-	// Generated sessions inherit the template's teams. If the group has since
-	// switched to a non-team activity, generate plain sessions rather than
-	// failing every occurrence on the team-sport check.
-	teamConfig := template.TeamConfig()
-	if teamConfig != nil && teamConfig.EnsureSupportedBy(group.ActivityType()) != nil {
-		s.logger.Warn(ctx, "template has team config but group activity is not a team sport, generating sessions without teams",
-			"template_id", template.ID(),
-			"activity_type", group.ActivityType(),
-		)
-		teamConfig = nil
-	}
-
 	// Generate sessions
 	var sessionsGenerated int
 	currentTime := startFrom
@@ -212,7 +200,6 @@ func (s *SessionGeneratorService) generateSessionsForTemplate(
 				Capacity:        template.DefaultCapacity(),
 				IsRecurring:     true,
 				AutoAttendeeIDs: nil, // No auto-attendees for generated sessions
-				TeamConfig:      teamConfig,
 			}
 
 			session, _, err := domain.NewSession(sessionInput)

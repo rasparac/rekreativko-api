@@ -56,6 +56,7 @@ type SessionRepository interface {
 	DiscoverSessions(ctx context.Context, filter DiscoverSessionsFilter) ([]SessionWithDistance, string, error)
 	DeleteSession(ctx context.Context, id uuid.UUID) error
 	FindSessionsPastEndTime(ctx context.Context) ([]*domain.Session, error)
+	ReplaceTeams(ctx context.Context, session *domain.Session) error
 }
 
 // SessionFilter defines query filters for listing sessions
@@ -153,10 +154,47 @@ func (m *sessionManager) CreateSession(ctx context.Context, session *domain.Sess
 		return fmt.Errorf("failed to create session: %w", err)
 	}
 
+	return nil
+}
+
+// ReplaceTeams persists the session's current teams, replacing any existing
+// ones: every attendee's team_id is cleared (soft-deleted rows included, so no
+// row still references an old team), the old teams are deleted, the new ones
+// inserted and the session's team config updated. Must run in a transaction.
+func (m *sessionManager) ReplaceTeams(ctx context.Context, session *domain.Session) error {
+	q := m.tx.Querier(ctx)
+
+	if _, err := q.Exec(ctx,
+		`UPDATE activity.session_attendee SET team_id = NULL WHERE session_id = $1 AND team_id IS NOT NULL`,
+		session.ID(),
+	); err != nil {
+		return fmt.Errorf("failed to clear attendee teams: %w", err)
+	}
+
+	if _, err := q.Exec(ctx, `DELETE FROM activity.session_team WHERE session_id = $1`, session.ID()); err != nil {
+		return fmt.Errorf("failed to delete session teams: %w", err)
+	}
+
 	for _, team := range session.Teams() {
 		if err := m.createTeam(ctx, team); err != nil {
 			return err
 		}
+	}
+
+	model := sessionModelFromDomain(session)
+	result, err := q.Exec(ctx,
+		`UPDATE activity.session SET team_count = $2, players_per_team = $3, updated_at = $4 WHERE id = $1`,
+		model.id,
+		model.teamCount,
+		model.playersPerTeam,
+		model.updatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update session team config: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return domain.ErrSessionNotFound
 	}
 
 	return nil

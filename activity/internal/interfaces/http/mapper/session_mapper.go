@@ -37,18 +37,20 @@ func CreateSessionRequestToParams(
 		IsRecurring:      req.IsRecurring,
 		Visibility:       req.Visibility,
 		RequiresApproval: req.RequiresApproval,
-		Teams:            TeamConfigRequestToParams(req.Teams),
 	}
 }
 
-// TeamConfigRequestToParams converts an optional team config request to
-// application params - nil stays nil (no teams).
-func TeamConfigRequestToParams(req *dtos.TeamConfigRequest) *application.TeamConfigParams {
-	if req == nil {
-		return nil
-	}
-
-	return &application.TeamConfigParams{
+// CreateTeamsRequestToParams converts CreateTeamsRequest to application params
+func CreateTeamsRequestToParams(
+	req *dtos.CreateTeamsRequest,
+	sessionID uuid.UUID,
+	requesterID uuid.UUID,
+	requesterRole string,
+) *application.CreateTeamsParams {
+	return &application.CreateTeamsParams{
+		SessionID:      sessionID,
+		RequesterID:    requesterID,
+		RequesterRole:  requesterRole,
 		TeamCount:      req.TeamCount,
 		PlayersPerTeam: req.PlayersPerTeam,
 		Colors:         req.Colors,

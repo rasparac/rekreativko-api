@@ -24,7 +24,6 @@ type SessionTemplateService struct {
 	txManager    *postgres.TransactionManager
 	templateRepo SessionTemplateRepository
 	memberRepo   MemberRepository
-	groupRepo    ActivityGroupRepository
 	eventWriter  domainevent.EventWriter
 	tracer       trace.Tracer
 	metrics      *metrics.Metrics
@@ -36,7 +35,6 @@ func NewSessionTemplateService(
 	txManager *postgres.TransactionManager,
 	templateRepo SessionTemplateRepository,
 	memberRepo MemberRepository,
-	groupRepo ActivityGroupRepository,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *SessionTemplateService {
@@ -45,7 +43,6 @@ func NewSessionTemplateService(
 		txManager:    txManager,
 		templateRepo: templateRepo,
 		memberRepo:   memberRepo,
-		groupRepo:    groupRepo,
 		eventWriter:  eventWriter,
 		tracer:       telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:      metrics,
@@ -101,13 +98,6 @@ func (s *SessionTemplateService) CreateSessionTemplate(
 	}
 	location := &loc
 
-	teamConfig, err := s.resolveTeamConfig(ctx, params.ActivityGroupID, params.Teams)
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		log.Error(ctx, "invalid team config", "error", err)
-		return nil, mapToAppErr(err)
-	}
-
 	var template *domain.SessionTemplate
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
 		// Create the domain object
@@ -119,7 +109,6 @@ func (s *SessionTemplateService) CreateSessionTemplate(
 			recurrenceRule,
 			params.DefaultCapacity,
 			location,
-			teamConfig,
 		)
 		if err != nil {
 			return fmt.Errorf("create session template domain object: %w", err)
@@ -234,11 +223,6 @@ func (s *SessionTemplateService) UpdateSessionTemplate(
 		}
 		location := &loc
 
-		teamConfig, err := s.resolveTeamConfig(tCtx, template.ActivityGroupID(), params.Teams)
-		if err != nil {
-			return fmt.Errorf("resolve team config: %w", err)
-		}
-
 		// Update the domain object
 		err = template.Update(
 			params.Title,
@@ -246,7 +230,6 @@ func (s *SessionTemplateService) UpdateSessionTemplate(
 			recurrenceRule,
 			params.DefaultCapacity,
 			location,
-			teamConfig,
 		)
 		if err != nil {
 			return fmt.Errorf("update session template: %w", err)
@@ -525,31 +508,6 @@ func (s *SessionTemplateService) ListSessionTemplates(
 	log.Debug(ctx, "session templates listed", "count", len(templates))
 
 	return templates, nextPageToken, nil
-}
-
-// resolveTeamConfig validates optional team params for a template. A template
-// has no activity type of its own - generated sessions inherit the group's -
-// so the team-sport check is made against the group here.
-func (s *SessionTemplateService) resolveTeamConfig(
-	ctx context.Context,
-	activityGroupID uuid.UUID,
-	params *TeamConfigParams,
-) (*domain.TeamConfig, error) {
-	teamConfig, err := buildTeamConfig(params)
-	if err != nil || teamConfig == nil {
-		return nil, err
-	}
-
-	group, err := s.groupRepo.GetActivityGroupByID(ctx, activityGroupID)
-	if err != nil {
-		return nil, fmt.Errorf("get activity group: %w", err)
-	}
-
-	if err := teamConfig.EnsureSupportedBy(group.ActivityType()); err != nil {
-		return nil, err
-	}
-
-	return teamConfig, nil
 }
 
 // buildRecurrenceRule constructs a RecurrenceRule from create params

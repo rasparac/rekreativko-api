@@ -237,10 +237,16 @@ creator/attendees only); the invite response carries `session_id` only.
 
 ## Teams (team sports)
 
-A session can optionally be split into teams - only for team sports (`ActivityType.IsTeamSport()`:
-basketball, football, volleyball; `ErrTeamsNotSupported` otherwise). A session without team config
-behaves exactly as before. Later work builds on this model: captain draft (6gg.2), proposals/voting
-(6gg.3), live updates over SSE (6gg.4).
+A session can be split into teams - only for team sports (`ActivityType.IsTeamSport()`: basketball,
+football, volleyball; `ErrTeamsNotSupported` otherwise). Sessions are always created without teams.
+Later work builds on this model: captain draft (6gg.2), proposals/voting (6gg.3), live updates over
+SSE (6gg.4).
+
+**Workflow:**
+1. Session is created (no teams)
+2. People join (RSVP) until it's full - or not, capacity may be unlimited
+3. Creator/admin creates the teams (`Session.CreateTeams`), then fills them (direct assignment now;
+   captain draft / proposals later)
 
 **TeamConfig** (value object, `*TeamConfig` nil = no teams):
 - `team_count`: 2..8, defaults to 2
@@ -249,15 +255,18 @@ behaves exactly as before. Later work builds on this model: captain draft (6gg.2
   unassigned
 - `colors`: optional `#RRGGBB` per team (shirts/bibs) - none, or exactly one per team
 
-**Where config lives:**
-- One-off sessions: `teams` on `POST /sessions`. Fixed at creation - `PUT /sessions/{id}` never changes it
-- Templates: `teams` on create/update template; validated against the group's activity type. Generated
-  sessions inherit it (the generator drops it with a warning if the group is no longer a team sport).
-  Changing it only affects sessions generated afterwards
+**Creating teams** (`POST /sessions/{id}/teams`):
+- Session creator or group admin/creator, any time while the session is scheduled or started (not tied
+  to the session being full)
+- Creates `Team A`, `Team B`, ... (`position` 0..n-1, color from config) and stores the config on the
+  session (`session.team_count` / `players_per_team`)
+- Calling it again **replaces** the teams: every assigned attendee is unassigned (`team_unassigned`,
+  reason `teams_replaced`), old teams are deleted, new empty ones created. Runs under the session
+  advisory lock so no assignment can race with the replacement
+- Session templates do not carry teams - each generated session gets its teams the same way
 
-**Team** (entity inside the Session aggregate): created with the session as `Team A`, `Team B`, ...
-(`position` 0..n-1, color from config). Loaded by `GetSessionByID` only; list/discover queries carry the
-config but not the teams.
+**Team** (entity inside the Session aggregate). Loaded by `GetSessionByID` only; list/discover queries
+carry the config but not the teams.
 
 **Assignment** is stored on the attendee (`session_attendee.team_id`, NULL = unassigned):
 - `Attendee.AssignToTeam` / `UnassignFromTeam`, by session creator or group admin/creator only
@@ -270,14 +279,18 @@ config but not the teams.
 - Promotion from the waitlist does not assign a team
 
 **Endpoints:**
+- `POST /api/v1/sessions/{id}/teams` `{team_count?, players_per_team?, colors?}` - create or replace
+  teams, returns the session with its (empty) teams
 - `PUT /api/v1/sessions/{sessionId}/rsvp/{userId}/team` `{team_id}` - assign or move, returns attendee
 - `DELETE /api/v1/sessions/{sessionId}/rsvp/{userId}/team` - unassign (no-op if not on a team)
 - `GET /api/v1/sessions/{id}` includes `team_config` and `teams[]` with `member_user_ids`; list/discover
   include `team_config` only; attendee responses include `team_id`
 
-**Events** (`activity.session.attendee.*`, via outbox):
-- `team_assigned` (was unassigned), `team_changed` (carries `previous_team_id`)
-- `team_unassigned` with `reason`: `manual` | `left` | `removed`
+**Events** (via outbox):
+- `activity.session.teams_created` - teams (id/name/color/position), `players_per_team`, `replaced`
+- `activity.session.attendee.team_assigned` (was unassigned), `team_changed` (carries `previous_team_id`)
+- `activity.session.attendee.team_unassigned` with `reason`: `manual` | `left` | `removed` |
+  `teams_replaced`
 
 ====================================================================================================
 
@@ -414,7 +427,6 @@ All activity tables use the `activity` schema for namespace isolation (DDD bound
    - Has default capacity for generated sessions
    - Tracks generated_up_to for cron jobs
    - status: active, inactive
-   - team_count, players_per_team, team_colors: team config inherited by generated sessions
 
 7. **session** - Individual session instances
    - Can be manual or generated from template
@@ -423,7 +435,7 @@ All activity tables use the `activity` schema for namespace isolation (DDD bound
    - status: scheduled, started, cancelled, completed
    - is_recurring flag
    - Indexed for upcoming sessions and location queries
-   - team_count, players_per_team (NULL team_count = no teams)
+   - team_count, players_per_team (NULL team_count = no teams yet; set by create-teams)
 
    - **session_team** - Teams of a session (Team A, Team B, ...)
      - name, optional color, position (unique per session)

@@ -33,7 +33,6 @@ func CreateRequestToParams(
 		LocationStreet:       req.LocationStreet,
 		LocationLat:          req.LocationLat,
 		LocationLng:          req.LocationLng,
-		Teams:                TeamConfigRequestToParams(req.Teams),
 	}
 
 	// Convert day of week from int to time.Weekday if provided
@@ -75,7 +74,6 @@ func UpdateRequestToParams(req *dtos.UpdateSessionTemplateRequest, requesterID u
 		LocationStreet:       req.LocationStreet,
 		LocationLat:          req.LocationLat,
 		LocationLng:          req.LocationLng,
-		Teams:                TeamConfigRequestToParams(req.Teams),
 	}
 
 	// Convert day of week from int to time.Weekday if provided
@@ -131,15 +129,6 @@ func DomainToResponse(template *domain.SessionTemplate) *dtos.SessionTemplateRes
 	// Generated up to
 	if generatedUpTo := template.GeneratedUpTo(); generatedUpTo != nil {
 		resp.GeneratedUpTo = generatedUpTo
-	}
-
-	// Team config
-	if tc := template.TeamConfig(); tc != nil {
-		resp.Teams = &dtos.TemplateTeamConfigResponse{
-			TeamCount:      tc.TeamCount(),
-			PlayersPerTeam: tc.PlayersPerTeam(),
-			Colors:         tc.Colors(),
-		}
 	}
 
 	// Recurrence details - only populate if template is recurring

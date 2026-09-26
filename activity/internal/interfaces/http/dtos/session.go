@@ -37,14 +37,11 @@ type CreateSessionRequest struct {
 	// RequiresApproval: if true, RSVPing "going" creates a pending join request
 	// that the creator/admin must approve rather than joining immediately.
 	RequiresApproval bool `json:"requires_approval,omitempty" example:"false"`
-	// Teams optionally splits the session into teams - team sports only
-	// (basketball, football, volleyball). Set at creation only; omit for a
-	// plain session without teams.
-	Teams *TeamConfigRequest `json:"teams,omitempty"`
 }
 
-// TeamConfigRequest is the optional team setup of a session or template
-type TeamConfigRequest struct {
+// CreateTeamsRequest splits a session into teams (team sports only). Sent
+// again, it replaces the existing teams and unassigns everyone.
+type CreateTeamsRequest struct {
 	// TeamCount defaults to 2 when omitted.
 	TeamCount *int `json:"team_count,omitempty" validate:"omitempty,min=2,max=8" example:"2"`
 	// PlayersPerTeam is an optional per-team limit, independent of capacity.
@@ -127,7 +124,7 @@ type SessionResponse struct {
 	// sets it - fetch the attendee list separately if you need this for a
 	// single session.
 	AttendeeStatus *string `json:"attendee_status,omitempty" example:"going"`
-	// TeamConfig is set when the session is split into teams.
+	// TeamConfig is set once the session has been split into teams.
 	TeamConfig *TeamConfigResponse `json:"team_config,omitempty"`
 	// Teams (with members) are only populated on GET /sessions/{id} - list
 	// and discover responses carry TeamConfig only.

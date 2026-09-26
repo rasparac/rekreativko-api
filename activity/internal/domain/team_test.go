@@ -13,10 +13,10 @@ func intPtr(v int) *int {
 	return &v
 }
 
-func newTestTeamSession(t *testing.T, config *TeamConfig) *Session {
+func newTestSessionOfType(t *testing.T, activityType ActivityType) *Session {
 	t.Helper()
 
-	title, err := NewTitle("Pickup basketball")
+	title, err := NewTitle("Pickup game")
 	require.NoError(t, err)
 
 	location, err := NewSessionLocation("Belgrade", "RS", "", 44.8, 20.4)
@@ -29,14 +29,27 @@ func newTestTeamSession(t *testing.T, config *TeamConfig) *Session {
 	session, _, err := NewSession(SessionInput{
 		CreatedByID:     uuid.New(),
 		Title:           title,
-		ActivityType:    ActivityTypeBasketball,
+		ActivityType:    activityType,
 		DifficultyLevel: DifficultyLevelBeginner,
 		Location:        location,
 		Schedule:        schedule,
 		Visibility:      &visibility,
-		TeamConfig:      config,
 	})
 	require.NoError(t, err)
+
+	return session
+}
+
+// newTestTeamSession creates a basketball session and, when config is set,
+// splits it into teams the way the creator would after people joined.
+func newTestTeamSession(t *testing.T, config *TeamConfig) *Session {
+	t.Helper()
+
+	session := newTestSessionOfType(t, ActivityTypeBasketball)
+	if config != nil {
+		require.NoError(t, session.CreateTeams(session.CreatedByID(), "", *config))
+		session.ClearEvents()
+	}
 
 	return session
 }
@@ -111,11 +124,22 @@ func TestNewTeamConfig(t *testing.T) {
 	}
 }
 
-func TestNewSession_WithTeams_CreatesNamedTeams(t *testing.T) {
+func TestNewSession_HasNoTeams(t *testing.T) {
+	session := newTestSessionOfType(t, ActivityTypeBasketball)
+
+	assert.False(t, session.HasTeams())
+	assert.Nil(t, session.TeamConfig())
+	assert.Empty(t, session.Teams())
+}
+
+func TestSession_CreateTeams_CreatesNamedTeams(t *testing.T) {
 	config, err := NewTeamConfig(intPtr(3), nil, []string{"#FFFFFF", "#000000", "#FF0000"})
 	require.NoError(t, err)
 
-	session := newTestTeamSession(t, &config)
+	session := newTestSessionOfType(t, ActivityTypeBasketball)
+	session.ClearEvents()
+
+	require.NoError(t, session.CreateTeams(session.CreatedByID(), "", config))
 
 	require.True(t, session.HasTeams())
 	require.Len(t, session.Teams(), 3)
@@ -127,35 +151,77 @@ func TestNewSession_WithTeams_CreatesNamedTeams(t *testing.T) {
 	assert.Equal(t, "Team B", session.Teams()[1].Name())
 	assert.Equal(t, "Team C", session.Teams()[2].Name())
 	assert.Equal(t, "#FF0000", session.Teams()[2].Color())
+
+	require.Len(t, session.Events(), 1)
+	created, ok := session.Events()[0].(*SessionTeamsCreatedEvent)
+	require.True(t, ok)
+	assert.False(t, created.Replaced)
+	assert.Len(t, created.Teams, 3)
 }
 
-func TestNewSession_WithoutTeams_Unchanged(t *testing.T) {
-	session := newTestTeamSession(t, nil)
+func TestSession_CreateTeams_ReplacesExistingTeams(t *testing.T) {
+	session := newTestTeamSession(t, newTestTeamConfig(t, nil))
+	oldTeamA := session.Teams()[0].ID()
 
-	assert.False(t, session.HasTeams())
-	assert.Nil(t, session.TeamConfig())
-	assert.Empty(t, session.Teams())
+	config, err := NewTeamConfig(intPtr(3), intPtr(4), nil)
+	require.NoError(t, err)
+	require.NoError(t, session.CreateTeams(session.CreatedByID(), "", config))
+
+	require.Len(t, session.Teams(), 3)
+	_, stillThere := session.Team(oldTeamA)
+	assert.False(t, stillThere, "old teams must be gone")
+	assert.Equal(t, intPtr(4), session.TeamConfig().PlayersPerTeam())
+
+	created := session.Events()[0].(*SessionTeamsCreatedEvent)
+	assert.True(t, created.Replaced)
 }
 
-func TestNewSession_TeamsOnNonTeamSport_Rejected(t *testing.T) {
-	title, err := NewTitle("Morning run")
-	require.NoError(t, err)
-	location, err := NewSessionLocation("Belgrade", "RS", "", 44.8, 20.4)
-	require.NoError(t, err)
-	schedule, err := NewSessionSchedule(time.Now().Add(time.Hour), nil)
-	require.NoError(t, err)
+func TestSession_CreateTeams_Rejections(t *testing.T) {
+	config := *newTestTeamConfig(t, nil)
 
-	_, _, err = NewSession(SessionInput{
-		CreatedByID:     uuid.New(),
-		Title:           title,
-		ActivityType:    ActivityTypeRunning,
-		DifficultyLevel: DifficultyLevelBeginner,
-		Location:        location,
-		Schedule:        schedule,
-		TeamConfig:      newTestTeamConfig(t, nil),
+	t.Run("not a team sport", func(t *testing.T) {
+		session := newTestSessionOfType(t, ActivityTypeRunning)
+		err := session.CreateTeams(session.CreatedByID(), "", config)
+		assert.ErrorIs(t, err, ErrTeamsNotSupported)
+		assert.False(t, session.HasTeams())
 	})
 
-	assert.ErrorIs(t, err, ErrTeamsNotSupported)
+	t.Run("regular member", func(t *testing.T) {
+		session := newTestSessionOfType(t, ActivityTypeFootball)
+		err := session.CreateTeams(uuid.New(), MemberRoleMember, config)
+		assert.ErrorIs(t, err, ErrUnauthorized)
+	})
+
+	t.Run("group admin allowed", func(t *testing.T) {
+		session := newTestSessionOfType(t, ActivityTypeVolleyball)
+		assert.NoError(t, session.CreateTeams(uuid.New(), MemberRoleAdmin, config))
+	})
+
+	t.Run("canceled session", func(t *testing.T) {
+		session := newTestSessionOfType(t, ActivityTypeBasketball)
+		require.NoError(t, session.Cancel(session.CreatedByID(), "", "rain", nil))
+		err := session.CreateTeams(session.CreatedByID(), "", config)
+		assert.ErrorIs(t, err, ErrSessionCanceled)
+	})
+
+	t.Run("started session allowed", func(t *testing.T) {
+		session := newTestSessionOfType(t, ActivityTypeBasketball)
+		require.NoError(t, session.Start(session.CreatedByID(), ""))
+		assert.NoError(t, session.CreateTeams(session.CreatedByID(), "", config))
+	})
+}
+
+func TestAttendee_UnassignForReplacedTeams(t *testing.T) {
+	session := newTestTeamSession(t, newTestTeamConfig(t, nil))
+	a := newGoingAttendee(t, session)
+	require.NoError(t, a.AssignToTeam(session, session.Teams()[0].ID(), session.CreatedByID(), "", 0))
+	a.ClearEvents()
+
+	a.UnassignForReplacedTeams(session.CreatedByID())
+
+	assert.Nil(t, a.TeamID())
+	require.Len(t, a.Events(), 1)
+	assert.Equal(t, TeamUnassignReasonTeamsReplaced, a.Events()[0].(*AttendeeTeamUnassignedEvent).Reason)
 }
 
 func TestAttendee_AssignToTeam(t *testing.T) {

@@ -450,6 +450,13 @@ func (a *Attendee) UnassignFromTeam(
 	return nil
 }
 
+// UnassignForReplacedTeams takes the attendee off their team because the
+// session's teams are being recreated (Session.CreateTeams) - the old team is
+// about to be deleted. Authorization is checked once, by CreateTeams.
+func (a *Attendee) UnassignForReplacedTeams(replacedBy uuid.UUID) {
+	a.releaseTeam(TeamUnassignReasonTeamsReplaced, replacedBy)
+}
+
 // LeaveTeam frees the attendee's team slot when their RSVP is cancelled
 // outright (the row is deleted, so there is no status change to hook into).
 func (a *Attendee) LeaveTeam() {

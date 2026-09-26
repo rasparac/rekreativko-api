@@ -50,6 +50,7 @@ const (
 	EventActivitySessionCompleted           = "activity.session.completed"
 	EventActivitySessionExpired             = "activity.session.expired"
 	EventActivitySessionVisibilityChanged   = "activity.session.visibility_changed"
+	EventActivitySessionTeamsCreated        = "activity.session.teams_created"
 	EventActivitySessionAttendeeAutoPending = "activity.session.attendee.auto_pending"
 
 	// Session attendee events
@@ -1187,10 +1188,59 @@ func NewAttendeeRemovedEvent(a *Attendee, s *Session, removedBy uuid.UUID) *Atte
 type TeamUnassignReason string
 
 const (
-	TeamUnassignReasonManual  TeamUnassignReason = "manual"  // manager unassigned them
-	TeamUnassignReasonLeft    TeamUnassignReason = "left"    // RSVP changed away from going, or cancelled
-	TeamUnassignReasonRemoved TeamUnassignReason = "removed" // manager removed them from the session
+	TeamUnassignReasonManual        TeamUnassignReason = "manual"         // manager unassigned them
+	TeamUnassignReasonLeft          TeamUnassignReason = "left"           // RSVP changed away from going, or cancelled
+	TeamUnassignReasonRemoved       TeamUnassignReason = "removed"        // manager removed them from the session
+	TeamUnassignReasonTeamsReplaced TeamUnassignReason = "teams_replaced" // teams were recreated
 )
+
+// SessionTeamInfo describes one team in a SessionTeamsCreatedEvent.
+type SessionTeamInfo struct {
+	TeamID   uuid.UUID `json:"team_id"`
+	Name     string    `json:"name"`
+	Color    string    `json:"color,omitempty"`
+	Position int       `json:"position"`
+}
+
+// SessionTeamsCreatedEvent is raised when a session is split into teams.
+// Replaced is true when it replaced existing teams - every previously
+// assigned attendee also gets a team_unassigned (reason teams_replaced).
+type SessionTeamsCreatedEvent struct {
+	domainevent.BaseEvent
+	ActivityID     *uuid.UUID        `json:"activity_id"`
+	SessionID      uuid.UUID         `json:"session_id"`
+	Teams          []SessionTeamInfo `json:"teams"`
+	PlayersPerTeam *int              `json:"players_per_team,omitempty"`
+	Replaced       bool              `json:"replaced"`
+	CreatedBy      uuid.UUID         `json:"created_by"`
+}
+
+func NewSessionTeamsCreatedEvent(s *Session, createdBy uuid.UUID, replaced bool) *SessionTeamsCreatedEvent {
+	teams := make([]SessionTeamInfo, 0, len(s.teams))
+	for _, t := range s.teams {
+		teams = append(teams, SessionTeamInfo{
+			TeamID:   t.ID(),
+			Name:     t.Name(),
+			Color:    t.Color(),
+			Position: t.Position(),
+		})
+	}
+
+	return &SessionTeamsCreatedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionTeamsCreated,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: s.ID(),
+		},
+		ActivityID:     s.ActivityGroupID(),
+		SessionID:      s.ID(),
+		Teams:          teams,
+		PlayersPerTeam: s.teamConfig.PlayersPerTeam(),
+		Replaced:       replaced,
+		CreatedBy:      createdBy,
+	}
+}
 
 // AttendeeTeamAssignedEvent is raised when an unassigned attendee is put on a
 // team.

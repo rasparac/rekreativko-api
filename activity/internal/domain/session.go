@@ -185,8 +185,8 @@ type Session struct {
 	// openAt is the UTC timestamp when this session transitions from "collecting" to "scheduled" status.
 	openAt *time.Time
 
-	// teamConfig is nil for a session that isn't split into teams. It is set
-	// at creation only - UpdateSession never changes it.
+	// teamConfig is nil until the creator/admin splits the session into teams
+	// (CreateTeams) - typically once people have joined, not at creation.
 	teamConfig *TeamConfig
 	// teams is only populated when loaded for a single session (see
 	// SessionRepository.GetSessionByID) - list queries leave it empty.
@@ -219,9 +219,6 @@ type SessionInput struct {
 	RequiresApproval bool
 	OpenAt           *time.Time // When regular members can start RSVPing (nil = immediately open)
 	AutoAttendeeIDs  []uuid.UUID
-	// TeamConfig splits the session into teams (team sports only) - nil
-	// keeps the plain, team-less attendee pool.
-	TeamConfig *TeamConfig
 }
 
 func NewSession(
@@ -238,12 +235,6 @@ func NewSession(
 			return nil, nil, ErrInvalidSessionVisibility
 		}
 		visibility = *input.Visibility
-	}
-
-	if input.TeamConfig != nil {
-		if err := input.TeamConfig.EnsureSupportedBy(input.ActivityType); err != nil {
-			return nil, nil, err
-		}
 	}
 
 	now := time.Now().UTC()
@@ -264,13 +255,8 @@ func NewSession(
 		isRecurring:      input.IsRecurring,
 		note:             input.Note,
 		openAt:           input.OpenAt,
-		teamConfig:       input.TeamConfig,
 		createdAt:        now,
 		updatedAt:        now,
-	}
-
-	if input.TeamConfig != nil {
-		s.teams = newTeams(s.id, *input.TeamConfig, now)
 	}
 
 	// First N auto-confirmed attendees based on capacity, then the rest are auto-pending
@@ -471,14 +457,53 @@ func (s *Session) Team(teamID uuid.UUID) (*Team, bool) {
 	return nil, false
 }
 
+// CreateTeams splits the session into teams - Team A, Team B, ... - once
+// people have joined. Calling it again replaces the existing teams: the caller
+// must first take every attendee off their old team (Attendee.
+// UnassignForReplacedTeams), since the old teams stop existing. Allowed any
+// time while the session is scheduled or started, for team sports only.
+func (s *Session) CreateTeams(
+	requesterID uuid.UUID,
+	requesterRole MemberRole,
+	config TeamConfig,
+) error {
+	if !s.canManageSession(requesterID, requesterRole) {
+		return ErrUnauthorized
+	}
+
+	if err := s.requireTeamsChangeable(); err != nil {
+		return err
+	}
+
+	if err := config.EnsureSupportedBy(s.activityType); err != nil {
+		return err
+	}
+
+	replaced := s.HasTeams()
+	now := time.Now().UTC()
+
+	s.teamConfig = &config
+	s.teams = newTeams(s.id, config, now)
+	s.updatedAt = now
+
+	s.addEvent(NewSessionTeamsCreatedEvent(s, requesterID, replaced))
+
+	return nil
+}
+
 // requireTeamsEditable checks the session is split into teams and still in a
-// state where team membership can change - teams may be (re)arranged right up
-// until and during the game, but not once it is over or called off.
+// state where team membership can change.
 func (s *Session) requireTeamsEditable() error {
 	if !s.HasTeams() {
 		return ErrSessionHasNoTeams
 	}
 
+	return s.requireTeamsChangeable()
+}
+
+// requireTeamsChangeable - teams may be (re)created and (re)arranged right up
+// until and during the game, but not once it is over or called off.
+func (s *Session) requireTeamsChangeable() error {
 	switch s.status {
 	case SessionStatusCanceled:
 		return ErrSessionCanceled

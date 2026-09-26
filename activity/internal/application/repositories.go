@@ -62,6 +62,7 @@ type SessionRepository interface {
 	DiscoverSessions(ctx context.Context, filter persistence.DiscoverSessionsFilter) ([]persistence.SessionWithDistance, string, error)
 	DeleteSession(ctx context.Context, id uuid.UUID) error
 	FindSessionsPastEndTime(ctx context.Context) ([]*domain.Session, error)
+	ReplaceTeams(ctx context.Context, session *domain.Session) error
 }
 
 // SessionTemplateRepository defines the interface for session template persistence

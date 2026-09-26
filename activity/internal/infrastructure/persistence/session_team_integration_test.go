@@ -21,8 +21,8 @@ import (
 
 type sessionTeamTestEnv struct {
 	ctx          context.Context
-	db           *testutil.TestDatabase
 	svc          *application.AttendeeService
+	sessionSvc   *application.SessionService
 	sessionRepo  application.SessionRepository
 	attendeeRepo application.AttendeeRepository
 }
@@ -37,23 +37,23 @@ func setupSessionTeamTest(t *testing.T) *sessionTeamTestEnv {
 	sessionRepo := persistence.NewSessionManager(txManager, logger)
 	attendeeRepo := persistence.NewAttendeeRepository(txManager, logger)
 	memberRepo := persistence.NewMemberRepository(txManager, logger)
+	groupRepo := persistence.NewActivityGroupRepository(txManager, logger)
 	eventWriter := domainevent.NewDomainEventManager(txManager)
 
 	return &sessionTeamTestEnv{
 		ctx:          context.Background(),
-		db:           db,
 		svc:          application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, eventWriter, testMetrics()),
+		sessionSvc:   application.NewSessionService(logger, txManager, sessionRepo, memberRepo, groupRepo, attendeeRepo, eventWriter, testMetrics()),
 		sessionRepo:  sessionRepo,
 		attendeeRepo: attendeeRepo,
 	}
 }
 
-// createTeamSession creates a standalone, public basketball session split
-// into two teams.
-func (e *sessionTeamTestEnv) createTeamSession(t *testing.T, playersPerTeam *int, colors []string) *domain.Session {
+// createSession creates a standalone, public session with no teams yet.
+func (e *sessionTeamTestEnv) createSession(t *testing.T, activityType domain.ActivityType) *domain.Session {
 	t.Helper()
 
-	title, err := domain.NewTitle("Pickup Basketball")
+	title, err := domain.NewTitle("Pickup Game")
 	require.NoError(t, err)
 
 	location, err := domain.NewSessionLocation("Belgrade", "RS", "", 44.8, 20.4)
@@ -62,25 +62,44 @@ func (e *sessionTeamTestEnv) createTeamSession(t *testing.T, playersPerTeam *int
 	schedule, err := domain.NewSessionSchedule(time.Now().Add(time.Hour), nil)
 	require.NoError(t, err)
 
-	teamConfig, err := domain.NewTeamConfig(nil, playersPerTeam, colors)
-	require.NoError(t, err)
-
 	visibility := domain.SessionVisibilityPublic
 	session, _, err := domain.NewSession(domain.SessionInput{
 		CreatedByID:     uuid.New(),
 		Title:           title,
-		ActivityType:    domain.ActivityTypeBasketball,
+		ActivityType:    activityType,
 		DifficultyLevel: domain.DifficultyLevelBeginner,
 		Location:        location,
 		Schedule:        schedule,
 		Visibility:      &visibility,
-		TeamConfig:      &teamConfig,
 	})
 	require.NoError(t, err)
 
 	require.NoError(t, e.sessionRepo.CreateSession(e.ctx, session))
 
 	return session
+}
+
+func (e *sessionTeamTestEnv) createTeams(session *domain.Session, teamCount, playersPerTeam *int, colors []string) (*domain.Session, error) {
+	return e.sessionSvc.CreateTeams(e.ctx, application.CreateTeamsParams{
+		SessionID:      session.ID(),
+		RequesterID:    session.CreatedByID(), // standalone session: creator manages it, no group role
+		TeamCount:      teamCount,
+		PlayersPerTeam: playersPerTeam,
+		Colors:         colors,
+	})
+}
+
+// createTeamSession creates a basketball session and splits it into two teams
+// through the service, the way the creator does once people have joined.
+func (e *sessionTeamTestEnv) createTeamSession(t *testing.T, playersPerTeam *int, colors []string) *domain.Session {
+	t.Helper()
+
+	session := e.createSession(t, domain.ActivityTypeBasketball)
+
+	withTeams, err := e.createTeams(session, nil, playersPerTeam, colors)
+	require.NoError(t, err)
+
+	return withTeams
 }
 
 func (e *sessionTeamTestEnv) addGoingAttendee(t *testing.T, session *domain.Session) uuid.UUID {
@@ -282,38 +301,60 @@ func TestAttendeeService_LeavingFreesTeamSlot(t *testing.T) {
 	})
 }
 
-func TestSessionTemplateRepository_TeamConfigRoundTrip(t *testing.T) {
+func TestSessionService_CreateTeams_AfterPeopleJoined(t *testing.T) {
 	env := setupSessionTeamTest(t)
-	groupID := uuid.New()
-	env.db.RunSQL(
-		`INSERT INTO activity.activity_group (id, creator_id, title, description, activity_type) VALUES ($1, $2, $3, $4, $5)`,
-		groupID, uuid.New(), "Volleyball crew", "Beach volleyball", "volleyball",
-	)
+	session := env.createSession(t, domain.ActivityTypeVolleyball)
+	alice := env.addGoingAttendee(t, session)
 
-	repo := persistence.NewSessionTemplateManager(env.db.CreateTransactionManager(), testutil.CreateLogger())
-
-	location, err := domain.NewLocation("Belgrade", "RS", "Ada Ciganlija", 44.8, 20.4)
+	loaded, err := env.sessionRepo.GetSessionByID(env.ctx, session.ID())
 	require.NoError(t, err)
+	assert.False(t, loaded.HasTeams(), "a new session has no teams")
 
-	teamConfig, err := domain.NewTeamConfig(testutil.Ptr(2), testutil.Ptr(6), []string{"#FF0000", "#0000FF"})
+	withTeams, err := env.createTeams(session, nil, nil, nil)
 	require.NoError(t, err)
+	require.Len(t, withTeams.Teams(), 2)
 
-	template, err := domain.NewSessionTemplate(groupID, uuid.New(), "Sunday volleyball", "", nil, nil, &location, &teamConfig)
+	assert.NoError(t, env.assign(session, alice, withTeams.Teams()[0].ID()))
+}
+
+func TestSessionService_CreateTeams_ReplacesTeamsAndUnassignsEveryone(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session := env.createTeamSession(t, nil, nil)
+	oldTeamA := session.Teams()[0].ID()
+
+	alice := env.addGoingAttendee(t, session)
+	bob := env.addGoingAttendee(t, session)
+	require.NoError(t, env.assign(session, alice, oldTeamA))
+	require.NoError(t, env.assign(session, bob, oldTeamA))
+
+	// bob cancels - his soft-deleted row must not block deleting the old team
+	require.NoError(t, env.svc.CancelRSVP(env.ctx, session.ID(), bob))
+
+	replaced, err := env.createTeams(session, testutil.Ptr(3), testutil.Ptr(4), nil)
 	require.NoError(t, err)
-	require.NoError(t, repo.CreateSessionTemplate(env.ctx, template))
+	require.Len(t, replaced.Teams(), 3)
 
-	loaded, err := repo.GetSessionTemplateByID(env.ctx, template.ID())
+	loaded, err := env.sessionRepo.GetSessionByID(env.ctx, session.ID())
 	require.NoError(t, err)
-	require.NotNil(t, loaded.TeamConfig())
-	assert.Equal(t, 2, loaded.TeamConfig().TeamCount())
-	assert.Equal(t, testutil.Ptr(6), loaded.TeamConfig().PlayersPerTeam())
-	assert.Equal(t, []string{"#FF0000", "#0000FF"}, loaded.TeamConfig().Colors())
+	require.Len(t, loaded.Teams(), 3)
+	assert.Equal(t, testutil.Ptr(4), loaded.TeamConfig().PlayersPerTeam())
+	_, oldStillThere := loaded.Team(oldTeamA)
+	assert.False(t, oldStillThere)
 
-	// clearing the team config on update
-	require.NoError(t, loaded.Update(loaded.Title(), loaded.Description(), nil, nil, loaded.DefaultLocation(), nil))
-	require.NoError(t, repo.UpdateSessionTemplate(env.ctx, loaded))
-
-	reloaded, err := repo.GetSessionTemplateByID(env.ctx, template.ID())
+	attendee, err := env.attendeeRepo.GetAttendeeBySessionAndUser(env.ctx, session.ID(), alice)
 	require.NoError(t, err)
-	assert.Nil(t, reloaded.TeamConfig())
+	assert.Nil(t, attendee.TeamID(), "replacing teams unassigns everyone")
+
+	// the old team is gone, the new ones work
+	assert.ErrorIs(t, env.assign(session, alice, oldTeamA), domain.ErrTeamNotFound)
+	assert.NoError(t, env.assign(session, alice, loaded.Teams()[2].ID()))
+}
+
+func TestSessionService_CreateTeams_NonTeamSportRejected(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session := env.createSession(t, domain.ActivityTypeRunning)
+
+	_, err := env.createTeams(session, nil, nil, nil)
+
+	assert.ErrorIs(t, err, domain.ErrTeamsNotSupported)
 }
