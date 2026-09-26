@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
@@ -175,20 +176,19 @@ func (s *InviteService) AcceptInvite(
 			return fmt.Errorf("persist invite acceptance: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, invite.Events()); err != nil {
-			return fmt.Errorf("insert invite events: %w", err)
-		}
-		invite.ClearEvents()
-
 		member = domain.NewMemberFromInvite(invite.ActivityGroupID(), userID)
 
 		if err := s.memberRepo.CreateMember(tCtx, member); err != nil {
 			return fmt.Errorf("persist member: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, member.Events()); err != nil {
-			return fmt.Errorf("insert member events: %w", err)
+		// One insert for the invite's accepted event and the new member's
+		// joined event.
+		events := slices.Concat(invite.Events(), member.Events())
+		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, events); err != nil {
+			return fmt.Errorf("insert domain events: %w", err)
 		}
+		invite.ClearEvents()
 		member.ClearEvents()
 
 		return nil

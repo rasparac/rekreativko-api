@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
@@ -185,11 +186,6 @@ func (s *SessionInviteService) AcceptInvite(
 			return fmt.Errorf("persist session invite acceptance: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, invite.Events()); err != nil {
-			return fmt.Errorf("insert invite events: %w", err)
-		}
-		invite.ClearEvents()
-
 		// Serialize with concurrent RSVPs/approvals so the capacity check
 		// below can't be raced into overbooking the session.
 		if err := lockSessionCapacity(tCtx, s.txManager, session.ID()); err != nil {
@@ -207,9 +203,13 @@ func (s *SessionInviteService) AcceptInvite(
 			return fmt.Errorf("persist attendee: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, attendee.Events()); err != nil {
-			return fmt.Errorf("insert attendee events: %w", err)
+		// One insert for the invite's accepted event and the new attendee's
+		// RSVP event.
+		events := slices.Concat(invite.Events(), attendee.Events())
+		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, events); err != nil {
+			return fmt.Errorf("insert domain events: %w", err)
 		}
+		invite.ClearEvents()
 		attendee.ClearEvents()
 
 		return nil
