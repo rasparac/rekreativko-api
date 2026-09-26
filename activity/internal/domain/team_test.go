@@ -54,10 +54,10 @@ func newTestTeamSession(t *testing.T, config *TeamConfig) *Session {
 	return session
 }
 
-func newTestTeamConfig(t *testing.T, playersPerTeam *int) *TeamConfig {
+func newTestTeamConfig(t *testing.T, minPlayersPerTeam *int) *TeamConfig {
 	t.Helper()
 
-	config, err := NewTeamConfig(nil, playersPerTeam, nil)
+	config, err := NewTeamConfig(nil, minPlayersPerTeam, nil)
 	require.NoError(t, err)
 
 	return &config
@@ -84,20 +84,20 @@ func attendeeEventTypes(a *Attendee) []string {
 
 func TestNewTeamConfig(t *testing.T) {
 	tests := []struct {
-		name           string
-		teamCount      *int
-		playersPerTeam *int
-		colors         []string
-		wantErr        error
-		wantCount      int
-		wantColors     []string
+		name              string
+		teamCount         *int
+		minPlayersPerTeam *int
+		colors            []string
+		wantErr           error
+		wantCount         int
+		wantColors        []string
 	}{
 		{name: "defaults to two teams", wantCount: 2},
 		{name: "explicit count", teamCount: intPtr(4), wantCount: 4},
 		{name: "count below two", teamCount: intPtr(1), wantErr: ErrInvalidTeamCount},
 		{name: "count above max", teamCount: intPtr(MaxTeamCount + 1), wantErr: ErrInvalidTeamCount},
-		{name: "players per team optional limit", playersPerTeam: intPtr(5), wantCount: 2},
-		{name: "players per team zero", playersPerTeam: intPtr(0), wantErr: ErrInvalidPlayersPerTeam},
+		{name: "optional minimum per team", minPlayersPerTeam: intPtr(5), wantCount: 2},
+		{name: "minimum zero", minPlayersPerTeam: intPtr(0), wantErr: ErrInvalidMinPlayersPerTeam},
 		{name: "colors one per team, normalized", colors: []string{"#ff0000", "#0000FF"}, wantCount: 2, wantColors: []string{"#FF0000", "#0000FF"}},
 		{name: "colors count mismatch", colors: []string{"#FF0000"}, wantErr: ErrInvalidTeamColors},
 		{name: "color not hex", colors: []string{"red", "#0000FF"}, wantErr: ErrInvalidTeamColors},
@@ -106,7 +106,7 @@ func TestNewTeamConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config, err := NewTeamConfig(tt.teamCount, tt.playersPerTeam, tt.colors)
+			config, err := NewTeamConfig(tt.teamCount, tt.minPlayersPerTeam, tt.colors)
 			if tt.wantErr != nil {
 				assert.ErrorIs(t, err, tt.wantErr)
 				return
@@ -114,7 +114,7 @@ func TestNewTeamConfig(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantCount, config.TeamCount())
-			assert.Equal(t, tt.playersPerTeam, config.PlayersPerTeam())
+			assert.Equal(t, tt.minPlayersPerTeam, config.MinPlayersPerTeam())
 			if tt.wantColors != nil {
 				assert.Equal(t, tt.wantColors, config.Colors())
 			} else {
@@ -170,7 +170,7 @@ func TestSession_CreateTeams_ReplacesExistingTeams(t *testing.T) {
 	require.Len(t, session.Teams(), 3)
 	_, stillThere := session.Team(oldTeamA)
 	assert.False(t, stillThere, "old teams must be gone")
-	assert.Equal(t, intPtr(4), session.TeamConfig().PlayersPerTeam())
+	assert.Equal(t, intPtr(4), session.TeamConfig().MinPlayersPerTeam())
 
 	created := session.Events()[0].(*SessionTeamsCreatedEvent)
 	assert.True(t, created.Replaced)
@@ -214,7 +214,7 @@ func TestSession_CreateTeams_Rejections(t *testing.T) {
 func TestAttendee_UnassignForReplacedTeams(t *testing.T) {
 	session := newTestTeamSession(t, newTestTeamConfig(t, nil))
 	a := newGoingAttendee(t, session)
-	require.NoError(t, a.AssignToTeam(session, session.Teams()[0].ID(), session.CreatedByID(), "", 0))
+	require.NoError(t, a.AssignToTeam(session, session.Teams()[0].ID(), session.CreatedByID(), ""))
 	a.ClearEvents()
 
 	a.UnassignForReplacedTeams(session.CreatedByID())
@@ -233,7 +233,7 @@ func TestAttendee_AssignToTeam(t *testing.T) {
 	t.Run("assigns unassigned attendee and emits team_assigned", func(t *testing.T) {
 		a := newGoingAttendee(t, session)
 
-		require.NoError(t, a.AssignToTeam(session, teamA, creator, "", 0))
+		require.NoError(t, a.AssignToTeam(session, teamA, creator, ""))
 
 		require.NotNil(t, a.TeamID())
 		assert.Equal(t, teamA, *a.TeamID())
@@ -242,10 +242,10 @@ func TestAttendee_AssignToTeam(t *testing.T) {
 
 	t.Run("moving to another team emits team_changed", func(t *testing.T) {
 		a := newGoingAttendee(t, session)
-		require.NoError(t, a.AssignToTeam(session, teamA, creator, "", 0))
+		require.NoError(t, a.AssignToTeam(session, teamA, creator, ""))
 		a.ClearEvents()
 
-		require.NoError(t, a.AssignToTeam(session, teamB, creator, "", 0))
+		require.NoError(t, a.AssignToTeam(session, teamB, creator, ""))
 
 		assert.Equal(t, teamB, *a.TeamID())
 		require.Len(t, a.Events(), 1)
@@ -255,38 +255,29 @@ func TestAttendee_AssignToTeam(t *testing.T) {
 		assert.Equal(t, teamB, changed.TeamID)
 	})
 
-	t.Run("same team is a no-op even when full", func(t *testing.T) {
+	t.Run("same team is a no-op", func(t *testing.T) {
 		a := newGoingAttendee(t, session)
-		require.NoError(t, a.AssignToTeam(session, teamA, creator, "", 0))
+		require.NoError(t, a.AssignToTeam(session, teamA, creator, ""))
 		a.ClearEvents()
 
-		require.NoError(t, a.AssignToTeam(session, teamA, creator, "", 2))
+		require.NoError(t, a.AssignToTeam(session, teamA, creator, ""))
 		assert.Empty(t, a.Events())
-	})
-
-	t.Run("full team rejected", func(t *testing.T) {
-		a := newGoingAttendee(t, session)
-
-		err := a.AssignToTeam(session, teamA, creator, "", 2)
-
-		assert.ErrorIs(t, err, ErrTeamFull)
-		assert.Nil(t, a.TeamID())
 	})
 
 	t.Run("group admin may assign", func(t *testing.T) {
 		a := newGoingAttendee(t, session)
-		assert.NoError(t, a.AssignToTeam(session, teamA, uuid.New(), MemberRoleAdmin, 0))
+		assert.NoError(t, a.AssignToTeam(session, teamA, uuid.New(), MemberRoleAdmin))
 	})
 
 	t.Run("regular member rejected", func(t *testing.T) {
 		a := newGoingAttendee(t, session)
-		err := a.AssignToTeam(session, teamA, uuid.New(), MemberRoleMember, 0)
+		err := a.AssignToTeam(session, teamA, uuid.New(), MemberRoleMember)
 		assert.ErrorIs(t, err, ErrUnauthorized)
 	})
 
 	t.Run("unknown team rejected", func(t *testing.T) {
 		a := newGoingAttendee(t, session)
-		err := a.AssignToTeam(session, uuid.New(), creator, "", 0)
+		err := a.AssignToTeam(session, uuid.New(), creator, "")
 		assert.ErrorIs(t, err, ErrTeamNotFound)
 	})
 
@@ -294,25 +285,40 @@ func TestAttendee_AssignToTeam(t *testing.T) {
 		a, err := NewRSVPManualAttendee(session, nil, uuid.New(), AttendeeStatusMaybe, 0)
 		require.NoError(t, err)
 
-		err = a.AssignToTeam(session, teamA, creator, "", 0)
+		err = a.AssignToTeam(session, teamA, creator, "")
 		assert.ErrorIs(t, err, ErrAttendeeNotGoing)
 	})
 }
 
-func TestAttendee_AssignToTeam_NoPlayerLimit(t *testing.T) {
-	session := newTestTeamSession(t, newTestTeamConfig(t, nil))
-	a := newGoingAttendee(t, session)
+// D1: the minimum is never a maximum - a team takes any number of players.
+func TestAttendee_AssignToTeam_MinimumIsNotALimit(t *testing.T) {
+	session := newTestTeamSession(t, newTestTeamConfig(t, intPtr(2)))
+	teamA := session.Teams()[0].ID()
 
-	err := a.AssignToTeam(session, session.Teams()[0].ID(), session.CreatedByID(), "", 1000)
+	for range 5 {
+		a := newGoingAttendee(t, session)
+		require.NoError(t, a.AssignToTeam(session, teamA, session.CreatedByID(), ""))
+	}
+}
 
-	assert.NoError(t, err)
+func TestTeamConfig_PlayersNeeded(t *testing.T) {
+	noMin, err := NewTeamConfig(intPtr(3), nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 3, noMin.PlayersNeeded(), "one per team without a minimum")
+
+	min5, err := NewTeamConfig(nil, intPtr(5), nil)
+	require.NoError(t, err)
+	assert.Equal(t, 10, min5.PlayersNeeded(), "2 teams x 5")
+	assert.False(t, min5.HasEnoughPlayers(9))
+	assert.True(t, min5.HasEnoughPlayers(10))
+	assert.True(t, min5.HasEnoughPlayers(12))
 }
 
 func TestAttendee_AssignToTeam_SessionWithoutTeams(t *testing.T) {
 	session := newTestTeamSession(t, nil)
 	a := newGoingAttendee(t, session)
 
-	err := a.AssignToTeam(session, uuid.New(), session.CreatedByID(), "", 0)
+	err := a.AssignToTeam(session, uuid.New(), session.CreatedByID(), "")
 
 	assert.ErrorIs(t, err, ErrSessionHasNoTeams)
 }
@@ -322,7 +328,7 @@ func TestAttendee_AssignToTeam_TerminalSession(t *testing.T) {
 	a := newGoingAttendee(t, session)
 	require.NoError(t, session.Cancel(session.CreatedByID(), "", "rain", nil))
 
-	err := a.AssignToTeam(session, session.Teams()[0].ID(), session.CreatedByID(), "", 0)
+	err := a.AssignToTeam(session, session.Teams()[0].ID(), session.CreatedByID(), "")
 
 	assert.ErrorIs(t, err, ErrSessionCanceled)
 }
@@ -331,7 +337,7 @@ func TestAttendee_UnassignFromTeam(t *testing.T) {
 	session := newTestTeamSession(t, newTestTeamConfig(t, nil))
 	a := newGoingAttendee(t, session)
 	teamA := session.Teams()[0].ID()
-	require.NoError(t, a.AssignToTeam(session, teamA, session.CreatedByID(), "", 0))
+	require.NoError(t, a.AssignToTeam(session, teamA, session.CreatedByID(), ""))
 	a.ClearEvents()
 
 	require.NoError(t, a.UnassignFromTeam(session, session.CreatedByID(), ""))
@@ -354,7 +360,7 @@ func TestAttendee_LeavingSpotFreesTeamSlot(t *testing.T) {
 		t.Run(string(newStatus), func(t *testing.T) {
 			session := newTestTeamSession(t, newTestTeamConfig(t, nil))
 			a := newGoingAttendee(t, session)
-			require.NoError(t, a.AssignToTeam(session, session.Teams()[0].ID(), session.CreatedByID(), "", 0))
+			require.NoError(t, a.AssignToTeam(session, session.Teams()[0].ID(), session.CreatedByID(), ""))
 			a.ClearEvents()
 
 			require.NoError(t, a.UpdateRSVP(newStatus, session, 1))
@@ -368,7 +374,7 @@ func TestAttendee_LeavingSpotFreesTeamSlot(t *testing.T) {
 func TestAttendee_RemoveFreesTeamSlot(t *testing.T) {
 	session := newTestTeamSession(t, newTestTeamConfig(t, nil))
 	a := newGoingAttendee(t, session)
-	require.NoError(t, a.AssignToTeam(session, session.Teams()[0].ID(), session.CreatedByID(), "", 0))
+	require.NoError(t, a.AssignToTeam(session, session.Teams()[0].ID(), session.CreatedByID(), ""))
 	a.ClearEvents()
 
 	require.NoError(t, a.Remove(session, session.CreatedByID(), ""))
@@ -390,7 +396,7 @@ func TestAttendee_LeaveTeam(t *testing.T) {
 	a.LeaveTeam()
 	assert.Empty(t, a.Events())
 
-	require.NoError(t, a.AssignToTeam(session, session.Teams()[0].ID(), session.CreatedByID(), "", 0))
+	require.NoError(t, a.AssignToTeam(session, session.Teams()[0].ID(), session.CreatedByID(), ""))
 	a.ClearEvents()
 
 	a.LeaveTeam()

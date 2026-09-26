@@ -3,6 +3,8 @@ DROP TABLE IF EXISTS activity.event_outbox;
 DROP TABLE IF EXISTS activity.session_statistics;
 DROP TABLE IF EXISTS activity.activity_group_statistics;
 DROP TABLE IF EXISTS activity.session_invites;
+DROP TABLE IF EXISTS activity.session_team_draft_pick;
+DROP TABLE IF EXISTS activity.session_team_draft;
 DROP TABLE IF EXISTS activity.session_attendee;
 DROP TABLE IF EXISTS activity.session_team;
 DROP TABLE IF EXISTS activity.session;

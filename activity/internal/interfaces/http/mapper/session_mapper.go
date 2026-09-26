@@ -48,12 +48,12 @@ func CreateTeamsRequestToParams(
 	requesterRole string,
 ) *application.CreateTeamsParams {
 	return &application.CreateTeamsParams{
-		SessionID:      sessionID,
-		RequesterID:    requesterID,
-		RequesterRole:  requesterRole,
-		TeamCount:      req.TeamCount,
-		PlayersPerTeam: req.PlayersPerTeam,
-		Colors:         req.Colors,
+		SessionID:         sessionID,
+		RequesterID:       requesterID,
+		RequesterRole:     requesterRole,
+		TeamCount:         req.TeamCount,
+		MinPlayersPerTeam: req.MinPlayersPerTeam,
+		Colors:            req.Colors,
 	}
 }
 
@@ -120,8 +120,8 @@ func SessionToResponse(session *domain.Session, attendeeStatuses map[uuid.UUID]d
 
 	if tc := session.TeamConfig(); tc != nil {
 		resp.TeamConfig = &dtos.TeamConfigResponse{
-			TeamCount:      tc.TeamCount(),
-			PlayersPerTeam: tc.PlayersPerTeam(),
+			TeamCount:         tc.TeamCount(),
+			MinPlayersPerTeam: tc.MinPlayersPerTeam(),
 		}
 	}
 

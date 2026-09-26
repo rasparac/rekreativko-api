@@ -231,8 +231,9 @@ CREATE TABLE IF NOT EXISTS activity.session(
     -- yet. Set when the creator/admin creates teams (after people have
     -- joined); the teams themselves live in session_team.
     team_count smallint DEFAULT NULL CHECK (team_count IS NULL OR team_count >= 2),
-    -- optional per-team player limit, independent of capacity (NULL = no limit)
-    players_per_team smallint DEFAULT NULL CHECK (players_per_team IS NULL OR players_per_team > 0),
+    -- optional minimum players per team to play (no maximum), independent of
+    -- capacity; NULL = no minimum
+    min_players_per_team smallint DEFAULT NULL CHECK (min_players_per_team IS NULL OR min_players_per_team > 0),
     created_at timestamptz NOT NULL DEFAULT NOW(),
     updated_at timestamptz NOT NULL DEFAULT NOW(),
     cancelled_at timestamptz DEFAULT NULL,
@@ -320,6 +321,52 @@ WHERE (deleted_at IS NULL);
 -- count/list members of a team
 CREATE INDEX idx_attendees_team ON activity.session_attendee(team_id)
 WHERE (team_id IS NOT NULL) AND (deleted_at IS NULL);
+
+-- captain drafts: two captains pick confirmed attendees in turn. Picks stay in
+-- the draft until it completes; only then are the session's teams replaced.
+CREATE TABLE IF NOT EXISTS activity.session_team_draft(
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id uuid NOT NULL REFERENCES activity.session(id),
+    -- 'snake' (A,B,B,A) or 'alternate' (A,B,A,B)
+    pick_order varchar(20) NOT NULL,
+    -- active | paused (a captain left) | completed | cancelled
+    status varchar(20) NOT NULL DEFAULT 'active',
+    -- captain_left while paused
+    paused_reason varchar(50) DEFAULT NULL,
+    -- NULL while that side's captain left and the draft is paused
+    captain_a_id uuid DEFAULT NULL,
+    captain_b_id uuid DEFAULT NULL,
+    -- team setup applied when the draft completes (always 2 teams)
+    min_players_per_team smallint DEFAULT NULL CHECK (min_players_per_team IS NULL OR min_players_per_team > 0),
+    team_colors text[] DEFAULT NULL,
+    -- 0-based index of the next turn; with pick_order it gives whose turn it is
+    turn int NOT NULL DEFAULT 0,
+    -- bumped on every change; clients use it to drop stale snapshots
+    version int NOT NULL DEFAULT 1,
+    started_by uuid NOT NULL,
+    started_at timestamptz NOT NULL DEFAULT NOW(),
+    ended_at timestamptz DEFAULT NULL,
+    cancel_reason varchar(50) DEFAULT NULL
+);
+
+-- at most one running (active or paused) draft per session
+CREATE UNIQUE INDEX uq_session_team_draft_active ON activity.session_team_draft(session_id)
+WHERE (status IN ('active', 'paused'));
+
+-- latest draft of a session
+CREATE INDEX idx_session_team_draft_session ON activity.session_team_draft(session_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS activity.session_team_draft_pick(
+    draft_id uuid NOT NULL REFERENCES activity.session_team_draft(id),
+    -- the turn the pick was made on (unique even after a picked player drops out)
+    pick_number int NOT NULL,
+    -- 0 = captain A's side, 1 = captain B's side
+    side smallint NOT NULL CHECK (side IN (0, 1)),
+    account_id uuid NOT NULL,
+    picked_at timestamptz NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (draft_id, pick_number),
+    CONSTRAINT uq_draft_pick_account UNIQUE (draft_id, account_id)
+);
 
 -- session invites (direct - specific user, standalone sessions only)
 CREATE TABLE IF NOT EXISTS activity.session_invites(

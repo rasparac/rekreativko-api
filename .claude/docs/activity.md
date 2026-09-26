@@ -250,16 +250,19 @@ SSE (6gg.4).
 
 **TeamConfig** (value object, `*TeamConfig` nil = no teams):
 - `team_count`: 2..8, defaults to 2
-- `players_per_team`: optional per-team limit, nil = unlimited. Deliberately independent of session
-  `capacity` - capacity still bounds the confirmed pool/waitlist; extra confirmed attendees simply stay
-  unassigned
+- `min_players_per_team`: optional **minimum** ("at least this many per team to play"), never a maximum -
+  a team is never full and everyone going plays (no substitutes; uneven teams are fine). Independent of
+  session `capacity`, which still bounds the confirmed pool/waitlist
+- `PlayersNeeded()` = team_count x min (or 1 per team without a minimum): "enough people". Flows that
+  form teams from everyone going (captain draft, proposals) require it (`not_enough_players`); manual
+  assignment and `POST /teams` never do
 - `colors`: optional `#RRGGBB` per team (shirts/bibs) - none, or exactly one per team
 
 **Creating teams** (`POST /sessions/{id}/teams`):
 - Session creator or group admin/creator, any time while the session is scheduled or started (not tied
   to the session being full)
 - Creates `Team A`, `Team B`, ... (`position` 0..n-1, color from config) and stores the config on the
-  session (`session.team_count` / `players_per_team`)
+  session (`session.team_count` / `min_players_per_team`)
 - Calling it again **replaces** the teams: every assigned attendee is unassigned (`team_unassigned`,
   reason `teams_replaced`), old teams are deleted, new empty ones created. Runs under the session
   advisory lock so no assignment can race with the replacement
@@ -271,15 +274,15 @@ carry the config but not the teams.
 **Assignment** is stored on the attendee (`session_attendee.team_id`, NULL = unassigned):
 - `Attendee.AssignToTeam` / `UnassignFromTeam`, by session creator or group admin/creator only
 - Only confirmed attendees (going/promoted) can be on a team; one team per attendee (moving = reassign)
-- `players_per_team` enforced; team size is counted under the same session advisory lock as capacity
-  (`lockSessionCapacity`), so concurrent assignments can't overfill a team
+- No size check (the minimum is not a cap); runs under the session advisory lock so it can't race a team
+  replacement or a draft. Rejected with `draft_already_active` while a captain draft runs
 - Allowed while the session is scheduled or started; not once canceled/completed
 - Slot is freed automatically when the attendee leaves: RSVP -> not_going/maybe, RSVP cancelled
   (`LeaveTeam`, row soft-deleted with `team_id` cleared), or removed by a manager
 - Promotion from the waitlist does not assign a team
 
 **Endpoints:**
-- `POST /api/v1/sessions/{id}/teams` `{team_count?, players_per_team?, colors?}` - create or replace
+- `POST /api/v1/sessions/{id}/teams` `{team_count?, min_players_per_team?, colors?}` - create or replace
   teams, returns the session with its (empty) teams
 - `PUT /api/v1/sessions/{sessionId}/rsvp/{userId}/team` `{team_id}` - assign or move, returns attendee
 - `DELETE /api/v1/sessions/{sessionId}/rsvp/{userId}/team` - unassign (no-op if not on a team)
@@ -287,10 +290,56 @@ carry the config but not the teams.
   include `team_config` only; attendee responses include `team_id`
 
 **Events** (via outbox):
-- `activity.session.teams_created` - teams (id/name/color/position), `players_per_team`, `replaced`
+- `activity.session.teams_created` - teams (id/name/color/position), `min_players_per_team`, `replaced`
 - `activity.session.attendee.team_assigned` (was unassigned), `team_changed` (carries `previous_team_id`)
 - `activity.session.attendee.team_unassigned` with `reason`: `manual` | `left` | `removed` |
   `teams_replaced`
+
+### Captain draft (6gg.2)
+
+Two captains pick everyone going, in turn; the result becomes the session's two teams. Product rules are the
+mobile team's decisions D4-D9 (see the ticket design).
+
+- **Start** `POST /api/v1/sessions/{id}/draft` `{captain_ids: [A, B], pick_order?, min_players_per_team?, colors?}`
+  - session creator or group admin/creator, team sports only, session scheduled or started, captains must be
+  going, and enough people going (`PlayersNeeded` = 2 x min, or 2) else `not_enough_players`. At most one
+  running (active or paused) draft per session. The first captain leads Team A and picks first.
+- **Pick order** lives on the draft (a session can be re-drafted): `snake` (A,B,B,A - default) or `alternate`
+  (A,B,A,B). `PickOrder.sideForTurn(turn)` is the whole rule; the server enforces turns.
+- **Pick** `POST /api/v1/sessions/{id}/draft/picks` `{user_id}` - only the captain whose turn it is, only an
+  unpicked person going. No team is ever full; there is no turn skipping.
+- **Picks live in the draft** (`session_team_draft_pick`) until it completes - the session's teams are untouched
+  while it runs (active or paused), and `POST /teams` / direct assign / unassign are rejected
+  (`draft_already_active`).
+- **Completes automatically** when everyone going has been picked. Completion replaces the session's teams with
+  Team A (position 0) and Team B via `Session.ApplyDraftTeams` - old assignments get `team_unassigned`
+  (teams_replaced), drafted players `team_assigned`.
+- **Attendance changes mid-draft** (`draftCoordinator.attendeeLeft`, called from `AttendeeService` after any
+  waitlist promotion; joiners need no hook - they are simply in the pool):
+  - going count below `PlayersNeeded` -> cancelled, `cancelled_reason: not_enough_players`
+  - a captain leaves -> **paused** (`paused_reason: captain_left`), that side's captain vacant (NULL). Picks are
+    rejected (`draft_paused`). The organizer calls `PUT /api/v1/sessions/{id}/draft/captains`
+    `{team_position, user_id}` with someone from that team (promoted out of the picks) or from the pool; when
+    both sides have a captain again it resumes where it stopped (and completes if nobody is left)
+  - a picked player leaves -> dropped from their side; the last available player leaving completes it
+- **Cancel** `DELETE /api/v1/sessions/{id}/draft` - creator/admin, active or paused (`cancelled_reason:
+  organizer`); teams stay exactly as before.
+- **GET** `/api/v1/sessions/{id}/draft` - latest draft (any status). Response (mobile-aligned): `status`
+  active|paused|completed|cancelled, `paused_reason`, `cancelled_reason`, `captains[{user_id|null,
+  team_position}]`, `turn{pick_number, total_picks, team_position, captain_user_id|null}` (null once ended),
+  `turn_order` (team position of every turn from pick 0 to the last - `TeamDraft.TurnOrder`; `total_picks` =
+  turns taken + people still available, so it changes as people join/leave), `teams[{position, user_ids}]`,
+  `picks`, `available_user_ids`, `version` (bumped on every change, persisted).
+- **No turn timeout** - a stuck draft is cancelled by the organizer.
+- **Concurrency:** every draft command and every attendance change takes the session advisory lock, so two picks
+  for the same turn can't both win (`not_your_turn`).
+- **Events** `activity.session.draft.*` (all carry `version`, team positions 0/1): `started` (captains, pick
+  order), `turn_changed` (whose turn - "your turn" notifications), `player_picked`, `player_dropped`, `paused`
+  (captain who left, organizer), `captain_replaced` (`resumed`), `completed` (both rosters), `cancelled` (reason).
+- **Errors:** `not_your_turn`, `player_not_available`, `not_draft_captain` (403), `draft_not_active`,
+  `draft_paused`, `draft_not_paused`, `draft_already_active`, `invalid_captains` (422), `not_enough_players`,
+  `draft_not_found` (404), `unauthorized`.
+- Known gap: a draft is not ended when its session is cancelled/completed (rekreativko-api-6gg.7).
 
 ====================================================================================================
 
@@ -435,10 +484,15 @@ All activity tables use the `activity` schema for namespace isolation (DDD bound
    - status: scheduled, started, cancelled, completed
    - is_recurring flag
    - Indexed for upcoming sessions and location queries
-   - team_count, players_per_team (NULL team_count = no teams yet; set by create-teams)
+   - team_count, min_players_per_team (NULL team_count = no teams yet; set by create-teams)
 
    - **session_team** - Teams of a session (Team A, Team B, ...)
      - name, optional color, position (unique per session)
+
+   - **session_team_draft** / **session_team_draft_pick** - Captain drafts and their picks
+     - pick_order, status (active/paused/completed/cancelled), paused_reason, cancel_reason, captains (NULL =
+       vacant while paused), turn, version, min_players_per_team, team_colors
+     - Partial unique index: one active or paused draft per session
 
 8. **session_attendee** - Session participants
    - Links account_id to session_id

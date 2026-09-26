@@ -86,13 +86,28 @@ var (
 
 // Team errors
 var (
-	ErrTeamsNotSupported     = errors.New("teams are only supported for team sports")
-	ErrInvalidTeamCount      = errors.New("team count must be between 2 and 8")
-	ErrInvalidPlayersPerTeam = errors.New("players per team must be a positive integer or nil for no limit")
-	ErrInvalidTeamColors     = errors.New("team colors must be #RRGGBB hex values, one per team")
-	ErrSessionHasNoTeams     = errors.New("session is not split into teams")
-	ErrTeamNotFound          = errors.New("team not found")
-	ErrTeamFull              = errors.New("team has reached its player limit")
+	ErrTeamsNotSupported        = errors.New("teams are only supported for team sports")
+	ErrInvalidTeamCount         = errors.New("team count must be between 2 and 8")
+	ErrInvalidMinPlayersPerTeam = errors.New("min players per team must be a positive integer or nil for none")
+	ErrInvalidTeamColors        = errors.New("team colors must be #RRGGBB hex values, one per team")
+	ErrSessionHasNoTeams        = errors.New("session is not split into teams")
+	ErrTeamNotFound             = errors.New("team not found")
+	ErrNotEnoughPlayers         = errors.New("not enough people are going for these teams")
+)
+
+// Team draft errors
+var (
+	ErrInvalidPickOrder         = errors.New("pick order must be snake or alternate")
+	ErrInvalidDraftCaptains     = errors.New("a draft needs two different captains, each from their own team or the pool")
+	ErrDraftCaptainNotConfirmed = errors.New("draft captains must be going")
+	ErrDraftAlreadyActive       = errors.New("a team draft is running for this session")
+	ErrDraftNotActive           = errors.New("no team draft is running for this session")
+	ErrDraftPaused              = errors.New("the team draft is paused until a captain is replaced")
+	ErrDraftNotPaused           = errors.New("the team draft is not paused")
+	ErrDraftNotFound            = errors.New("team draft not found")
+	ErrNotDraftCaptain          = errors.New("only a draft captain can pick players")
+	ErrNotYourTurn              = errors.New("it is not your turn to pick")
+	ErrPlayerNotAvailable       = errors.New("player is not available to pick")
 )
 
 // Recurrence errors

@@ -76,6 +76,14 @@ type SessionTemplateRepository interface {
 	FindRecurringTemplatesToGenerate(ctx context.Context, lookaheadWindow time.Duration) ([]*domain.SessionTemplate, error)
 }
 
+// TeamDraftRepository defines the interface for captain draft persistence
+type TeamDraftRepository interface {
+	CreateDraft(ctx context.Context, draft *domain.TeamDraft) error
+	UpdateDraft(ctx context.Context, draft *domain.TeamDraft) error
+	GetActiveDraft(ctx context.Context, sessionID uuid.UUID) (*domain.TeamDraft, error)
+	GetLatestDraft(ctx context.Context, sessionID uuid.UUID) (*domain.TeamDraft, error)
+}
+
 // AttendeeRepository defines the interface for attendee persistence
 type AttendeeRepository interface {
 	CreateAttendee(ctx context.Context, attendee *domain.Attendee) error
@@ -87,6 +95,5 @@ type AttendeeRepository interface {
 	GetFirstPendingAttendee(ctx context.Context, sessionID uuid.UUID) (*domain.Attendee, error)
 	CountConfirmedAttendees(ctx context.Context, sessionID uuid.UUID) (int, error)
 	GetAttendeeStatusesForUser(ctx context.Context, userID uuid.UUID, sessionIDs []uuid.UUID) (map[uuid.UUID]domain.AttendeeStatus, error)
-	CountTeamMembers(ctx context.Context, teamID uuid.UUID) (int, error)
 	ListTeamMembers(ctx context.Context, sessionID uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
 }

@@ -42,16 +42,26 @@ const (
 	EventActivitySessionInviteExpired  = "activity.session_invite.expired"
 
 	// Session events
-	EventActivitySessionCreated             = "activity.session.created"
-	EventActivitySessionUpdated             = "activity.session.updated"
-	EventActivitySessionDeleted             = "activity.session.deleted"
-	EventActivitySessionStarted             = "activity.session.started"
-	EventActivitySessionCancelled           = "activity.session.cancelled"
-	EventActivitySessionCompleted           = "activity.session.completed"
-	EventActivitySessionExpired             = "activity.session.expired"
-	EventActivitySessionVisibilityChanged   = "activity.session.visibility_changed"
-	EventActivitySessionTeamsCreated        = "activity.session.teams_created"
-	EventActivitySessionAttendeeAutoPending = "activity.session.attendee.auto_pending"
+	EventActivitySessionCreated           = "activity.session.created"
+	EventActivitySessionUpdated           = "activity.session.updated"
+	EventActivitySessionDeleted           = "activity.session.deleted"
+	EventActivitySessionStarted           = "activity.session.started"
+	EventActivitySessionCancelled         = "activity.session.cancelled"
+	EventActivitySessionCompleted         = "activity.session.completed"
+	EventActivitySessionExpired           = "activity.session.expired"
+	EventActivitySessionVisibilityChanged = "activity.session.visibility_changed"
+	EventActivitySessionTeamsCreated      = "activity.session.teams_created"
+
+	// Team draft events
+	EventActivitySessionDraftStarted         = "activity.session.draft.started"
+	EventActivitySessionDraftPlayerPicked    = "activity.session.draft.player_picked"
+	EventActivitySessionDraftTurnChanged     = "activity.session.draft.turn_changed"
+	EventActivitySessionDraftPlayerDropped   = "activity.session.draft.player_dropped"
+	EventActivitySessionDraftCompleted       = "activity.session.draft.completed"
+	EventActivitySessionDraftPaused          = "activity.session.draft.paused"
+	EventActivitySessionDraftCaptainReplaced = "activity.session.draft.captain_replaced"
+	EventActivitySessionDraftCancelled       = "activity.session.draft.cancelled"
+	EventActivitySessionAttendeeAutoPending  = "activity.session.attendee.auto_pending"
 
 	// Session attendee events
 	EventActivitySessionAttendeeAutoConfirmed   = "activity.session.attendee.auto_confirmed"
@@ -1194,6 +1204,173 @@ const (
 	TeamUnassignReasonTeamsReplaced TeamUnassignReason = "teams_replaced" // teams were recreated
 )
 
+// draftEventBase carries the fields every draft event shares. Team positions
+// are 0 (Team A) and 1 (Team B).
+type draftEventBase struct {
+	domainevent.BaseEvent
+	ActivityID *uuid.UUID `json:"activity_id"`
+	SessionID  uuid.UUID  `json:"session_id"`
+	DraftID    uuid.UUID  `json:"draft_id"`
+	Version    int        `json:"version"`
+}
+
+func newDraftEventBase(d *TeamDraft, eventType string) draftEventBase {
+	return draftEventBase{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   eventType,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: d.ID(),
+		},
+		ActivityID: d.ActivityGroupID(),
+		SessionID:  d.SessionID(),
+		DraftID:    d.ID(),
+		Version:    d.version,
+	}
+}
+
+// DraftStartedEvent is raised when a captain draft starts - both captains
+// should be told they were chosen.
+type DraftStartedEvent struct {
+	draftEventBase
+	CaptainIDs        [2]uuid.UUID `json:"captain_ids"`
+	PickOrder         PickOrder    `json:"pick_order"`
+	MinPlayersPerTeam *int         `json:"min_players_per_team,omitempty"`
+	StartedBy         uuid.UUID    `json:"started_by"`
+}
+
+func NewDraftStartedEvent(d *TeamDraft) *DraftStartedEvent {
+	return &DraftStartedEvent{
+		draftEventBase:    newDraftEventBase(d, EventActivitySessionDraftStarted),
+		CaptainIDs:        d.captains,
+		PickOrder:         d.pickOrder,
+		MinPlayersPerTeam: d.teamConfig.MinPlayersPerTeam(),
+		StartedBy:         d.startedBy,
+	}
+}
+
+// DraftPlayerPickedEvent is raised for every pick.
+type DraftPlayerPickedEvent struct {
+	draftEventBase
+	CaptainID    uuid.UUID `json:"captain_id"`
+	UserID       uuid.UUID `json:"user_id"`
+	TeamPosition int       `json:"team_position"`
+	PickNumber   int       `json:"pick_number"`
+}
+
+func NewDraftPlayerPickedEvent(d *TeamDraft, pick DraftPick, captainID uuid.UUID) *DraftPlayerPickedEvent {
+	return &DraftPlayerPickedEvent{
+		draftEventBase: newDraftEventBase(d, EventActivitySessionDraftPlayerPicked),
+		CaptainID:      captainID,
+		UserID:         pick.userID,
+		TeamPosition:   int(pick.side),
+		PickNumber:     pick.pickNumber,
+	}
+}
+
+// DraftTurnChangedEvent tells a captain it is their turn to pick.
+type DraftTurnChangedEvent struct {
+	draftEventBase
+	CaptainID    uuid.UUID `json:"captain_id"`
+	TeamPosition int       `json:"team_position"`
+	PickNumber   int       `json:"pick_number"`
+}
+
+func NewDraftTurnChangedEvent(d *TeamDraft) *DraftTurnChangedEvent {
+	side := d.CurrentSide()
+	return &DraftTurnChangedEvent{
+		draftEventBase: newDraftEventBase(d, EventActivitySessionDraftTurnChanged),
+		CaptainID:      d.captains[side],
+		TeamPosition:   int(side),
+		PickNumber:     d.turn,
+	}
+}
+
+// DraftPlayerDroppedEvent is raised when a picked player stops going.
+type DraftPlayerDroppedEvent struct {
+	draftEventBase
+	UserID       uuid.UUID `json:"user_id"`
+	TeamPosition int       `json:"team_position"`
+}
+
+func NewDraftPlayerDroppedEvent(d *TeamDraft, pick DraftPick) *DraftPlayerDroppedEvent {
+	return &DraftPlayerDroppedEvent{
+		draftEventBase: newDraftEventBase(d, EventActivitySessionDraftPlayerDropped),
+		UserID:         pick.userID,
+		TeamPosition:   int(pick.side),
+	}
+}
+
+// DraftPausedEvent is raised when a captain stops going - the organizer must
+// name a replacement (or cancel).
+type DraftPausedEvent struct {
+	draftEventBase
+	Reason       DraftPauseReason `json:"reason"`
+	TeamPosition int              `json:"team_position"`
+	CaptainID    uuid.UUID        `json:"captain_id"` // the captain who left
+	StartedBy    uuid.UUID        `json:"started_by"` // the organizer who can resolve it
+}
+
+func NewDraftPausedEvent(d *TeamDraft, side DraftSide, captainID uuid.UUID) *DraftPausedEvent {
+	return &DraftPausedEvent{
+		draftEventBase: newDraftEventBase(d, EventActivitySessionDraftPaused),
+		Reason:         d.pausedReason,
+		TeamPosition:   int(side),
+		CaptainID:      captainID,
+		StartedBy:      d.startedBy,
+	}
+}
+
+// DraftCaptainReplacedEvent is raised when the organizer names a new captain.
+// Resumed is true when that filled the last vacancy and picking continues.
+type DraftCaptainReplacedEvent struct {
+	draftEventBase
+	TeamPosition int       `json:"team_position"`
+	CaptainID    uuid.UUID `json:"captain_id"` // the new captain
+	ReplacedBy   uuid.UUID `json:"replaced_by"`
+	Resumed      bool      `json:"resumed"`
+}
+
+func NewDraftCaptainReplacedEvent(d *TeamDraft, side DraftSide, captainID, replacedBy uuid.UUID, resumed bool) *DraftCaptainReplacedEvent {
+	return &DraftCaptainReplacedEvent{
+		draftEventBase: newDraftEventBase(d, EventActivitySessionDraftCaptainReplaced),
+		TeamPosition:   int(side),
+		CaptainID:      captainID,
+		ReplacedBy:     replacedBy,
+		Resumed:        resumed,
+	}
+}
+
+// DraftCompletedEvent carries both final rosters (index = team position). The
+// resulting teams follow as teams_created + team_assigned events.
+type DraftCompletedEvent struct {
+	draftEventBase
+	Teams [2][]uuid.UUID `json:"teams"`
+}
+
+func NewDraftCompletedEvent(d *TeamDraft) *DraftCompletedEvent {
+	return &DraftCompletedEvent{
+		draftEventBase: newDraftEventBase(d, EventActivitySessionDraftCompleted),
+		Teams:          [2][]uuid.UUID{d.Roster(DraftSideA), d.Roster(DraftSideB)},
+	}
+}
+
+// DraftCancelledEvent is raised when a draft stops without result. CancelledBy
+// is uuid.Nil when it was cancelled automatically (not_enough_players).
+type DraftCancelledEvent struct {
+	draftEventBase
+	Reason      DraftCancelReason `json:"reason"`
+	CancelledBy uuid.UUID         `json:"cancelled_by"`
+}
+
+func NewDraftCancelledEvent(d *TeamDraft, cancelledBy uuid.UUID) *DraftCancelledEvent {
+	return &DraftCancelledEvent{
+		draftEventBase: newDraftEventBase(d, EventActivitySessionDraftCancelled),
+		Reason:         d.cancelReason,
+		CancelledBy:    cancelledBy,
+	}
+}
+
 // SessionTeamInfo describes one team in a SessionTeamsCreatedEvent.
 type SessionTeamInfo struct {
 	TeamID   uuid.UUID `json:"team_id"`
@@ -1207,12 +1384,12 @@ type SessionTeamInfo struct {
 // assigned attendee also gets a team_unassigned (reason teams_replaced).
 type SessionTeamsCreatedEvent struct {
 	domainevent.BaseEvent
-	ActivityID     *uuid.UUID        `json:"activity_id"`
-	SessionID      uuid.UUID         `json:"session_id"`
-	Teams          []SessionTeamInfo `json:"teams"`
-	PlayersPerTeam *int              `json:"players_per_team,omitempty"`
-	Replaced       bool              `json:"replaced"`
-	CreatedBy      uuid.UUID         `json:"created_by"`
+	ActivityID        *uuid.UUID        `json:"activity_id"`
+	SessionID         uuid.UUID         `json:"session_id"`
+	Teams             []SessionTeamInfo `json:"teams"`
+	MinPlayersPerTeam *int              `json:"min_players_per_team,omitempty"`
+	Replaced          bool              `json:"replaced"`
+	CreatedBy         uuid.UUID         `json:"created_by"`
 }
 
 func NewSessionTeamsCreatedEvent(s *Session, createdBy uuid.UUID, replaced bool) *SessionTeamsCreatedEvent {
@@ -1233,12 +1410,12 @@ func NewSessionTeamsCreatedEvent(s *Session, createdBy uuid.UUID, replaced bool)
 			OccurredAt:  time.Now().UTC(),
 			AggregateID: s.ID(),
 		},
-		ActivityID:     s.ActivityGroupID(),
-		SessionID:      s.ID(),
-		Teams:          teams,
-		PlayersPerTeam: s.teamConfig.PlayersPerTeam(),
-		Replaced:       replaced,
-		CreatedBy:      createdBy,
+		ActivityID:        s.ActivityGroupID(),
+		SessionID:         s.ID(),
+		Teams:             teams,
+		MinPlayersPerTeam: s.teamConfig.MinPlayersPerTeam(),
+		Replaced:          replaced,
+		CreatedBy:         createdBy,
 	}
 }
 

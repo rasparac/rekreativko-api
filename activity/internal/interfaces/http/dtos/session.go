@@ -44,9 +44,9 @@ type CreateSessionRequest struct {
 type CreateTeamsRequest struct {
 	// TeamCount defaults to 2 when omitted.
 	TeamCount *int `json:"team_count,omitempty" validate:"omitempty,min=2,max=8" example:"2"`
-	// PlayersPerTeam is an optional per-team limit, independent of capacity.
-	// Omit for no limit.
-	PlayersPerTeam *int `json:"players_per_team,omitempty" validate:"omitempty,min=1,max=100" example:"5"`
+	// MinPlayersPerTeam is the optional minimum per team ("at least this many to
+	// play"), independent of capacity. There is no maximum. Omit for none.
+	MinPlayersPerTeam *int `json:"min_players_per_team,omitempty" validate:"omitempty,min=1,max=100" example:"5"`
 	// Colors are optional "#RRGGBB" team colors (e.g. shirts) - omit, or give
 	// exactly one per team, in team order.
 	Colors []string `json:"colors,omitempty" validate:"omitempty,max=8,dive,hexcolor" example:"#FF0000,#0000FF"`
@@ -54,8 +54,8 @@ type CreateTeamsRequest struct {
 
 // TeamConfigResponse is the team setup of a session
 type TeamConfigResponse struct {
-	TeamCount      int  `json:"team_count" example:"2"`
-	PlayersPerTeam *int `json:"players_per_team,omitempty" example:"5"`
+	TeamCount         int  `json:"team_count" example:"2"`
+	MinPlayersPerTeam *int `json:"min_players_per_team,omitempty" example:"5"`
 }
 
 // TeamResponse is one team of a session with its current members

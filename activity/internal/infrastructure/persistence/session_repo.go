@@ -38,7 +38,7 @@ type sessionModel struct {
 	requiresApproval  bool
 	isRecurring       bool
 	teamCount         sql.NullInt32 // NULL = session has no teams
-	playersPerTeam    sql.NullInt32
+	minPlayersPerTeam sql.NullInt32
 	note              sql.NullString
 	createdAt         sql.NullTime
 	updatedAt         sql.NullTime
@@ -113,7 +113,7 @@ func (m *sessionManager) CreateSession(ctx context.Context, session *domain.Sess
 			location_city, location_country, location_lat, location_lng,
 			start_time, end_time, capacity, status, visibility, is_recurring, note,
 			created_at, updated_at, title, activity_type, difficulty_level, location_street,
-			requires_approval, team_count, players_per_team
+			requires_approval, team_count, min_players_per_team
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24
 		)
@@ -147,7 +147,7 @@ func (m *sessionManager) CreateSession(ctx context.Context, session *domain.Sess
 		model.locationStreet,
 		model.requiresApproval,
 		model.teamCount,
-		model.playersPerTeam,
+		model.minPlayersPerTeam,
 	)
 
 	if err != nil {
@@ -183,10 +183,10 @@ func (m *sessionManager) ReplaceTeams(ctx context.Context, session *domain.Sessi
 
 	model := sessionModelFromDomain(session)
 	result, err := q.Exec(ctx,
-		`UPDATE activity.session SET team_count = $2, players_per_team = $3, updated_at = $4 WHERE id = $1`,
+		`UPDATE activity.session SET team_count = $2, min_players_per_team = $3, updated_at = $4 WHERE id = $1`,
 		model.id,
 		model.teamCount,
-		model.playersPerTeam,
+		model.minPlayersPerTeam,
 		model.updatedAt,
 	)
 	if err != nil {
@@ -333,7 +333,7 @@ func (m *sessionManager) GetSessionByID(ctx context.Context, id uuid.UUID) (*dom
 			start_time, end_time, capacity, status, visibility, is_recurring, note,
 			created_at, updated_at, cancelled_at, started_at, completed_at,
 			title, activity_type, difficulty_level, location_street, requires_approval,
-			team_count, players_per_team
+			team_count, min_players_per_team
 		FROM activity.session
 		WHERE id = $1
 	`
@@ -368,7 +368,7 @@ func (m *sessionManager) GetSessionByID(ctx context.Context, id uuid.UUID) (*dom
 		&model.locationStreet,
 		&model.requiresApproval,
 		&model.teamCount,
-		&model.playersPerTeam,
+		&model.minPlayersPerTeam,
 	)
 
 	if err != nil {
@@ -400,7 +400,7 @@ func (m *sessionManager) FindSessionsPastEndTime(ctx context.Context) ([]*domain
 			start_time, end_time, capacity, status, visibility, is_recurring, note,
 			created_at, updated_at, cancelled_at, started_at, completed_at,
 			title, activity_type, difficulty_level, location_street, requires_approval,
-			team_count, players_per_team
+			team_count, min_players_per_team
 		FROM activity.session
 		WHERE status IN ('scheduled', 'started') AND end_time IS NOT NULL AND end_time < now()
 	`
@@ -443,7 +443,7 @@ func (m *sessionManager) FindSessionsPastEndTime(ctx context.Context) ([]*domain
 			&model.locationStreet,
 			&model.requiresApproval,
 			&model.teamCount,
-			&model.playersPerTeam,
+			&model.minPlayersPerTeam,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan session: %w", err)
@@ -494,7 +494,7 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 			location_street,
 			requires_approval,
 			team_count,
-			players_per_team
+			min_players_per_team
 		FROM activity.session
 		WHERE 1=1`,
 		Args: make([]any, 0),
@@ -648,7 +648,7 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 			&model.locationStreet,
 			&model.requiresApproval,
 			&model.teamCount,
-			&model.playersPerTeam,
+			&model.minPlayersPerTeam,
 		)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to scan session: %w", err)
@@ -790,7 +790,7 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter DiscoverSe
 				location_street,
 				requires_approval,
 				team_count,
-				players_per_team,
+				min_players_per_team,
 				(6371 * acos(LEAST(1, GREATEST(-1,
 					cos(radians($1)) * cos(radians(location_lat)) *
 					cos(radians(location_lng) - radians($2)) +
@@ -861,7 +861,7 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter DiscoverSe
 			&model.locationStreet,
 			&model.requiresApproval,
 			&model.teamCount,
-			&model.playersPerTeam,
+			&model.minPlayersPerTeam,
 			&distanceKM,
 		)
 		if err != nil {
@@ -966,8 +966,8 @@ func sessionModelFromDomain(s *domain.Session) *sessionModel {
 	// Team config
 	if tc := s.TeamConfig(); tc != nil {
 		model.teamCount = sql.NullInt32{Int32: int32(tc.TeamCount()), Valid: true}
-		if ppt := tc.PlayersPerTeam(); ppt != nil {
-			model.playersPerTeam = sql.NullInt32{Int32: int32(*ppt), Valid: true}
+		if ppt := tc.MinPlayersPerTeam(); ppt != nil {
+			model.minPlayersPerTeam = sql.NullInt32{Int32: int32(*ppt), Valid: true}
 		}
 	}
 
@@ -1040,10 +1040,10 @@ func sessionModelToDomain(model *sessionModel, teams []*domain.Team) (*domain.Se
 
 	var teamConfig *domain.TeamConfig
 	if model.teamCount.Valid {
-		var playersPerTeam *int
-		if model.playersPerTeam.Valid {
-			p := int(model.playersPerTeam.Int32)
-			playersPerTeam = &p
+		var minPlayersPerTeam *int
+		if model.minPlayersPerTeam.Valid {
+			p := int(model.minPlayersPerTeam.Int32)
+			minPlayersPerTeam = &p
 		}
 
 		colors := make([]string, 0, len(teams))
@@ -1053,7 +1053,7 @@ func sessionModelToDomain(model *sessionModel, teams []*domain.Team) (*domain.Se
 			}
 		}
 
-		tc := domain.ReconstructTeamConfig(int(model.teamCount.Int32), playersPerTeam, colors)
+		tc := domain.ReconstructTeamConfig(int(model.teamCount.Int32), minPlayersPerTeam, colors)
 		teamConfig = &tc
 	}
 

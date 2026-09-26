@@ -138,6 +138,10 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		txManager,
 		log,
 	)
+	teamDraftRepo := persistence.NewTeamDraftRepository(
+		txManager,
+		log,
+	)
 
 	// Initialize services
 	sessionTemplateService := application.NewSessionTemplateService(
@@ -163,6 +167,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		memberRepo,
 		activityGroupRepo,
 		attendeeRepo,
+		teamDraftRepo,
 		domainEventMgr,
 		appMetrics,
 	)
@@ -180,6 +185,16 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		attendeeRepo,
 		memberRepo,
 		sessionRepo,
+		teamDraftRepo,
+		domainEventMgr,
+		appMetrics,
+	)
+	teamDraftService := application.NewTeamDraftService(
+		log,
+		txManager,
+		sessionRepo,
+		attendeeRepo,
+		teamDraftRepo,
 		domainEventMgr,
 		appMetrics,
 	)
@@ -212,6 +227,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		attendeeService,
 		inviteService,
 		sessionInviteService,
+		teamDraftService,
 		log,
 	)
 

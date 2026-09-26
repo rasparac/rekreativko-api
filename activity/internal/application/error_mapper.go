@@ -101,16 +101,42 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.ValidationError("teams_not_supported", "Teams are only supported for team sports (basketball, football, volleyball)", err)
 	case errors.Is(err, domain.ErrInvalidTeamCount):
 		return domainerror.ValidationError("invalid_team_count", "Team count must be between 2 and 8", err)
-	case errors.Is(err, domain.ErrInvalidPlayersPerTeam):
-		return domainerror.ValidationError("invalid_players_per_team", "Players per team must be a positive integer", err)
+	case errors.Is(err, domain.ErrInvalidMinPlayersPerTeam):
+		return domainerror.ValidationError("invalid_min_players_per_team", "Minimum players per team must be a positive integer", err)
 	case errors.Is(err, domain.ErrInvalidTeamColors):
 		return domainerror.ValidationError("invalid_team_colors", "Team colors must be #RRGGBB hex values, one per team", err)
 	case errors.Is(err, domain.ErrSessionHasNoTeams):
 		return domainerror.Conflict("session_has_no_teams", "Session is not split into teams", err)
 	case errors.Is(err, domain.ErrTeamNotFound):
 		return domainerror.NotFound("team_not_found", "Team not found", err)
-	case errors.Is(err, domain.ErrTeamFull):
-		return domainerror.Conflict("team_full", "Team has reached its player limit", err)
+	case errors.Is(err, domain.ErrNotEnoughPlayers):
+		return domainerror.Conflict("not_enough_players", "Not enough people are going for these teams", err)
+	}
+
+	// Team draft errors
+	switch {
+	case errors.Is(err, domain.ErrInvalidPickOrder):
+		return domainerror.ValidationError("invalid_pick_order", "Pick order must be snake or alternate", err)
+	case errors.Is(err, domain.ErrInvalidDraftCaptains):
+		return domainerror.ValidationError("invalid_captains", "A draft needs two different captains, each from their own team or the pool", err)
+	case errors.Is(err, domain.ErrDraftCaptainNotConfirmed):
+		return domainerror.ValidationError("invalid_captains", "Draft captains must be going", err)
+	case errors.Is(err, domain.ErrDraftAlreadyActive):
+		return domainerror.Conflict("draft_already_active", "A team draft is running for this session", err)
+	case errors.Is(err, domain.ErrDraftNotActive):
+		return domainerror.Conflict("draft_not_active", "No team draft is running for this session", err)
+	case errors.Is(err, domain.ErrDraftPaused):
+		return domainerror.Conflict("draft_paused", "The team draft is paused until a captain is replaced", err)
+	case errors.Is(err, domain.ErrDraftNotPaused):
+		return domainerror.Conflict("draft_not_paused", "The team draft is not waiting for a new captain", err)
+	case errors.Is(err, domain.ErrDraftNotFound):
+		return domainerror.NotFound("draft_not_found", "This session has no team draft", err)
+	case errors.Is(err, domain.ErrNotDraftCaptain):
+		return domainerror.Forbidden("not_draft_captain", "Only a draft captain can pick players", err)
+	case errors.Is(err, domain.ErrNotYourTurn):
+		return domainerror.Conflict("not_your_turn", "It is not your turn to pick", err)
+	case errors.Is(err, domain.ErrPlayerNotAvailable):
+		return domainerror.Conflict("player_not_available", "Player is not available to pick", err)
 	}
 
 	// Attendee errors

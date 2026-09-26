@@ -491,6 +491,34 @@ func (s *Session) CreateTeams(
 	return nil
 }
 
+// ApplyDraftTeams replaces the session's teams with the two teams of a
+// completed draft (Team A = side A). Authorization was checked when the draft
+// was started - completion is triggered by a captain's pick or by someone
+// leaving, neither of whom needs to manage the session. As with CreateTeams,
+// the caller first unassigns everyone from the old teams, then assigns each
+// roster with Attendee.AssignFromDraft.
+func (s *Session) ApplyDraftTeams(draft *TeamDraft) error {
+	if !draft.IsCompleted() {
+		return ErrDraftNotActive
+	}
+
+	if err := s.requireTeamsChangeable(); err != nil {
+		return err
+	}
+
+	replaced := s.HasTeams()
+	now := time.Now().UTC()
+	config := draft.TeamConfig()
+
+	s.teamConfig = &config
+	s.teams = newTeams(s.id, config, now)
+	s.updatedAt = now
+
+	s.addEvent(NewSessionTeamsCreatedEvent(s, draft.StartedBy(), replaced))
+
+	return nil
+}
+
 // requireTeamsEditable checks the session is split into teams and still in a
 // state where team membership can change.
 func (s *Session) requireTeamsEditable() error {

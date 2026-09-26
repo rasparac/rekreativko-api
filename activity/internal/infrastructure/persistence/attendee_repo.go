@@ -37,7 +37,6 @@ type AttendeeRepository interface {
 	GetFirstPendingAttendee(ctx context.Context, sessionID uuid.UUID) (*domain.Attendee, error)
 	CountConfirmedAttendees(ctx context.Context, sessionID uuid.UUID) (int, error)
 	GetAttendeeStatusesForUser(ctx context.Context, userID uuid.UUID, sessionIDs []uuid.UUID) (map[uuid.UUID]domain.AttendeeStatus, error)
-	CountTeamMembers(ctx context.Context, teamID uuid.UUID) (int, error)
 	ListTeamMembers(ctx context.Context, sessionID uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
 }
 
@@ -426,22 +425,6 @@ func (a *attendeeManager) CountConfirmedAttendees(ctx context.Context, sessionID
 	err := q.QueryRow(ctx, query, sessionID).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count confirmed attendees: %w", err)
-	}
-
-	return count, nil
-}
-
-// CountTeamMembers counts the active attendees currently assigned to a team.
-func (a *attendeeManager) CountTeamMembers(ctx context.Context, teamID uuid.UUID) (int, error) {
-	query := `
-		SELECT COUNT(*)
-		FROM activity.session_attendee
-		WHERE team_id = $1 AND deleted_at IS NULL
-	`
-
-	var count int
-	if err := a.tx.Querier(ctx).QueryRow(ctx, query, teamID).Scan(&count); err != nil {
-		return 0, fmt.Errorf("failed to count team members: %w", err)
 	}
 
 	return count, nil

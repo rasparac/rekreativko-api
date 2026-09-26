@@ -417,7 +417,7 @@ func (h *Handler) RemoveAttendee(w http.ResponseWriter, r *http.Request) {
 // AssignAttendeeTeam handles PUT /api/v1/sessions/{sessionId}/rsvp/{userId}/team
 //
 //	@Summary		Assign an attendee to a team
-//	@Description	Puts a confirmed (going/promoted) attendee on one of the session's teams, or moves them there from another team. Session creator or group admin/creator only. Rejected with 409 when the team already has players_per_team members.
+//	@Description	Puts a confirmed (going/promoted) attendee on one of the session's teams, or moves them there from another team. Session creator or group admin/creator only. There is no team size limit - min_players_per_team is a minimum and never blocks assignment. Rejected with 409 draft_already_active while a captain draft is running.
 //	@Tags			RSVPs
 //	@Accept			json
 //	@Produce		json
@@ -429,7 +429,7 @@ func (h *Handler) RemoveAttendee(w http.ResponseWriter, r *http.Request) {
 //	@Failure		400			{object}	api.Response[any]					"Invalid request"
 //	@Failure		401			{object}	api.Response[any]					"Unauthorized"
 //	@Failure		404			{object}	api.Response[any]					"Session, attendee or team not found"
-//	@Failure		409			{object}	api.Response[any]					"Session has no teams, attendee not confirmed, team full, or session canceled/completed"
+//	@Failure		409			{object}	api.Response[any]					"Session has no teams, attendee not going, a captain draft is running, or session canceled/completed"
 //	@Failure		500			{object}	api.Response[any]					"Internal server error"
 //	@Router			/api/v1/sessions/{sessionId}/rsvp/{userId}/team [put]
 func (h *Handler) AssignAttendeeTeam(w http.ResponseWriter, r *http.Request) {

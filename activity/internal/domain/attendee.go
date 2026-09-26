@@ -382,16 +382,14 @@ func (a *Attendee) Remove(session *Session, removerID uuid.UUID, removerRole Mem
 }
 
 // AssignToTeam puts a confirmed attendee on one of the session's teams, or
-// moves them there from another team. currentTeamSize is the number of
-// attendees already on teamID - the caller must read it under the session
-// capacity lock so concurrent assignments can't both squeeze into the last
-// slot. Assigning to the team the attendee is already on is a no-op.
+// moves them there from another team. There is no size limit - the minimum
+// team size never blocks a manager arranging teams by hand. Assigning to the
+// team the attendee is already on is a no-op.
 func (a *Attendee) AssignToTeam(
 	session *Session,
 	teamID uuid.UUID,
 	requesterID uuid.UUID,
 	requesterRole MemberRole,
-	currentTeamSize int,
 ) error {
 	if !session.canManageSession(requesterID, requesterRole) {
 		return ErrUnauthorized
@@ -411,10 +409,6 @@ func (a *Attendee) AssignToTeam(
 
 	if a.teamID != nil && *a.teamID == teamID {
 		return nil
-	}
-
-	if !session.teamConfig.hasRoomFor(currentTeamSize) {
-		return ErrTeamFull
 	}
 
 	previous := a.teamID
@@ -448,6 +442,15 @@ func (a *Attendee) UnassignFromTeam(
 	a.releaseTeam(TeamUnassignReasonManual, requesterID)
 
 	return nil
+}
+
+// AssignFromDraft puts the attendee on the team their captain drafted them
+// into. The draft already enforced turns, availability and the per-team limit.
+func (a *Attendee) AssignFromDraft(teamID, captainID uuid.UUID) {
+	a.teamID = &teamID
+	a.updatedAt = time.Now().UTC()
+
+	a.addEvent(NewAttendeeTeamAssignedEvent(a, teamID, captainID))
 }
 
 // UnassignForReplacedTeams takes the attendee off their team because the

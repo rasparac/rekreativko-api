@@ -30,6 +30,7 @@ type AttendeeService struct {
 	attendeeRepo AttendeeRepository
 	memberRepo   MemberRepository
 	sessionRepo  SessionRepository
+	drafts       draftCoordinator
 	eventWriter  domainevent.EventWriter
 	tracer       trace.Tracer
 	metrics      *metrics.Metrics
@@ -42,6 +43,7 @@ func NewAttendeeService(
 	attendeeRepo AttendeeRepository,
 	memberRepo MemberRepository,
 	sessionRepo SessionRepository,
+	draftRepo TeamDraftRepository,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *AttendeeService {
@@ -51,6 +53,7 @@ func NewAttendeeService(
 		attendeeRepo: attendeeRepo,
 		memberRepo:   memberRepo,
 		sessionRepo:  sessionRepo,
+		drafts:       draftCoordinator{sessionRepo: sessionRepo, attendeeRepo: attendeeRepo, draftRepo: draftRepo},
 		eventWriter:  eventWriter,
 		tracer:       telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:      metrics,
@@ -448,6 +451,12 @@ func (s *AttendeeService) RemoveAttendee(
 			return fmt.Errorf("get session: %w", err)
 		}
 
+		// Freeing a spot can promote the waitlist and change a running draft,
+		// both read under this lock.
+		if err := s.lockSessionCapacity(tCtx, params.SessionID); err != nil {
+			return err
+		}
+
 		attendee, err := s.attendeeRepo.GetAttendeeBySessionAndUser(tCtx, params.SessionID, params.UserID)
 		if err != nil {
 			return fmt.Errorf("get attendee: %w", err)
@@ -473,6 +482,10 @@ func (s *AttendeeService) RemoveAttendee(
 			if err := s.promoteNextPending(tCtx, params.SessionID); err != nil {
 				log.Error(tCtx, "failed to promote next pending", "error", err)
 				// Don't fail the whole transaction
+			}
+
+			if err := s.syncDraftAfterLeaving(tCtx, params.SessionID, params.UserID); err != nil {
+				return err
 			}
 		}
 
@@ -541,17 +554,16 @@ func (s *AttendeeService) AssignAttendeeTeam(
 			return err
 		}
 
+		if err := s.drafts.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
+			return err
+		}
+
 		attendee, err = s.attendeeRepo.GetAttendeeBySessionAndUser(tCtx, params.SessionID, params.UserID)
 		if err != nil {
 			return fmt.Errorf("get attendee: %w", err)
 		}
 
-		teamSize, err := s.attendeeRepo.CountTeamMembers(tCtx, params.TeamID)
-		if err != nil {
-			return fmt.Errorf("count team members: %w", err)
-		}
-
-		if err := attendee.AssignToTeam(session, params.TeamID, params.RequesterID, requesterRole, teamSize); err != nil {
+		if err := attendee.AssignToTeam(session, params.TeamID, params.RequesterID, requesterRole); err != nil {
 			return fmt.Errorf("assign attendee to team: %w", err)
 		}
 
@@ -620,6 +632,10 @@ func (s *AttendeeService) UnassignAttendeeTeam(
 		}
 
 		if err := s.lockSessionCapacity(tCtx, params.SessionID); err != nil {
+			return err
+		}
+
+		if err := s.drafts.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
 			return err
 		}
 
@@ -753,6 +769,11 @@ func (s *AttendeeService) UpdateRSVP(
 				log.Error(txCtx, "failed to promote next pending", "error", err)
 				// Don't fail the whole transaction, just log it
 			}
+
+			if err := s.syncDraftAfterLeaving(txCtx, params.SessionID, params.UserID); err != nil {
+				log.Error(txCtx, "failed to update team draft", "error", err)
+				return err
+			}
 		}
 
 		log.Info(
@@ -799,6 +820,12 @@ func (s *AttendeeService) CancelRSVP(
 	)
 
 	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		// Freeing a spot can promote the waitlist and change a running draft,
+		// both read under this lock.
+		if err := s.lockSessionCapacity(txCtx, sessionID); err != nil {
+			return err
+		}
+
 		// Get existing RSVP
 		attendee, err := s.attendeeRepo.GetAttendeeBySessionAndUser(
 			txCtx,
@@ -833,6 +860,11 @@ func (s *AttendeeService) CancelRSVP(
 			if err := s.promoteNextPending(txCtx, sessionID); err != nil {
 				log.Error(txCtx, "failed to promote next pending", "error", err)
 				// Don't fail the whole transaction
+			}
+
+			if err := s.syncDraftAfterLeaving(txCtx, sessionID, userID); err != nil {
+				log.Error(txCtx, "failed to update team draft", "error", err)
+				return err
 			}
 		}
 
@@ -959,6 +991,22 @@ func (s *AttendeeService) resolveSessionManagers(
 	}
 
 	return managerUserIDs, nil
+}
+
+// syncDraftAfterLeaving updates a running captain draft once userID no longer
+// holds a spot - after any waitlist promotion, so a promoted attendee is
+// already in the pool before the draft decides whether anyone is left.
+func (s *AttendeeService) syncDraftAfterLeaving(ctx context.Context, sessionID, userID uuid.UUID) error {
+	events, err := s.drafts.attendeeLeft(ctx, sessionID, userID)
+	if err != nil {
+		return fmt.Errorf("update team draft: %w", err)
+	}
+
+	if err := s.eventWriter.InsertEvents(ctx, activitySchema, events); err != nil {
+		return fmt.Errorf("insert draft events: %w", err)
+	}
+
+	return nil
 }
 
 // promoteNextPending promotes the next pending attendee from the waitlist

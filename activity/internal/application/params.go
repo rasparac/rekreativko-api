@@ -169,12 +169,12 @@ type CreateSessionParams struct {
 // CreateTeamsParams contains parameters for splitting a session into teams
 // (or replacing its existing teams)
 type CreateTeamsParams struct {
-	SessionID      uuid.UUID
-	RequesterID    uuid.UUID
-	RequesterRole  string
-	TeamCount      *int     // nil = domain.DefaultTeamCount
-	PlayersPerTeam *int     // nil = no per-team limit
-	Colors         []string // optional "#RRGGBB", one per team
+	SessionID         uuid.UUID
+	RequesterID       uuid.UUID
+	RequesterRole     string
+	TeamCount         *int     // nil = domain.DefaultTeamCount
+	MinPlayersPerTeam *int     // nil = no minimum; never a maximum
+	Colors            []string // optional "#RRGGBB", one per team
 }
 
 // UpdateSessionParams contains parameters for updating a session
@@ -338,6 +338,41 @@ type AssignAttendeeTeamParams struct {
 	SessionID     uuid.UUID
 	UserID        uuid.UUID
 	TeamID        uuid.UUID
+	RequesterID   uuid.UUID
+	RequesterRole string
+}
+
+// StartDraftParams contains parameters for starting a captain draft
+type StartDraftParams struct {
+	SessionID         uuid.UUID
+	RequesterID       uuid.UUID
+	RequesterRole     string
+	CaptainIDs        [2]uuid.UUID // captain A, captain B (A becomes Team A)
+	PickOrder         string       // "snake" (default) or "alternate"
+	MinPlayersPerTeam *int         // nil = no minimum; captains count towards it
+	Colors            []string     // optional "#RRGGBB" for Team A, Team B
+}
+
+// DraftPickParams contains parameters for a captain's pick
+type DraftPickParams struct {
+	SessionID uuid.UUID
+	CaptainID uuid.UUID // the caller
+	UserID    uuid.UUID // the player picked
+}
+
+// ReplaceDraftCaptainParams contains parameters for naming a new captain for a
+// side whose captain left (the draft is paused until then)
+type ReplaceDraftCaptainParams struct {
+	SessionID     uuid.UUID
+	RequesterID   uuid.UUID
+	RequesterRole string
+	TeamPosition  int       // 0 = Team A, 1 = Team B
+	UserID        uuid.UUID // the new captain: from that team or the pool
+}
+
+// CancelDraftParams contains parameters for cancelling a captain draft
+type CancelDraftParams struct {
+	SessionID     uuid.UUID
 	RequesterID   uuid.UUID
 	RequesterRole string
 }

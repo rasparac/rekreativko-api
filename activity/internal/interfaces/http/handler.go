@@ -95,6 +95,15 @@ type (
 		ListMyInvites(ctx context.Context, userID uuid.UUID, params application.ListMyInvitesParams) ([]*domain.SessionInvite, string, error)
 	}
 
+	// teamDraftService defines the interface for captain draft operations
+	teamDraftService interface {
+		StartDraft(ctx context.Context, params application.StartDraftParams) (*application.TeamDraftState, error)
+		Pick(ctx context.Context, params application.DraftPickParams) (*application.TeamDraftState, error)
+		ReplaceCaptain(ctx context.Context, params application.ReplaceDraftCaptainParams) (*application.TeamDraftState, error)
+		CancelDraft(ctx context.Context, params application.CancelDraftParams) (*application.TeamDraftState, error)
+		GetDraft(ctx context.Context, sessionID uuid.UUID) (*application.TeamDraftState, error)
+	}
+
 	// Handler handles HTTP requests for the activity module
 	Handler struct {
 		sessionTemplateService sessionTemplateService
@@ -104,6 +113,7 @@ type (
 		attendeeService        attendeeService
 		inviteService          inviteService
 		sessionInviteService   sessionInviteService
+		teamDraftService       teamDraftService
 		logger                 *logger.Logger
 	}
 )
@@ -117,6 +127,7 @@ func NewHandler(
 	attendeeService attendeeService,
 	inviteService inviteService,
 	sessionInviteService sessionInviteService,
+	teamDraftService teamDraftService,
 	logger *logger.Logger,
 ) *Handler {
 	return &Handler{
@@ -127,6 +138,7 @@ func NewHandler(
 		attendeeService:        attendeeService,
 		inviteService:          inviteService,
 		sessionInviteService:   sessionInviteService,
+		teamDraftService:       teamDraftService,
 		logger:                 logger.WithName("activity.http.handler"),
 	}
 }
@@ -236,6 +248,26 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"POST /api/v1/sessions/{id}/teams",
 		middlewares.ThenFunc(h.CreateTeams),
+	)
+	mux.Handle(
+		"POST /api/v1/sessions/{id}/draft/picks",
+		middlewares.ThenFunc(h.PickDraftPlayer),
+	)
+	mux.Handle(
+		"PUT /api/v1/sessions/{id}/draft/captains",
+		middlewares.ThenFunc(h.ReplaceDraftCaptain),
+	)
+	mux.Handle(
+		"POST /api/v1/sessions/{id}/draft",
+		middlewares.ThenFunc(h.StartDraft),
+	)
+	mux.Handle(
+		"GET /api/v1/sessions/{id}/draft",
+		middlewares.ThenFunc(h.GetDraft),
+	)
+	mux.Handle(
+		"DELETE /api/v1/sessions/{id}/draft",
+		middlewares.ThenFunc(h.CancelDraft),
 	)
 
 	// Member routes (ordered from most specific to least specific)

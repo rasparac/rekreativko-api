@@ -29,6 +29,7 @@ type SessionService struct {
 	memberRepo   MemberRepository
 	groupRepo    ActivityGroupRepository
 	attendeeRepo AttendeeRepository
+	drafts       draftCoordinator
 	eventWriter  domainevent.EventWriter
 	tracer       trace.Tracer
 	metrics      *metrics.Metrics
@@ -59,6 +60,7 @@ func NewSessionService(
 	memberRepo MemberRepository,
 	groupRepo ActivityGroupRepository,
 	attendeeRepo AttendeeRepository,
+	draftRepo TeamDraftRepository,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *SessionService {
@@ -69,6 +71,7 @@ func NewSessionService(
 		memberRepo:   memberRepo,
 		groupRepo:    groupRepo,
 		attendeeRepo: attendeeRepo,
+		drafts:       draftCoordinator{sessionRepo: sessionRepo, attendeeRepo: attendeeRepo, draftRepo: draftRepo},
 		eventWriter:  eventWriter,
 		tracer:       telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:      metrics,
@@ -314,7 +317,7 @@ func (s *SessionService) CreateTeams(
 		return nil, MapErrToAppError(err)
 	}
 
-	teamConfig, err := domain.NewTeamConfig(params.TeamCount, params.PlayersPerTeam, params.Colors)
+	teamConfig, err := domain.NewTeamConfig(params.TeamCount, params.MinPlayersPerTeam, params.Colors)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "invalid team config", "error", err)
@@ -332,6 +335,10 @@ func (s *SessionService) CreateTeams(
 		// Same lock as team assignment and capacity checks, so nobody can be
 		// assigned to an old team while it is being replaced.
 		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
+			return err
+		}
+
+		if err := s.drafts.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
 			return err
 		}
 

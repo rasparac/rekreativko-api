@@ -21,19 +21,20 @@ var teamColorPattern = regexp.MustCompile(`^#[0-9A-F]{6}$`)
 // TeamConfig is the optional team setup of a session or session template.
 // A nil *TeamConfig means the session has no teams (a flat attendee pool).
 //
-// PlayersPerTeam is optional and deliberately independent of the session
-// capacity: nil means a team has no size limit. Colors are optional too
-// (e.g. shirt/bib colors) - either none, or exactly one per team.
+// MinPlayersPerTeam is optional: "at least this many per team to play", with
+// no upper limit - a team is never full, and everyone going plays (no subs).
+// It is independent of the session capacity. Colors are optional too (e.g.
+// shirt/bib colors) - either none, or exactly one per team.
 type TeamConfig struct {
-	teamCount      int
-	playersPerTeam *int
-	colors         []string
+	teamCount         int
+	minPlayersPerTeam *int
+	colors            []string
 }
 
 // NewTeamConfig validates and builds a team config. teamCount nil falls back
 // to DefaultTeamCount. Colors are "#RRGGBB" hex strings, normalized to upper
 // case.
-func NewTeamConfig(teamCount *int, playersPerTeam *int, colors []string) (TeamConfig, error) {
+func NewTeamConfig(teamCount *int, minPlayersPerTeam *int, colors []string) (TeamConfig, error) {
 	count := DefaultTeamCount
 	if teamCount != nil {
 		count = *teamCount
@@ -43,8 +44,8 @@ func NewTeamConfig(teamCount *int, playersPerTeam *int, colors []string) (TeamCo
 		return TeamConfig{}, ErrInvalidTeamCount
 	}
 
-	if playersPerTeam != nil && *playersPerTeam <= 0 {
-		return TeamConfig{}, ErrInvalidPlayersPerTeam
+	if minPlayersPerTeam != nil && *minPlayersPerTeam <= 0 {
+		return TeamConfig{}, ErrInvalidMinPlayersPerTeam
 	}
 
 	if len(colors) != 0 && len(colors) != count {
@@ -61,19 +62,19 @@ func NewTeamConfig(teamCount *int, playersPerTeam *int, colors []string) (TeamCo
 	}
 
 	return TeamConfig{
-		teamCount:      count,
-		playersPerTeam: playersPerTeam,
-		colors:         normalized,
+		teamCount:         count,
+		minPlayersPerTeam: minPlayersPerTeam,
+		colors:            normalized,
 	}, nil
 }
 
 // ReconstructTeamConfig rebuilds a team config from persisted data without
 // running validations.
-func ReconstructTeamConfig(teamCount int, playersPerTeam *int, colors []string) TeamConfig {
+func ReconstructTeamConfig(teamCount int, minPlayersPerTeam *int, colors []string) TeamConfig {
 	return TeamConfig{
-		teamCount:      teamCount,
-		playersPerTeam: playersPerTeam,
-		colors:         colors,
+		teamCount:         teamCount,
+		minPlayersPerTeam: minPlayersPerTeam,
+		colors:            colors,
 	}
 }
 
@@ -81,8 +82,25 @@ func (c TeamConfig) TeamCount() int {
 	return c.teamCount
 }
 
-func (c TeamConfig) PlayersPerTeam() *int {
-	return c.playersPerTeam
+func (c TeamConfig) MinPlayersPerTeam() *int {
+	return c.minPlayersPerTeam
+}
+
+// PlayersNeeded is how many people must be going for this setup to be
+// playable: team count x the minimum, or one per team when no minimum is set.
+// Flows that form teams from everyone going (captain draft, proposals) require
+// it; assigning by hand never does.
+func (c TeamConfig) PlayersNeeded() int {
+	perTeam := 1
+	if c.minPlayersPerTeam != nil {
+		perTeam = *c.minPlayersPerTeam
+	}
+	return c.teamCount * perTeam
+}
+
+// HasEnoughPlayers reports whether going people are enough (PlayersNeeded).
+func (c TeamConfig) HasEnoughPlayers(going int) bool {
+	return going >= c.PlayersNeeded()
 }
 
 func (c TeamConfig) Colors() []string {
@@ -97,15 +115,6 @@ func (c TeamConfig) EnsureSupportedBy(activityType ActivityType) error {
 		return ErrTeamsNotSupported
 	}
 	return nil
-}
-
-// hasRoomFor reports whether a team currently holding currentSize players can
-// take one more.
-func (c TeamConfig) hasRoomFor(currentSize int) bool {
-	if c.playersPerTeam == nil {
-		return true
-	}
-	return currentSize < *c.playersPerTeam
 }
 
 // Team is one side of a session split into teams. Teams are created together

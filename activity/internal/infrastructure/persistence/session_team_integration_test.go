@@ -4,8 +4,6 @@ package persistence_test
 
 import (
 	"context"
-	"errors"
-	"sync"
 	"testing"
 	"time"
 
@@ -23,6 +21,7 @@ type sessionTeamTestEnv struct {
 	ctx          context.Context
 	svc          *application.AttendeeService
 	sessionSvc   *application.SessionService
+	draftSvc     *application.TeamDraftService
 	sessionRepo  application.SessionRepository
 	attendeeRepo application.AttendeeRepository
 }
@@ -38,12 +37,14 @@ func setupSessionTeamTest(t *testing.T) *sessionTeamTestEnv {
 	attendeeRepo := persistence.NewAttendeeRepository(txManager, logger)
 	memberRepo := persistence.NewMemberRepository(txManager, logger)
 	groupRepo := persistence.NewActivityGroupRepository(txManager, logger)
+	draftRepo := persistence.NewTeamDraftRepository(txManager, logger)
 	eventWriter := domainevent.NewDomainEventManager(txManager)
 
 	return &sessionTeamTestEnv{
 		ctx:          context.Background(),
-		svc:          application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, eventWriter, testMetrics()),
-		sessionSvc:   application.NewSessionService(logger, txManager, sessionRepo, memberRepo, groupRepo, attendeeRepo, eventWriter, testMetrics()),
+		svc:          application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, draftRepo, eventWriter, testMetrics()),
+		sessionSvc:   application.NewSessionService(logger, txManager, sessionRepo, memberRepo, groupRepo, attendeeRepo, draftRepo, eventWriter, testMetrics()),
+		draftSvc:     application.NewTeamDraftService(logger, txManager, sessionRepo, attendeeRepo, draftRepo, eventWriter, testMetrics()),
 		sessionRepo:  sessionRepo,
 		attendeeRepo: attendeeRepo,
 	}
@@ -79,24 +80,24 @@ func (e *sessionTeamTestEnv) createSession(t *testing.T, activityType domain.Act
 	return session
 }
 
-func (e *sessionTeamTestEnv) createTeams(session *domain.Session, teamCount, playersPerTeam *int, colors []string) (*domain.Session, error) {
+func (e *sessionTeamTestEnv) createTeams(session *domain.Session, teamCount, minPlayersPerTeam *int, colors []string) (*domain.Session, error) {
 	return e.sessionSvc.CreateTeams(e.ctx, application.CreateTeamsParams{
-		SessionID:      session.ID(),
-		RequesterID:    session.CreatedByID(), // standalone session: creator manages it, no group role
-		TeamCount:      teamCount,
-		PlayersPerTeam: playersPerTeam,
-		Colors:         colors,
+		SessionID:         session.ID(),
+		RequesterID:       session.CreatedByID(), // standalone session: creator manages it, no group role
+		TeamCount:         teamCount,
+		MinPlayersPerTeam: minPlayersPerTeam,
+		Colors:            colors,
 	})
 }
 
 // createTeamSession creates a basketball session and splits it into two teams
 // through the service, the way the creator does once people have joined.
-func (e *sessionTeamTestEnv) createTeamSession(t *testing.T, playersPerTeam *int, colors []string) *domain.Session {
+func (e *sessionTeamTestEnv) createTeamSession(t *testing.T, minPlayersPerTeam *int, colors []string) *domain.Session {
 	t.Helper()
 
 	session := e.createSession(t, domain.ActivityTypeBasketball)
 
-	withTeams, err := e.createTeams(session, nil, playersPerTeam, colors)
+	withTeams, err := e.createTeams(session, nil, minPlayersPerTeam, colors)
 	require.NoError(t, err)
 
 	return withTeams
@@ -132,7 +133,7 @@ func TestSessionRepository_TeamsRoundTrip(t *testing.T) {
 
 	require.True(t, loaded.HasTeams())
 	assert.Equal(t, 2, loaded.TeamConfig().TeamCount())
-	assert.Equal(t, testutil.Ptr(5), loaded.TeamConfig().PlayersPerTeam())
+	assert.Equal(t, testutil.Ptr(5), loaded.TeamConfig().MinPlayersPerTeam())
 	require.Len(t, loaded.Teams(), 2)
 	assert.Equal(t, session.Teams()[0].ID(), loaded.Teams()[0].ID())
 	assert.Equal(t, "Team A", loaded.Teams()[0].Name())
@@ -183,73 +184,24 @@ func TestAttendeeService_AssignTeam_PersistsAndListsMembers(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	count, err := env.attendeeRepo.CountTeamMembers(env.ctx, teamB)
+	members, err = env.attendeeRepo.ListTeamMembers(env.ctx, session.ID())
 	require.NoError(t, err)
-	assert.Zero(t, count)
+	assert.Empty(t, members[teamB])
 }
 
-func TestAttendeeService_AssignTeam_TeamFull(t *testing.T) {
+// D1: min_players_per_team is a minimum, never a cap on assignment.
+func TestAttendeeService_AssignTeam_MinimumIsNotALimit(t *testing.T) {
 	env := setupSessionTeamTest(t)
 	session := env.createTeamSession(t, testutil.Ptr(1), nil)
 	teamA := session.Teams()[0].ID()
 
-	require.NoError(t, env.assign(session, env.addGoingAttendee(t, session), teamA))
-
-	err := env.assign(session, env.addGoingAttendee(t, session), teamA)
-	assert.ErrorIs(t, err, domain.ErrTeamFull)
-}
-
-// TestAttendeeService_AssignTeam_Concurrent_DoesNotOverfillTeam mirrors
-// TestAttendeeService_UpdateRSVP_ConcurrentGoing_DoesNotOverbook: two
-// concurrent assignments into the last slot of a players_per_team=1 team must
-// never both succeed. Without the session advisory lock both would read a
-// team size of 0 and both commit.
-func TestAttendeeService_AssignTeam_Concurrent_DoesNotOverfillTeam(t *testing.T) {
-	env := setupSessionTeamTest(t)
-	session := env.createTeamSession(t, testutil.Ptr(1), nil)
-	teamA := session.Teams()[0].ID()
-
-	userA := env.addGoingAttendee(t, session)
-	userB := env.addGoingAttendee(t, session)
-
-	const attempts = 20
-	for i := range attempts {
-		var wg sync.WaitGroup
-		errs := make([]error, 2)
-
-		for idx, userID := range []uuid.UUID{userA, userB} {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				errs[idx] = env.assign(session, userID, teamA)
-			}()
-		}
-		wg.Wait()
-
-		succeeded := 0
-		for _, err := range errs {
-			if err == nil {
-				succeeded++
-				continue
-			}
-			require.Truef(t, errors.Is(err, domain.ErrTeamFull), "unexpected error on attempt %d: %v", i, err)
-		}
-		require.Equalf(t, 1, succeeded, "exactly one assignment should win on attempt %d", i)
-
-		count, err := env.attendeeRepo.CountTeamMembers(env.ctx, teamA)
-		require.NoError(t, err)
-		require.Equalf(t, 1, count, "team with players_per_team=1 has %d members on attempt %d - overfilled", count, i)
-
-		// Free the slot again for the next attempt.
-		for _, userID := range []uuid.UUID{userA, userB} {
-			_, err := env.svc.UnassignAttendeeTeam(env.ctx, application.UnassignAttendeeTeamParams{
-				SessionID:   session.ID(),
-				UserID:      userID,
-				RequesterID: session.CreatedByID(),
-			})
-			require.NoError(t, err)
-		}
+	for range 3 {
+		require.NoError(t, env.assign(session, env.addGoingAttendee(t, session), teamA))
 	}
+
+	members, err := env.attendeeRepo.ListTeamMembers(env.ctx, session.ID())
+	require.NoError(t, err)
+	assert.Len(t, members[teamA], 3)
 }
 
 func TestAttendeeService_LeavingFreesTeamSlot(t *testing.T) {
@@ -267,9 +219,7 @@ func TestAttendeeService_LeavingFreesTeamSlot(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.Nil(t, attendee.TeamID())
-
-		// the freed slot can be taken
-		assert.NoError(t, env.assign(session, env.addGoingAttendee(t, session), teamA))
+		env.requireNotOnAnyTeam(t, session, leaver)
 	})
 
 	t.Run("rsvp cancelled", func(t *testing.T) {
@@ -281,7 +231,7 @@ func TestAttendeeService_LeavingFreesTeamSlot(t *testing.T) {
 
 		require.NoError(t, env.svc.CancelRSVP(env.ctx, session.ID(), leaver))
 
-		assert.NoError(t, env.assign(session, env.addGoingAttendee(t, session), teamA))
+		env.requireNotOnAnyTeam(t, session, leaver)
 	})
 
 	t.Run("removed by manager", func(t *testing.T) {
@@ -297,8 +247,18 @@ func TestAttendeeService_LeavingFreesTeamSlot(t *testing.T) {
 			RequesterID: session.CreatedByID(),
 		}))
 
-		assert.NoError(t, env.assign(session, env.addGoingAttendee(t, session), teamA))
+		env.requireNotOnAnyTeam(t, session, removed)
 	})
+}
+
+func (e *sessionTeamTestEnv) requireNotOnAnyTeam(t *testing.T, session *domain.Session, userID uuid.UUID) {
+	t.Helper()
+
+	members, err := e.attendeeRepo.ListTeamMembers(e.ctx, session.ID())
+	require.NoError(t, err)
+	for teamID, userIDs := range members {
+		require.NotContainsf(t, userIDs, userID, "still on team %s", teamID)
+	}
 }
 
 func TestSessionService_CreateTeams_AfterPeopleJoined(t *testing.T) {
@@ -337,7 +297,7 @@ func TestSessionService_CreateTeams_ReplacesTeamsAndUnassignsEveryone(t *testing
 	loaded, err := env.sessionRepo.GetSessionByID(env.ctx, session.ID())
 	require.NoError(t, err)
 	require.Len(t, loaded.Teams(), 3)
-	assert.Equal(t, testutil.Ptr(4), loaded.TeamConfig().PlayersPerTeam())
+	assert.Equal(t, testutil.Ptr(4), loaded.TeamConfig().MinPlayersPerTeam())
 	_, oldStillThere := loaded.Team(oldTeamA)
 	assert.False(t, oldStillThere)
 
