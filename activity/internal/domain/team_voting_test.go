@@ -352,6 +352,26 @@ func TestTeamVotingRound_TeamsReplaced(t *testing.T) {
 	assert.Equal(t, VotingCancelReasonTeamsReplaced, round.CancelReason())
 }
 
+func TestTeamVotingRound_SessionEnded(t *testing.T) {
+	users := newUsers(4)
+	session := newTestSessionOfType(t, ActivityTypeBasketball)
+	round, _ := openVoting(t, session, users)
+	round.ClearEvents()
+	version := round.Version()
+
+	round.SessionEnded()
+
+	assert.Equal(t, VotingStatusCancelled, round.Status())
+	assert.Equal(t, VotingCancelReasonSessionEnded, round.CancelReason())
+	assert.Greater(t, round.Version(), version)
+	assert.Equal(t, []string{EventActivitySessionVotingCancelled}, votingEventTypes(round))
+	assert.Empty(t, round.Proposals(), "an ended round is cleared")
+
+	round.ClearEvents()
+	round.SessionEnded()
+	assert.Empty(t, round.Events(), "ending an already-ended round is a no-op")
+}
+
 func TestSession_ApplyProposalTeams(t *testing.T) {
 	users := newUsers(4)
 	config, err := NewTeamConfig(nil, intPtr(2), []string{"#FFFFFF", "#000000"})

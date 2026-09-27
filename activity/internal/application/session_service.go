@@ -688,6 +688,11 @@ func (s *SessionService) CompleteSession(
 	}
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		// Serializes with draft/voting commands, which take the same lock.
+		if err := lockSessionCapacity(tCtx, s.txManager, sessionID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, sessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
@@ -703,10 +708,15 @@ func (s *SessionService) CompleteSession(
 			return fmt.Errorf("persist session completion: %w", err)
 		}
 
+		formationEvents, err := s.formation.sessionEnded(tCtx, sessionID, requesterID)
+		if err != nil {
+			return err
+		}
+
 		err = s.eventWriter.InsertEvents(
 			tCtx,
 			activitySchema,
-			session.Events(),
+			append(session.Events(), formationEvents...),
 		)
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
@@ -754,6 +764,10 @@ func (s *SessionService) ExpireCompletedSessions(ctx context.Context) (int, erro
 	var expiredCount int
 	for _, session := range sessions {
 		err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+			if err := lockSessionCapacity(tCtx, s.txManager, session.ID()); err != nil {
+				return err
+			}
+
 			if err := session.ExpireSchedule(now); err != nil {
 				return fmt.Errorf("expire session: %w", err)
 			}
@@ -762,7 +776,12 @@ func (s *SessionService) ExpireCompletedSessions(ctx context.Context) (int, erro
 				return fmt.Errorf("persist session expiry: %w", err)
 			}
 
-			if err := s.eventWriter.InsertEvents(tCtx, activitySchema, session.Events()); err != nil {
+			formationEvents, err := s.formation.sessionEnded(tCtx, session.ID(), uuid.Nil)
+			if err != nil {
+				return err
+			}
+
+			if err := s.eventWriter.InsertEvents(tCtx, activitySchema, append(session.Events(), formationEvents...)); err != nil {
 				return fmt.Errorf("insert domain events: %w", err)
 			}
 			session.ClearEvents()
@@ -816,6 +835,11 @@ func (s *SessionService) CancelSession(
 	}
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		// Serializes with draft/voting commands, which take the same lock.
+		if err := lockSessionCapacity(tCtx, s.txManager, sessionID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, sessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
@@ -836,10 +860,15 @@ func (s *SessionService) CancelSession(
 			return fmt.Errorf("persist session cancellation: %w", err)
 		}
 
+		formationEvents, err := s.formation.sessionEnded(tCtx, sessionID, requesterID)
+		if err != nil {
+			return err
+		}
+
 		err = s.eventWriter.InsertEvents(
 			tCtx,
 			activitySchema,
-			session.Events(),
+			append(session.Events(), formationEvents...),
 		)
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)

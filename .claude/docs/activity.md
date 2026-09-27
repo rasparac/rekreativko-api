@@ -340,7 +340,9 @@ mobile team's decisions D4-D9 (see the ticket design).
   `draft_paused`, `draft_not_paused`, `draft_already_active`, `invalid_captains` (422), `not_enough_players`,
   `draft_not_found` (404), `unauthorized`.
 - A draft can't start while team voting is open (`voting_open`), and nobody can propose while a draft runs.
-- Known gap: a draft is not ended when its session is cancelled/completed (rekreativko-api-6gg.7).
+- **Session ends** (cancelled, completed or auto-completed by the cron) -> a running draft is cancelled
+  (`cancelled_reason: session_ended`), under the session lock, so `GET` stops reporting a live turn
+  (`teamFormation.sessionEnded`).
 
 ### Team proposals and voting (6gg.3)
 
@@ -373,6 +375,7 @@ teams. Product rules are the mobile team's D10-D16 plus backend decisions on the
   minimum - it can still win, the organizer fixes it after) and loses their vote. Joiners can vote; they are in no
   proposal and stay unassigned when the winner is applied.
 - **Teams replaced** by `POST /teams` while open -> round cancelled (`teams_replaced`).
+- **Session ends** (cancelled, completed or auto-completed) while open -> round cancelled (`session_ended`).
 - **Concurrency:** every voting command takes the session advisory lock - saving a round rewrites its votes, so
   this is what keeps concurrent votes from being lost.
 - **Events** `activity.session.voting.*`: `opened` (first proposal), `proposal_created`, `vote_cast` (`changed`),

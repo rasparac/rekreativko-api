@@ -339,3 +339,76 @@ func TestTeamDraftService_ConcurrentPicks_OnlyOneWins(t *testing.T) {
 		require.Equal(t, u[1], *got.Draft.CurrentCaptainID())
 	}
 }
+
+// backdate moves the session into the past, so the expiry cron picks it up.
+// The domain refuses to schedule a session in the past, hence raw SQL.
+func (e *sessionTeamTestEnv) backdate(t *testing.T, session *domain.Session) {
+	t.Helper()
+
+	_, err := e.txManager.Querier(e.ctx).Exec(e.ctx,
+		`UPDATE activity.session SET start_time = now() - interval '2 hours', end_time = now() - interval '1 hour' WHERE id = $1`,
+		session.ID(),
+	)
+	require.NoError(t, err)
+}
+
+func TestTeamDraftService_SessionEndingCancelsTheDraft(t *testing.T) {
+	tests := []struct {
+		name       string
+		endSession func(t *testing.T, env *sessionTeamTestEnv, session *domain.Session)
+	}{
+		{
+			name: "cancelled",
+			endSession: func(t *testing.T, env *sessionTeamTestEnv, session *domain.Session) {
+				require.NoError(t, env.sessionSvc.CancelSession(env.ctx, session.ID(), session.CreatedByID(), "", "rain"))
+			},
+		},
+		{
+			name: "completed",
+			endSession: func(t *testing.T, env *sessionTeamTestEnv, session *domain.Session) {
+				require.NoError(t, env.sessionSvc.StartSession(env.ctx, session.ID(), session.CreatedByID(), ""))
+				require.NoError(t, env.sessionSvc.CompleteSession(env.ctx, session.ID(), session.CreatedByID(), string(domain.MemberRoleCreator)))
+			},
+		},
+		{
+			name: "auto-completed by the cron",
+			endSession: func(t *testing.T, env *sessionTeamTestEnv, session *domain.Session) {
+				env.backdate(t, session)
+				expired, err := env.sessionSvc.ExpireCompletedSessions(env.ctx)
+				require.NoError(t, err)
+				require.Equal(t, 1, expired)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := setupSessionTeamTest(t)
+			session, u := env.draftSession(t, 4)
+
+			_, err := env.startDraft(session, u[0], u[1], nil)
+			require.NoError(t, err)
+			_, err = env.pick(session, u[0], u[2])
+			require.NoError(t, err)
+
+			tt.endSession(t, env, session)
+
+			state, err := env.draftSvc.GetDraft(env.ctx, session.ID())
+			require.NoError(t, err)
+			assert.Equal(t, domain.DraftStatusCancelled, state.Draft.Status())
+			assert.Equal(t, domain.DraftCancelReasonSessionEnded, state.Draft.CancelReason())
+			assert.Nil(t, state.Draft.CurrentCaptainID())
+			assert.Nil(t, env.teamOf(t, session, u[2]), "a draft pick never reached the teams")
+		})
+	}
+}
+
+func TestSessionService_EndingWithoutDraftOrVoting(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session := env.createSession(t, domain.ActivityTypeBasketball)
+
+	require.NoError(t, env.sessionSvc.CancelSession(env.ctx, session.ID(), session.CreatedByID(), "", "rain"))
+
+	_, err := env.draftSvc.GetDraft(env.ctx, session.ID())
+	requireAppErrorCode(t, err, "draft_not_found")
+}

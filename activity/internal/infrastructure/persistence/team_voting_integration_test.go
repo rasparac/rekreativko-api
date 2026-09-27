@@ -279,6 +279,19 @@ func TestTeamVoting_ConcurrentVotes_NoneLost(t *testing.T) {
 	assert.Equal(t, 1+len(u), got.Round.Version(), "one version per vote")
 }
 
+func TestTeamVoting_SessionCancelledCancelsTheRound(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session, u := env.draftSession(t, 4)
+	_, err := env.propose(session, u[0], []uuid.UUID{u[0], u[1]}, []uuid.UUID{u[2], u[3]})
+	require.NoError(t, err)
+
+	require.NoError(t, env.sessionSvc.CancelSession(env.ctx, session.ID(), session.CreatedByID(), "", "rain"))
+
+	got := env.voting(t, session)
+	assert.Equal(t, domain.VotingStatusCancelled, got.Round.Status())
+	assert.Equal(t, domain.VotingCancelReasonSessionEnded, got.Round.CancelReason())
+}
+
 func ptr(v int) *int {
 	return &v
 }

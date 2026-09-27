@@ -246,6 +246,42 @@ func (c teamFormation) teamsReplaced(ctx context.Context, sessionID uuid.UUID) (
 	return events, nil
 }
 
+// sessionEnded cancels a running draft and an open voting round after the
+// session was cancelled or completed, so neither keeps presenting itself as
+// live. endedBy is uuid.Nil when the session was auto-completed. Returns the
+// events to insert.
+func (c teamFormation) sessionEnded(ctx context.Context, sessionID, endedBy uuid.UUID) ([]domainevent.Event, error) {
+	var events []domainevent.Event
+
+	draft, err := c.draftRepo.GetActiveDraft(ctx, sessionID)
+	switch {
+	case err == nil:
+		draft.SessionEnded(endedBy)
+		if err := c.draftRepo.UpdateDraft(ctx, draft); err != nil {
+			return nil, fmt.Errorf("persist draft: %w", err)
+		}
+		events = append(events, draft.Events()...)
+		draft.ClearEvents()
+	case !errors.Is(err, domain.ErrDraftNotFound):
+		return nil, fmt.Errorf("get active draft: %w", err)
+	}
+
+	round, err := c.openVoting(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if round != nil {
+		round.SessionEnded()
+		if err := c.votingRepo.UpdateRound(ctx, round); err != nil {
+			return nil, fmt.Errorf("persist voting round: %w", err)
+		}
+		events = append(events, round.Events()...)
+		round.ClearEvents()
+	}
+
+	return events, nil
+}
+
 // attendeeLeft updates a running draft and an open voting round after userID
 // stopped going. Call it after the attendee change (and any waitlist
 // promotion) is persisted, so the confirmed list is final. Returns the events

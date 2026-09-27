@@ -76,6 +76,7 @@ type DraftCancelReason string
 const (
 	DraftCancelReasonOrganizer        DraftCancelReason = "organizer"          // creator/admin cancelled it
 	DraftCancelReasonNotEnoughPlayers DraftCancelReason = "not_enough_players" // going count fell below TeamConfig.PlayersNeeded
+	DraftCancelReasonSessionEnded     DraftCancelReason = "session_ended"      // session was cancelled or completed mid-draft
 )
 
 // DraftPick is one player picked by a captain. PickNumber is the turn it was
@@ -392,6 +393,18 @@ func (d *TeamDraft) Cancel(session *Session, requesterID uuid.UUID, requesterRol
 	d.cancel(DraftCancelReasonOrganizer, requesterID, time.Now().UTC())
 
 	return nil
+}
+
+// SessionEnded cancels a running draft because its session was cancelled or
+// completed - nobody can pick any more, so it must not keep reporting a
+// current captain. endedBy is uuid.Nil when the session was auto-completed.
+func (d *TeamDraft) SessionEnded(endedBy uuid.UUID) {
+	if !d.IsRunning() {
+		return
+	}
+
+	d.version++
+	d.cancel(DraftCancelReasonSessionEnded, endedBy, time.Now().UTC())
 }
 
 func (d *TeamDraft) cancel(reason DraftCancelReason, by uuid.UUID, now time.Time) {

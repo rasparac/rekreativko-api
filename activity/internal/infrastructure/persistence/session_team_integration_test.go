@@ -12,6 +12,7 @@ import (
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
+	"github.com/rasparac/rekreativko-api/shared/store/postgres"
 	testutil "github.com/rasparac/rekreativko-api/shared/testing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,6 +26,7 @@ type sessionTeamTestEnv struct {
 	votingSvc    *application.TeamVotingService
 	sessionRepo  application.SessionRepository
 	attendeeRepo application.AttendeeRepository
+	txManager    *postgres.TransactionManager
 }
 
 func setupSessionTeamTest(t *testing.T) *sessionTeamTestEnv {
@@ -50,6 +52,7 @@ func setupSessionTeamTest(t *testing.T) *sessionTeamTestEnv {
 		votingSvc:    application.NewTeamVotingService(logger, txManager, sessionRepo, attendeeRepo, draftRepo, votingRepo, eventWriter, testMetrics()),
 		sessionRepo:  sessionRepo,
 		attendeeRepo: attendeeRepo,
+		txManager:    txManager,
 	}
 }
 

@@ -404,6 +404,47 @@ func TestTeamDraft_Cancel(t *testing.T) {
 	})
 }
 
+func TestTeamDraft_SessionEnded(t *testing.T) {
+	users := newUsers(4)
+
+	t.Run("cancels an active draft", func(t *testing.T) {
+		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
+		draft.ClearEvents()
+		version := draft.Version()
+
+		draft.SessionEnded(session.CreatedByID())
+
+		assert.Equal(t, DraftStatusCancelled, draft.Status())
+		assert.Equal(t, DraftCancelReasonSessionEnded, draft.CancelReason())
+		assert.Nil(t, draft.CurrentCaptainID(), "an ended draft has nobody on the clock")
+		assert.Greater(t, draft.Version(), version)
+		assert.Equal(t, []string{EventActivitySessionDraftCancelled}, draftEventTypes(draft))
+		assert.ErrorIs(t, draft.Pick(session, users[0], users[2], users), ErrDraftNotActive)
+	})
+
+	t.Run("cancels a paused draft", func(t *testing.T) {
+		_, draft := newTestDraft(t, users, PickOrderSnake, nil)
+		draft.AttendeeLeft(users[0], users[1:])
+		require.Equal(t, DraftStatusPaused, draft.Status())
+
+		draft.SessionEnded(uuid.Nil)
+
+		assert.Equal(t, DraftStatusCancelled, draft.Status())
+		assert.Empty(t, draft.PausedReason())
+	})
+
+	t.Run("leaves a finished draft alone", func(t *testing.T) {
+		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
+		require.NoError(t, draft.Cancel(session, session.CreatedByID(), ""))
+		draft.ClearEvents()
+
+		draft.SessionEnded(session.CreatedByID())
+
+		assert.Equal(t, DraftCancelReasonOrganizer, draft.CancelReason())
+		assert.Empty(t, draft.Events())
+	})
+}
+
 func TestTeamDraft_TurnOrder(t *testing.T) {
 	users := newUsers(6) // 4 players to pick
 	session, draft := newTestDraft(t, users, PickOrderSnake, nil)

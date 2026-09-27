@@ -22,6 +22,7 @@ type VotingCancelReason string
 const (
 	VotingCancelReasonNotEnoughPlayers VotingCancelReason = "not_enough_players" // going count fell below PlayersNeeded
 	VotingCancelReasonTeamsReplaced    VotingCancelReason = "teams_replaced"     // teams were recreated while voting
+	VotingCancelReasonSessionEnded     VotingCancelReason = "session_ended"      // session was cancelled or completed while voting
 )
 
 // KeepCurrentTeams is the vote choice "keep the current teams" - offered only
@@ -442,6 +443,17 @@ func (r *TeamVotingRound) TeamsReplaced() {
 
 	r.version++
 	r.cancel(VotingCancelReasonTeamsReplaced)
+}
+
+// SessionEnded cancels an open round because its session was cancelled or
+// completed - its result could never be applied.
+func (r *TeamVotingRound) SessionEnded() {
+	if r.status != VotingStatusOpen {
+		return
+	}
+
+	r.version++
+	r.cancel(VotingCancelReasonSessionEnded)
 }
 
 func (r *TeamVotingRound) cancel(reason VotingCancelReason) {
