@@ -38,6 +38,10 @@ type Subscriber struct {
 	inviteAcceptedHandler        *inviteAcceptedHandler
 	inviteDeclinedHandler        *inviteDeclinedHandler
 	inviteExpiredHandler         *inviteExpiredHandler
+	sessionInviteSentHandler     *sessionInviteSentHandler
+	sessionInviteAcceptedHandler *sessionInviteAcceptedHandler
+	sessionInviteDeclinedHandler *sessionInviteDeclinedHandler
+	sessionInviteExpiredHandler  *sessionInviteExpiredHandler
 }
 
 func NewSubscriber(
@@ -63,6 +67,10 @@ func NewSubscriber(
 		inviteAcceptedHandler:        &inviteAcceptedHandler{notifications: notifications, logger: logger},
 		inviteDeclinedHandler:        &inviteDeclinedHandler{notifications: notifications, logger: logger},
 		inviteExpiredHandler:         &inviteExpiredHandler{notifications: notifications, logger: logger},
+		sessionInviteSentHandler:     &sessionInviteSentHandler{notifications: notifications, logger: logger},
+		sessionInviteAcceptedHandler: &sessionInviteAcceptedHandler{notifications: notifications, logger: logger},
+		sessionInviteDeclinedHandler: &sessionInviteDeclinedHandler{notifications: notifications, logger: logger},
+		sessionInviteExpiredHandler:  &sessionInviteExpiredHandler{notifications: notifications, logger: logger},
 	}
 }
 
@@ -89,6 +97,10 @@ func (s *Subscriber) Subscribe(ctx context.Context) error {
 		{"activity.invite.accepted", s.inviteAcceptedHandler.Handle},
 		{"activity.invite.declined", s.inviteDeclinedHandler.Handle},
 		{"activity.invite.expired", s.inviteExpiredHandler.Handle},
+		{"activity.session_invite.sent", s.sessionInviteSentHandler.Handle},
+		{"activity.session_invite.accepted", s.sessionInviteAcceptedHandler.Handle},
+		{"activity.session_invite.declined", s.sessionInviteDeclinedHandler.Handle},
+		{"activity.session_invite.expired", s.sessionInviteExpiredHandler.Handle},
 	}
 
 	for _, sub := range subscriptions {

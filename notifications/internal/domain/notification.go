@@ -28,6 +28,12 @@ const (
 	NotificationTypeSessionAttendeeRemoved     NotificationType = "session_attendee_removed"
 	NotificationTypeMemberRemoved              NotificationType = "member_removed"
 	NotificationTypeSessionCancelled           NotificationType = "session_cancelled"
+	// Session invites - kept distinct from the group invite_* types above
+	// since the Data payload carries session_id, not group_id.
+	NotificationTypeSessionInviteSent     NotificationType = "session_invite_sent"
+	NotificationTypeSessionInviteAccepted NotificationType = "session_invite_accepted"
+	NotificationTypeSessionInviteDeclined NotificationType = "session_invite_declined"
+	NotificationTypeSessionInviteExpired  NotificationType = "session_invite_expired"
 )
 
 // Notification is a single item in a recipient's notification feed. Data

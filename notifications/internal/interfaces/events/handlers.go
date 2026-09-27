@@ -434,3 +434,124 @@ func (h *inviteExpiredHandler) Handle(ctx context.Context, payload []byte) error
 	}
 	return err
 }
+
+type sessionInviteSentHandler struct {
+	notifications notificationCreator
+	logger        *logger.Logger
+}
+
+func (h *sessionInviteSentHandler) Handle(ctx context.Context, payload []byte) error {
+	var event sessionInviteSentEvent
+	if err := json.Unmarshal(payload, &event); err != nil {
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
+	}
+	ctx = api.WithEventID(ctx, event.EventID.String())
+
+	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
+		RecipientAccountID: event.InvitedUserID,
+		Type:               string(domain.NotificationTypeSessionInviteSent),
+		Data: map[string]any{
+			"session_id": event.SessionID,
+			"invited_by": event.InvitedBy,
+			"expires_at": event.ExpiresAt,
+		},
+	})
+	if err != nil {
+		h.logger.Error(ctx, "failed to create session_invite_sent notification", "error", err)
+	}
+	return err
+}
+
+type sessionInviteAcceptedHandler struct {
+	notifications notificationCreator
+	logger        *logger.Logger
+}
+
+func (h *sessionInviteAcceptedHandler) Handle(ctx context.Context, payload []byte) error {
+	var event sessionInviteAcceptedEvent
+	if err := json.Unmarshal(payload, &event); err != nil {
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
+	}
+	ctx = api.WithEventID(ctx, event.EventID.String())
+
+	if event.InvitedBy == uuid.Nil {
+		return nil
+	}
+
+	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
+		RecipientAccountID: event.InvitedBy,
+		Type:               string(domain.NotificationTypeSessionInviteAccepted),
+		Data: map[string]any{
+			"session_id":      event.SessionID,
+			"invited_user_id": event.InvitedUserID,
+		},
+	})
+	if err != nil {
+		h.logger.Error(ctx, "failed to create session_invite_accepted notification", "error", err)
+	}
+	return err
+}
+
+type sessionInviteDeclinedHandler struct {
+	notifications notificationCreator
+	logger        *logger.Logger
+}
+
+func (h *sessionInviteDeclinedHandler) Handle(ctx context.Context, payload []byte) error {
+	var event sessionInviteDeclinedEvent
+	if err := json.Unmarshal(payload, &event); err != nil {
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
+	}
+	ctx = api.WithEventID(ctx, event.EventID.String())
+
+	if event.InvitedBy == uuid.Nil {
+		return nil
+	}
+
+	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
+		RecipientAccountID: event.InvitedBy,
+		Type:               string(domain.NotificationTypeSessionInviteDeclined),
+		Data: map[string]any{
+			"session_id":      event.SessionID,
+			"invited_user_id": event.InvitedUserID,
+		},
+	})
+	if err != nil {
+		h.logger.Error(ctx, "failed to create session_invite_declined notification", "error", err)
+	}
+	return err
+}
+
+type sessionInviteExpiredHandler struct {
+	notifications notificationCreator
+	logger        *logger.Logger
+}
+
+func (h *sessionInviteExpiredHandler) Handle(ctx context.Context, payload []byte) error {
+	var event sessionInviteExpiredEvent
+	if err := json.Unmarshal(payload, &event); err != nil {
+		return events.Permanent(fmt.Errorf("decode payload: %w", err))
+	}
+	ctx = api.WithEventID(ctx, event.EventID.String())
+
+	if event.InvitedBy == uuid.Nil {
+		return nil
+	}
+
+	_, err := h.notifications.CreateNotification(ctx, application.CreateNotificationParams{
+		EventID:            event.EventID,
+		RecipientAccountID: event.InvitedBy,
+		Type:               string(domain.NotificationTypeSessionInviteExpired),
+		Data: map[string]any{
+			"session_id":      event.SessionID,
+			"invited_user_id": event.InvitedUserID,
+		},
+	})
+	if err != nil {
+		h.logger.Error(ctx, "failed to create session_invite_expired notification", "error", err)
+	}
+	return err
+}

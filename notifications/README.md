@@ -51,6 +51,10 @@ Each subscription creates its own durable JetStream consumer (`<service>+<subjec
 | `activity.invite.accepted` | `invite_accepted` |
 | `activity.invite.declined` | `invite_declined` |
 | `activity.invite.expired` | `invite_expired` |
+| `activity.session_invite.sent` | `session_invite_sent` (to the invitee) |
+| `activity.session_invite.accepted` | `session_invite_accepted` (to the inviter) |
+| `activity.session_invite.declined` | `session_invite_declined` (to the inviter) |
+| `activity.session_invite.expired` | `session_invite_expired` (to the inviter) |
 
 ## Domain model
 

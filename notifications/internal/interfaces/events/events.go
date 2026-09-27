@@ -112,3 +112,32 @@ type inviteExpiredEvent struct {
 	InvitedBy     uuid.UUID `json:"invited_by"`
 	InvitedUserID uuid.UUID `json:"invited_user_id"`
 }
+
+type sessionInviteSentEvent struct {
+	EventID       uuid.UUID `json:"event_id"`
+	SessionID     uuid.UUID `json:"session_id"`
+	InvitedBy     uuid.UUID `json:"invited_by"`
+	InvitedUserID uuid.UUID `json:"invited_user_id"`
+	ExpiresAt     time.Time `json:"expires_at"`
+}
+
+type sessionInviteAcceptedEvent struct {
+	EventID       uuid.UUID `json:"event_id"`
+	SessionID     uuid.UUID `json:"session_id"`
+	InvitedBy     uuid.UUID `json:"invited_by"`
+	InvitedUserID uuid.UUID `json:"invited_user_id"`
+}
+
+type sessionInviteDeclinedEvent struct {
+	EventID       uuid.UUID `json:"event_id"`
+	SessionID     uuid.UUID `json:"session_id"`
+	InvitedBy     uuid.UUID `json:"invited_by"`
+	InvitedUserID uuid.UUID `json:"invited_user_id"`
+}
+
+type sessionInviteExpiredEvent struct {
+	EventID       uuid.UUID `json:"event_id"`
+	SessionID     uuid.UUID `json:"session_id"`
+	InvitedBy     uuid.UUID `json:"invited_by"`
+	InvitedUserID uuid.UUID `json:"invited_user_id"`
+}
