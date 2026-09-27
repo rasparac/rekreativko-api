@@ -110,6 +110,17 @@ var (
 	ErrPlayerNotAvailable       = errors.New("player is not available to pick")
 )
 
+// Team voting errors
+var (
+	ErrInvalidDivision         = errors.New("proposal must put everyone going on exactly one team, every team at or above the minimum")
+	ErrVotingNotOpen           = errors.New("voting is not open")
+	ErrVotingOpen              = errors.New("team voting is open for this session")
+	ErrProposalNotFound        = errors.New("proposal not found")
+	ErrKeepCurrentNotAvailable = errors.New("keep current teams is only an option when the session has teams")
+	ErrTieRequiresWinner       = errors.New("voting is tied; the organizer must pick the winner")
+	ErrInvalidWinner           = errors.New("the winner must be one of the options with the most votes")
+)
+
 // Recurrence errors
 var (
 	ErrRecurrenceRuleMissingInterval   = errors.New("interval must be specified for recurring activity")

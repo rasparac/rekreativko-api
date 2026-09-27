@@ -408,3 +408,29 @@ type ListMyInvitesParams struct {
 	Limit     int
 	PageToken string
 }
+
+// ProposeTeamsParams contains parameters for proposing a division into teams
+type ProposeTeamsParams struct {
+	SessionID uuid.UUID
+	AuthorID  uuid.UUID
+	Teams     [][]uuid.UUID // in order: first = Team A
+}
+
+// CastVoteParams contains parameters for voting (or changing a vote): either a
+// proposal, or KeepCurrent
+type CastVoteParams struct {
+	SessionID   uuid.UUID
+	VoterID     uuid.UUID
+	ProposalID  *uuid.UUID
+	KeepCurrent bool
+}
+
+// CloseVotingParams contains parameters for closing a voting round. The winner
+// is only needed on a tie: a proposal, or WinnerKeepCurrent.
+type CloseVotingParams struct {
+	SessionID         uuid.UUID
+	RequesterID       uuid.UUID
+	RequesterRole     string
+	WinnerProposalID  *uuid.UUID
+	WinnerKeepCurrent bool
+}

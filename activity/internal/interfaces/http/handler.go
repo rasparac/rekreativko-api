@@ -104,6 +104,14 @@ type (
 		GetDraft(ctx context.Context, sessionID uuid.UUID) (*application.TeamDraftState, error)
 	}
 
+	// teamVotingService defines the interface for team proposal/voting operations
+	teamVotingService interface {
+		Propose(ctx context.Context, params application.ProposeTeamsParams) (*application.TeamVotingState, error)
+		Vote(ctx context.Context, params application.CastVoteParams) (*application.TeamVotingState, error)
+		Close(ctx context.Context, params application.CloseVotingParams) (*application.TeamVotingState, error)
+		GetVoting(ctx context.Context, sessionID uuid.UUID) (*application.TeamVotingState, error)
+	}
+
 	// Handler handles HTTP requests for the activity module
 	Handler struct {
 		sessionTemplateService sessionTemplateService
@@ -114,6 +122,7 @@ type (
 		inviteService          inviteService
 		sessionInviteService   sessionInviteService
 		teamDraftService       teamDraftService
+		teamVotingService      teamVotingService
 		logger                 *logger.Logger
 	}
 )
@@ -128,6 +137,7 @@ func NewHandler(
 	inviteService inviteService,
 	sessionInviteService sessionInviteService,
 	teamDraftService teamDraftService,
+	teamVotingService teamVotingService,
 	logger *logger.Logger,
 ) *Handler {
 	return &Handler{
@@ -139,6 +149,7 @@ func NewHandler(
 		inviteService:          inviteService,
 		sessionInviteService:   sessionInviteService,
 		teamDraftService:       teamDraftService,
+		teamVotingService:      teamVotingService,
 		logger:                 logger.WithName("activity.http.handler"),
 	}
 }
@@ -268,6 +279,22 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"DELETE /api/v1/sessions/{id}/draft",
 		middlewares.ThenFunc(h.CancelDraft),
+	)
+	mux.Handle(
+		"PUT /api/v1/sessions/{id}/proposals/vote",
+		middlewares.ThenFunc(h.VoteTeams),
+	)
+	mux.Handle(
+		"POST /api/v1/sessions/{id}/proposals/close",
+		middlewares.ThenFunc(h.CloseTeamVoting),
+	)
+	mux.Handle(
+		"POST /api/v1/sessions/{id}/proposals",
+		middlewares.ThenFunc(h.ProposeTeams),
+	)
+	mux.Handle(
+		"GET /api/v1/sessions/{id}/proposals",
+		middlewares.ThenFunc(h.GetTeamVoting),
 	)
 
 	// Member routes (ordered from most specific to least specific)

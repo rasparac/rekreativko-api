@@ -444,13 +444,15 @@ func (a *Attendee) UnassignFromTeam(
 	return nil
 }
 
-// AssignFromDraft puts the attendee on the team their captain drafted them
-// into. The draft already enforced turns, availability and the per-team limit.
-func (a *Attendee) AssignFromDraft(teamID, captainID uuid.UUID) {
+// AssignToFormedTeam puts the attendee on a team formed by a completed draft
+// or a winning proposal. The draft/vote already enforced its own rules;
+// assignedBy is the captain who picked them or the organizer who closed the
+// vote.
+func (a *Attendee) AssignToFormedTeam(teamID, assignedBy uuid.UUID) {
 	a.teamID = &teamID
 	a.updatedAt = time.Now().UTC()
 
-	a.addEvent(NewAttendeeTeamAssignedEvent(a, teamID, captainID))
+	a.addEvent(NewAttendeeTeamAssignedEvent(a, teamID, assignedBy))
 }
 
 // UnassignForReplacedTeams takes the attendee off their team because the

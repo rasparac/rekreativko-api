@@ -29,7 +29,7 @@ type SessionService struct {
 	memberRepo   MemberRepository
 	groupRepo    ActivityGroupRepository
 	attendeeRepo AttendeeRepository
-	drafts       draftCoordinator
+	formation    teamFormation
 	eventWriter  domainevent.EventWriter
 	tracer       trace.Tracer
 	metrics      *metrics.Metrics
@@ -61,6 +61,7 @@ func NewSessionService(
 	groupRepo ActivityGroupRepository,
 	attendeeRepo AttendeeRepository,
 	draftRepo TeamDraftRepository,
+	votingRepo TeamVotingRepository,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *SessionService {
@@ -71,7 +72,7 @@ func NewSessionService(
 		memberRepo:   memberRepo,
 		groupRepo:    groupRepo,
 		attendeeRepo: attendeeRepo,
-		drafts:       draftCoordinator{sessionRepo: sessionRepo, attendeeRepo: attendeeRepo, draftRepo: draftRepo},
+		formation:    newTeamFormation(sessionRepo, attendeeRepo, draftRepo, votingRepo),
 		eventWriter:  eventWriter,
 		tracer:       telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:      metrics,
@@ -338,7 +339,7 @@ func (s *SessionService) CreateTeams(
 			return err
 		}
 
-		if err := s.drafts.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
+		if err := s.formation.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
 			return err
 		}
 
@@ -372,12 +373,19 @@ func (s *SessionService) CreateTeams(
 			return fmt.Errorf("persist teams: %w", err)
 		}
 
-		// One insert for the teams_created event and every attendee's
-		// team_unassigned event.
+		// An open voting round no longer matches the new teams.
+		votingEvents, err := s.formation.teamsReplaced(tCtx, params.SessionID)
+		if err != nil {
+			return err
+		}
+
+		// One insert for the teams_created event, every attendee's
+		// team_unassigned event and a cancelled voting round.
 		events := slices.Clone(session.Events())
 		for _, a := range unassigned {
 			events = append(events, a.Events()...)
 		}
+		events = append(events, votingEvents...)
 
 		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, events); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)

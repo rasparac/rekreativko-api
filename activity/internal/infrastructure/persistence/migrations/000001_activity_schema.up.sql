@@ -368,6 +368,66 @@ CREATE TABLE IF NOT EXISTS activity.session_team_draft_pick(
     CONSTRAINT uq_draft_pick_account UNIQUE (draft_id, account_id)
 );
 
+-- team voting: people going propose divisions into teams and vote; the
+-- organizer closes the round and the winner replaces the teams. The round row
+-- stays after it ends; its proposals, members and votes are deleted then.
+CREATE TABLE IF NOT EXISTS activity.session_team_voting_round(
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id uuid NOT NULL REFERENCES activity.session(id),
+    -- open | closed | cancelled
+    status varchar(20) NOT NULL DEFAULT 'open',
+    -- not_enough_players | teams_replaced
+    cancel_reason varchar(50) DEFAULT NULL,
+    -- fixed when the round opens (session's teams, else the first proposal)
+    team_count smallint NOT NULL CHECK (team_count >= 2),
+    min_players_per_team smallint DEFAULT NULL CHECK (min_players_per_team IS NULL OR min_players_per_team > 0),
+    -- "keep current teams" is a vote option (the session had teams)
+    keep_current_allowed boolean NOT NULL DEFAULT FALSE,
+    -- result once closed: the winning proposal's id (no FK - proposals are
+    -- deleted when the round ends), or kept_current
+    winner_proposal_id uuid DEFAULT NULL,
+    kept_current boolean NOT NULL DEFAULT FALSE,
+    version int NOT NULL DEFAULT 1,
+    started_at timestamptz NOT NULL DEFAULT NOW(),
+    ended_at timestamptz DEFAULT NULL
+);
+
+-- at most one open round per session
+CREATE UNIQUE INDEX uq_session_team_voting_open ON activity.session_team_voting_round(session_id)
+WHERE (status = 'open');
+
+-- latest round of a session
+CREATE INDEX idx_session_team_voting_session ON activity.session_team_voting_round(session_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS activity.session_team_proposal(
+    id uuid PRIMARY KEY,
+    round_id uuid NOT NULL REFERENCES activity.session_team_voting_round(id),
+    author_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_session_team_proposal_round ON activity.session_team_proposal(round_id, created_at);
+
+CREATE TABLE IF NOT EXISTS activity.session_team_proposal_member(
+    proposal_id uuid NOT NULL REFERENCES activity.session_team_proposal(id),
+    -- 0 = Team A
+    team_position smallint NOT NULL,
+    account_id uuid NOT NULL,
+    -- order within the team
+    sort_order int NOT NULL,
+    PRIMARY KEY (proposal_id, account_id)
+);
+
+CREATE TABLE IF NOT EXISTS activity.session_team_vote(
+    round_id uuid NOT NULL REFERENCES activity.session_team_voting_round(id),
+    voter_id uuid NOT NULL,
+    -- NULL = voted to keep the current teams
+    proposal_id uuid DEFAULT NULL REFERENCES activity.session_team_proposal(id),
+    voted_at timestamptz NOT NULL DEFAULT NOW(),
+    -- one vote per person per round
+    PRIMARY KEY (round_id, voter_id)
+);
+
 -- session invites (direct - specific user, standalone sessions only)
 CREATE TABLE IF NOT EXISTS activity.session_invites(
     id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),

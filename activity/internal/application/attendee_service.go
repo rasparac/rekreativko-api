@@ -30,7 +30,7 @@ type AttendeeService struct {
 	attendeeRepo AttendeeRepository
 	memberRepo   MemberRepository
 	sessionRepo  SessionRepository
-	drafts       draftCoordinator
+	formation    teamFormation
 	eventWriter  domainevent.EventWriter
 	tracer       trace.Tracer
 	metrics      *metrics.Metrics
@@ -44,6 +44,7 @@ func NewAttendeeService(
 	memberRepo MemberRepository,
 	sessionRepo SessionRepository,
 	draftRepo TeamDraftRepository,
+	votingRepo TeamVotingRepository,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *AttendeeService {
@@ -53,7 +54,7 @@ func NewAttendeeService(
 		attendeeRepo: attendeeRepo,
 		memberRepo:   memberRepo,
 		sessionRepo:  sessionRepo,
-		drafts:       draftCoordinator{sessionRepo: sessionRepo, attendeeRepo: attendeeRepo, draftRepo: draftRepo},
+		formation:    newTeamFormation(sessionRepo, attendeeRepo, draftRepo, votingRepo),
 		eventWriter:  eventWriter,
 		tracer:       telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:      metrics,
@@ -554,7 +555,7 @@ func (s *AttendeeService) AssignAttendeeTeam(
 			return err
 		}
 
-		if err := s.drafts.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
+		if err := s.formation.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
 			return err
 		}
 
@@ -635,7 +636,7 @@ func (s *AttendeeService) UnassignAttendeeTeam(
 			return err
 		}
 
-		if err := s.drafts.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
+		if err := s.formation.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
 			return err
 		}
 
@@ -997,7 +998,7 @@ func (s *AttendeeService) resolveSessionManagers(
 // holds a spot - after any waitlist promotion, so a promoted attendee is
 // already in the pool before the draft decides whether anyone is left.
 func (s *AttendeeService) syncDraftAfterLeaving(ctx context.Context, sessionID, userID uuid.UUID) error {
-	events, err := s.drafts.attendeeLeft(ctx, sessionID, userID)
+	events, err := s.formation.attendeeLeft(ctx, sessionID, userID)
 	if err != nil {
 		return fmt.Errorf("update team draft: %w", err)
 	}

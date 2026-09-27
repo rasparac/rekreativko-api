@@ -60,8 +60,16 @@ const (
 	EventActivitySessionDraftCompleted       = "activity.session.draft.completed"
 	EventActivitySessionDraftPaused          = "activity.session.draft.paused"
 	EventActivitySessionDraftCaptainReplaced = "activity.session.draft.captain_replaced"
-	EventActivitySessionDraftCancelled       = "activity.session.draft.cancelled"
-	EventActivitySessionAttendeeAutoPending  = "activity.session.attendee.auto_pending"
+
+	// Team voting events
+	EventActivitySessionVotingOpened        = "activity.session.voting.opened"
+	EventActivitySessionVotingProposalAdded = "activity.session.voting.proposal_created"
+	EventActivitySessionVotingVoteCast      = "activity.session.voting.vote_cast"
+	EventActivitySessionVotingPlayerRemoved = "activity.session.voting.player_removed"
+	EventActivitySessionVotingClosed        = "activity.session.voting.closed"
+	EventActivitySessionVotingCancelled     = "activity.session.voting.cancelled"
+	EventActivitySessionDraftCancelled      = "activity.session.draft.cancelled"
+	EventActivitySessionAttendeeAutoPending = "activity.session.attendee.auto_pending"
 
 	// Session attendee events
 	EventActivitySessionAttendeeAutoConfirmed   = "activity.session.attendee.auto_confirmed"
@@ -1368,6 +1376,131 @@ func NewDraftCancelledEvent(d *TeamDraft, cancelledBy uuid.UUID) *DraftCancelled
 		draftEventBase: newDraftEventBase(d, EventActivitySessionDraftCancelled),
 		Reason:         d.cancelReason,
 		CancelledBy:    cancelledBy,
+	}
+}
+
+// votingEventBase carries the fields every voting event shares.
+type votingEventBase struct {
+	domainevent.BaseEvent
+	ActivityID *uuid.UUID `json:"activity_id"`
+	SessionID  uuid.UUID  `json:"session_id"`
+	RoundID    uuid.UUID  `json:"round_id"`
+	Version    int        `json:"version"`
+}
+
+func newVotingEventBase(r *TeamVotingRound, eventType string) votingEventBase {
+	return votingEventBase{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   eventType,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: r.ID(),
+		},
+		ActivityID: r.ActivityGroupID(),
+		SessionID:  r.SessionID(),
+		RoundID:    r.ID(),
+		Version:    r.version,
+	}
+}
+
+// VotingOpenedEvent is raised with a round's first proposal - "voting opened".
+type VotingOpenedEvent struct {
+	votingEventBase
+	ProposalID uuid.UUID `json:"proposal_id"`
+	AuthorID   uuid.UUID `json:"author_id"`
+	TeamCount  int       `json:"team_count"`
+}
+
+func NewVotingOpenedEvent(r *TeamVotingRound, p *TeamProposal) *VotingOpenedEvent {
+	return &VotingOpenedEvent{
+		votingEventBase: newVotingEventBase(r, EventActivitySessionVotingOpened),
+		ProposalID:      p.ID(),
+		AuthorID:        p.AuthorID(),
+		TeamCount:       r.teamCount,
+	}
+}
+
+// ProposalCreatedEvent is raised for every further proposal in a round.
+type ProposalCreatedEvent struct {
+	votingEventBase
+	ProposalID uuid.UUID `json:"proposal_id"`
+	AuthorID   uuid.UUID `json:"author_id"`
+}
+
+func NewProposalCreatedEvent(r *TeamVotingRound, p *TeamProposal) *ProposalCreatedEvent {
+	return &ProposalCreatedEvent{
+		votingEventBase: newVotingEventBase(r, EventActivitySessionVotingProposalAdded),
+		ProposalID:      p.ID(),
+		AuthorID:        p.AuthorID(),
+	}
+}
+
+// VoteCastEvent is raised when someone votes or changes their vote.
+// ProposalID is null when they voted to keep the current teams.
+type VoteCastEvent struct {
+	votingEventBase
+	VoterID     uuid.UUID  `json:"voter_id"`
+	ProposalID  *uuid.UUID `json:"proposal_id"`
+	KeepCurrent bool       `json:"keep_current"`
+	Changed     bool       `json:"changed"`
+}
+
+func NewVoteCastEvent(r *TeamVotingRound, voterID, choice uuid.UUID, changed bool) *VoteCastEvent {
+	e := &VoteCastEvent{
+		votingEventBase: newVotingEventBase(r, EventActivitySessionVotingVoteCast),
+		VoterID:         voterID,
+		KeepCurrent:     choice == KeepCurrentTeams,
+		Changed:         changed,
+	}
+	if choice != KeepCurrentTeams {
+		e.ProposalID = &choice
+	}
+	return e
+}
+
+// VotingPlayerRemovedEvent is raised when someone stops going mid-vote: they
+// drop out of every proposal and lose their vote.
+type VotingPlayerRemovedEvent struct {
+	votingEventBase
+	UserID uuid.UUID `json:"user_id"`
+}
+
+func NewVotingPlayerRemovedEvent(r *TeamVotingRound, userID uuid.UUID) *VotingPlayerRemovedEvent {
+	return &VotingPlayerRemovedEvent{
+		votingEventBase: newVotingEventBase(r, EventActivitySessionVotingPlayerRemoved),
+		UserID:          userID,
+	}
+}
+
+// VotingClosedEvent is raised when the organizer closes voting. Either
+// WinnerProposalID is set (its teams follow as teams_created + team_assigned
+// events) or KeptCurrent is true (nothing changes).
+type VotingClosedEvent struct {
+	votingEventBase
+	WinnerProposalID *uuid.UUID `json:"winner_proposal_id"`
+	KeptCurrent      bool       `json:"kept_current"`
+	ClosedBy         uuid.UUID  `json:"closed_by"`
+}
+
+func NewVotingClosedEvent(r *TeamVotingRound, closedBy uuid.UUID) *VotingClosedEvent {
+	return &VotingClosedEvent{
+		votingEventBase:  newVotingEventBase(r, EventActivitySessionVotingClosed),
+		WinnerProposalID: r.winnerProposalID,
+		KeptCurrent:      r.keptCurrent,
+		ClosedBy:         closedBy,
+	}
+}
+
+// VotingCancelledEvent is raised when a round ends without result.
+type VotingCancelledEvent struct {
+	votingEventBase
+	Reason VotingCancelReason `json:"reason"`
+}
+
+func NewVotingCancelledEvent(r *TeamVotingRound) *VotingCancelledEvent {
+	return &VotingCancelledEvent{
+		votingEventBase: newVotingEventBase(r, EventActivitySessionVotingCancelled),
+		Reason:          r.cancelReason,
 	}
 }
 

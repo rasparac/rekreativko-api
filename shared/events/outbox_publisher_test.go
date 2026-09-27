@@ -48,12 +48,12 @@ func (f *fakeReader) MarkEventAsFailed(_ context.Context, _ string, id uuid.UUID
 }
 
 type fakeBroker struct {
-	failFor map[string]bool
+	failFor map[string]struct{}
 	sent    []string
 }
 
 func (b *fakeBroker) Publish(_ context.Context, topic string, _ []byte) error {
-	if b.failFor[topic] {
+	if _, fail := b.failFor[topic]; fail {
 		return errors.New("broker rejected payload")
 	}
 	b.sent = append(b.sent, topic)
@@ -109,7 +109,7 @@ func TestPublishFromSchema_FailedEventDoesNotBlockLaterEvents(t *testing.T) {
 		{EventID: poison, EventType: "bad.event"},
 		{EventID: ok, EventType: "good.event"},
 	}}
-	br := &fakeBroker{failFor: map[string]bool{"bad.event": true}}
+	br := &fakeBroker{failFor: map[string]struct{}{"bad.event": {}}}
 
 	failed, published, err := newTestPublisher(r, br, &fakeTx{}, 3).publishFromSchema(context.Background(), "identity")
 

@@ -113,6 +113,37 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.Conflict("not_enough_players", "Not enough people are going for these teams", err)
 	}
 
+	// Team voting errors - the typed ones carry details for the client
+	var tie *domain.TieError
+	if errors.As(err, &tie) {
+		return domainerror.Conflict("tie_requires_winner", "Voting is tied; pick the winner from the tied options", err).
+			WithDetails(map[string]any{
+				"tied_proposal_ids": tie.ProposalIDs,
+				"keep_current_tied": tie.KeepCurrentTied,
+			})
+	}
+	var division *domain.InvalidDivisionError
+	if errors.As(err, &division) {
+		details := map[string]any{"reason": string(division.Problem)}
+		if len(division.UserIDs) > 0 {
+			details["user_ids"] = division.UserIDs
+		}
+		return domainerror.ValidationError("invalid_division", "The proposal is not a valid division: "+string(division.Problem), err).
+			WithDetails(details)
+	}
+	switch {
+	case errors.Is(err, domain.ErrVotingNotOpen):
+		return domainerror.Conflict("voting_closed", "Voting is not open", err)
+	case errors.Is(err, domain.ErrVotingOpen):
+		return domainerror.Conflict("voting_open", "Team voting is open for this session", err)
+	case errors.Is(err, domain.ErrProposalNotFound):
+		return domainerror.NotFound("proposal_not_found", "Proposal not found in this voting round", err)
+	case errors.Is(err, domain.ErrKeepCurrentNotAvailable):
+		return domainerror.ValidationError("keep_current_not_available", "Keep current teams is only an option when the session has teams", err)
+	case errors.Is(err, domain.ErrInvalidWinner):
+		return domainerror.ValidationError("invalid_winner", "The winner must be one of the options with the most votes", err)
+	}
+
 	// Team draft errors
 	switch {
 	case errors.Is(err, domain.ErrInvalidPickOrder):

@@ -496,7 +496,7 @@ func (s *Session) CreateTeams(
 // was started - completion is triggered by a captain's pick or by someone
 // leaving, neither of whom needs to manage the session. As with CreateTeams,
 // the caller first unassigns everyone from the old teams, then assigns each
-// roster with Attendee.AssignFromDraft.
+// roster with Attendee.AssignToFormedTeam.
 func (s *Session) ApplyDraftTeams(draft *TeamDraft) error {
 	if !draft.IsCompleted() {
 		return ErrDraftNotActive
@@ -515,6 +515,39 @@ func (s *Session) ApplyDraftTeams(draft *TeamDraft) error {
 	s.updatedAt = now
 
 	s.addEvent(NewSessionTeamsCreatedEvent(s, draft.StartedBy(), replaced))
+
+	return nil
+}
+
+// ApplyProposalTeams replaces the session's teams with the teams of a winning
+// proposal (first = Team A). The minimum carries over from the round; colors
+// are kept when the session already had teams (a proposal then always has the
+// same team count). As with CreateTeams, the caller first unassigns everyone
+// from the old teams, then assigns each proposal team with
+// Attendee.AssignToFormedTeam.
+func (s *Session) ApplyProposalTeams(round *TeamVotingRound, closedBy uuid.UUID) error {
+	if round.Status() != VotingStatusClosed || round.KeptCurrent() {
+		return ErrVotingNotOpen
+	}
+
+	if err := s.requireTeamsChangeable(); err != nil {
+		return err
+	}
+
+	var colors []string
+	if s.teamConfig != nil {
+		colors = s.teamConfig.Colors()
+	}
+
+	replaced := s.HasTeams()
+	now := time.Now().UTC()
+	config := ReconstructTeamConfig(round.TeamCount(), round.MinPlayersPerTeam(), colors)
+
+	s.teamConfig = &config
+	s.teams = newTeams(s.id, config, now)
+	s.updatedAt = now
+
+	s.addEvent(NewSessionTeamsCreatedEvent(s, closedBy, replaced))
 
 	return nil
 }

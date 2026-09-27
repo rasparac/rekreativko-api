@@ -53,6 +53,6 @@ func (h *Handler) handleServiceError(ctx context.Context, w http.ResponseWriter,
 		appErr.StatusCode,
 		appErr.Code,
 		appErr.Message,
-		nil,
+		appErr.Details,
 	)
 }

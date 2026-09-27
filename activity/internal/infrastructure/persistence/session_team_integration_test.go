@@ -22,6 +22,7 @@ type sessionTeamTestEnv struct {
 	svc          *application.AttendeeService
 	sessionSvc   *application.SessionService
 	draftSvc     *application.TeamDraftService
+	votingSvc    *application.TeamVotingService
 	sessionRepo  application.SessionRepository
 	attendeeRepo application.AttendeeRepository
 }
@@ -38,13 +39,15 @@ func setupSessionTeamTest(t *testing.T) *sessionTeamTestEnv {
 	memberRepo := persistence.NewMemberRepository(txManager, logger)
 	groupRepo := persistence.NewActivityGroupRepository(txManager, logger)
 	draftRepo := persistence.NewTeamDraftRepository(txManager, logger)
+	votingRepo := persistence.NewTeamVotingRepository(txManager, logger)
 	eventWriter := domainevent.NewDomainEventManager(txManager)
 
 	return &sessionTeamTestEnv{
 		ctx:          context.Background(),
-		svc:          application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, draftRepo, eventWriter, testMetrics()),
-		sessionSvc:   application.NewSessionService(logger, txManager, sessionRepo, memberRepo, groupRepo, attendeeRepo, draftRepo, eventWriter, testMetrics()),
-		draftSvc:     application.NewTeamDraftService(logger, txManager, sessionRepo, attendeeRepo, draftRepo, eventWriter, testMetrics()),
+		svc:          application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, draftRepo, votingRepo, eventWriter, testMetrics()),
+		sessionSvc:   application.NewSessionService(logger, txManager, sessionRepo, memberRepo, groupRepo, attendeeRepo, draftRepo, votingRepo, eventWriter, testMetrics()),
+		draftSvc:     application.NewTeamDraftService(logger, txManager, sessionRepo, attendeeRepo, draftRepo, votingRepo, eventWriter, testMetrics()),
+		votingSvc:    application.NewTeamVotingService(logger, txManager, sessionRepo, attendeeRepo, draftRepo, votingRepo, eventWriter, testMetrics()),
 		sessionRepo:  sessionRepo,
 		attendeeRepo: attendeeRepo,
 	}

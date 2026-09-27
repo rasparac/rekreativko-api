@@ -84,6 +84,14 @@ type TeamDraftRepository interface {
 	GetLatestDraft(ctx context.Context, sessionID uuid.UUID) (*domain.TeamDraft, error)
 }
 
+// TeamVotingRepository defines the interface for team voting persistence
+type TeamVotingRepository interface {
+	CreateRound(ctx context.Context, round *domain.TeamVotingRound) error
+	UpdateRound(ctx context.Context, round *domain.TeamVotingRound) error
+	GetOpenRound(ctx context.Context, sessionID uuid.UUID) (*domain.TeamVotingRound, error)
+	GetLatestRound(ctx context.Context, sessionID uuid.UUID) (*domain.TeamVotingRound, error)
+}
+
 // AttendeeRepository defines the interface for attendee persistence
 type AttendeeRepository interface {
 	CreateAttendee(ctx context.Context, attendee *domain.Attendee) error

@@ -24,6 +24,15 @@ type AppError struct {
 	Code       string `json:"code"`
 	StatusCode int    `json:"-"`
 	Err        error  `json:"-"`
+	// Details is optional machine-readable context returned with the error
+	// (e.g. which options tied), so clients don't parse the message.
+	Details map[string]any `json:"-"`
+}
+
+// WithDetails attaches machine-readable details to the error and returns it.
+func (e *AppError) WithDetails(details map[string]any) *AppError {
+	e.Details = details
+	return e
 }
 
 func New(message, code string, statusCode int) *AppError {

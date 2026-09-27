@@ -339,7 +339,46 @@ mobile team's decisions D4-D9 (see the ticket design).
 - **Errors:** `not_your_turn`, `player_not_available`, `not_draft_captain` (403), `draft_not_active`,
   `draft_paused`, `draft_not_paused`, `draft_already_active`, `invalid_captains` (422), `not_enough_players`,
   `draft_not_found` (404), `unauthorized`.
+- A draft can't start while team voting is open (`voting_open`), and nobody can propose while a draft runs.
 - Known gap: a draft is not ended when its session is cancelled/completed (rekreativko-api-6gg.7).
+
+### Team proposals and voting (6gg.3)
+
+People going propose divisions into teams and vote; the organizer closes the round and the winner replaces the
+teams. Product rules are the mobile team's D10-D16 plus backend decisions on the ticket.
+
+- **Round** (`TeamVotingRound`, one open per session): opens with its first proposal. Team count is fixed then -
+  the session's teams when it has some (plus their `min_players_per_team`, and "keep current teams" becomes a
+  vote option), otherwise the first proposal's count with no minimum.
+- **Players needed** = team count x minimum (1 per team without teams). Opening needs it (`not_enough_players`);
+  falling below it while open cancels the round (`cancelled_reason: not_enough_players`).
+- **Propose** `POST /api/v1/sessions/{id}/proposals` `{teams: [{user_ids}]}` - anyone going. Valid division (D11):
+  the round's team count, everyone going on exactly one team, nobody not going, every team >= minimum; else
+  422 `invalid_division` with `details.reason` (wrong_team_count, player_not_going, duplicate_player,
+  missing_players, team_below_minimum) and `details.user_ids`. Proposing never changes the current teams.
+- **Vote** `PUT /api/v1/sessions/{id}/proposals/vote` `{proposal_id}` | `{keep_current: true}` - anyone going,
+  one vote, changeable.
+- **Close** `POST /api/v1/sessions/{id}/proposals/close` `{winner_proposal_id? | keep_current?}` - organizer. Most
+  votes wins; a tie (no votes at all ties every option) -> 409 `tie_requires_winner` with
+  `details.tied_proposal_ids` / `details.keep_current_tied` until a tied option is passed (`invalid_winner`
+  otherwise). A winning proposal replaces the teams via `Session.ApplyProposalTeams` (colors kept when there were
+  teams); keep-current changes nothing.
+- **D16:** proposals and votes are deleted when the round closes or is cancelled; the round row stays (status,
+  result, reason) so `GET` can show how it ended.
+- **GET** `/api/v1/sessions/{id}/proposals` - latest round (or `voting_status: none`): status, reason,
+  `team_count`, `players_going`, `players_needed`, `my_vote`, `votes_cast`, `eligible_voters`,
+  `keep_current_votes`, `items[{id, author_id, created_at, teams[{position, user_ids}], vote_count}]`, `result`,
+  `version`.
+- **Attendance** (`teamFormation.attendeeLeft`): a leaver drops out of every proposal (a team may fall below the
+  minimum - it can still win, the organizer fixes it after) and loses their vote. Joiners can vote; they are in no
+  proposal and stay unassigned when the winner is applied.
+- **Teams replaced** by `POST /teams` while open -> round cancelled (`teams_replaced`).
+- **Concurrency:** every voting command takes the session advisory lock - saving a round rewrites its votes, so
+  this is what keeps concurrent votes from being lost.
+- **Events** `activity.session.voting.*`: `opened` (first proposal), `proposal_created`, `vote_cast` (`changed`),
+  `player_removed`, `closed` (winner / kept_current), `cancelled` (reason); a winner also emits `teams_created`
+  and `team_assigned`.
+
 
 ====================================================================================================
 
@@ -493,6 +532,10 @@ All activity tables use the `activity` schema for namespace isolation (DDD bound
      - pick_order, status (active/paused/completed/cancelled), paused_reason, cancel_reason, captains (NULL =
        vacant while paused), turn, version, min_players_per_team, team_colors
      - Partial unique index: one active or paused draft per session
+
+   - **session_team_voting_round** / **session_team_proposal** / **session_team_proposal_member** /
+     **session_team_vote** - Team voting rounds; proposals, members and votes exist only while the round is open
+     - Partial unique index: one open round per session
 
 8. **session_attendee** - Session participants
    - Links account_id to session_id
