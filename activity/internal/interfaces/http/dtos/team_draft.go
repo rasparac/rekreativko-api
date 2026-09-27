@@ -78,7 +78,7 @@ type DraftResponse struct {
 	// PausedReason is set while paused: "captain_left".
 	PausedReason *string `json:"paused_reason" example:"captain_left" enums:"captain_left"`
 	// CancelledReason is set for a cancelled draft.
-	CancelledReason   *string                `json:"cancelled_reason" example:"organizer" enums:"organizer,not_enough_players"`
+	CancelledReason   *string                `json:"cancelled_reason" example:"organizer" enums:"organizer,not_enough_players,session_ended"`
 	PickOrder         string                 `json:"pick_order" example:"snake" enums:"snake,alternate"`
 	MinPlayersPerTeam *int                   `json:"min_players_per_team,omitempty" example:"5"`
 	Colors            []string               `json:"colors,omitempty" example:"#FFFFFF,#000000"`

@@ -62,7 +62,7 @@ type VotingResponse struct {
 	RoundID      *uuid.UUID `json:"round_id" example:"123e4567-e89b-12d3-a456-426655440000"`
 	VotingStatus string     `json:"voting_status" example:"open" enums:"none,open,closed,cancelled"`
 	// CancelledReason is set for a cancelled round.
-	CancelledReason *string `json:"cancelled_reason" example:"not_enough_players" enums:"not_enough_players,teams_replaced"`
+	CancelledReason *string `json:"cancelled_reason" example:"not_enough_players" enums:"not_enough_players,teams_replaced,session_ended"`
 	// TeamCount every proposal in the round must use; null before a round.
 	TeamCount         *int `json:"team_count" example:"2"`
 	MinPlayersPerTeam *int `json:"min_players_per_team,omitempty" example:"5"`

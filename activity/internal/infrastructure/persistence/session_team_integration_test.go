@@ -23,6 +23,7 @@ type sessionTeamTestEnv struct {
 	svc          *application.AttendeeService
 	sessionSvc   *application.SessionService
 	groupSvc     *application.ActivityGroupService
+	formation    *application.TeamFormationQuery
 	draftSvc     *application.TeamDraftService
 	votingSvc    *application.TeamVotingService
 	sessionRepo  application.SessionRepository
@@ -45,6 +46,8 @@ func setupSessionTeamTest(t *testing.T) *sessionTeamTestEnv {
 	votingRepo := persistence.NewTeamVotingRepository(txManager, logger)
 	eventWriter := domainevent.NewDomainEventManager(txManager)
 
+	draftSvc := application.NewTeamDraftService(logger, txManager, sessionRepo, attendeeRepo, draftRepo, votingRepo, eventWriter, testMetrics())
+	votingSvc := application.NewTeamVotingService(logger, txManager, sessionRepo, attendeeRepo, draftRepo, votingRepo, eventWriter, testMetrics())
 	sessionSvc := application.NewSessionService(logger, txManager, sessionRepo, memberRepo, groupRepo, attendeeRepo, persistence.NewSessionInviteRepository(txManager, logger), draftRepo, votingRepo, eventWriter, testMetrics())
 
 	return &sessionTeamTestEnv{
@@ -52,8 +55,9 @@ func setupSessionTeamTest(t *testing.T) *sessionTeamTestEnv {
 		svc:          application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, draftRepo, votingRepo, eventWriter, testMetrics()),
 		sessionSvc:   sessionSvc,
 		groupSvc:     application.NewActivityGroupService(logger, txManager, groupRepo, memberRepo, sessionSvc, eventWriter, testMetrics()),
-		draftSvc:     application.NewTeamDraftService(logger, txManager, sessionRepo, attendeeRepo, draftRepo, votingRepo, eventWriter, testMetrics()),
-		votingSvc:    application.NewTeamVotingService(logger, txManager, sessionRepo, attendeeRepo, draftRepo, votingRepo, eventWriter, testMetrics()),
+		draftSvc:     draftSvc,
+		votingSvc:    votingSvc,
+		formation:    application.NewTeamFormationQuery(sessionRepo, attendeeRepo, draftSvc, votingSvc),
 		sessionRepo:  sessionRepo,
 		attendeeRepo: attendeeRepo,
 		txManager:    txManager,

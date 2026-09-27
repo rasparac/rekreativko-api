@@ -112,6 +112,11 @@ type (
 		GetVoting(ctx context.Context, sessionID uuid.UUID) (*application.TeamVotingState, error)
 	}
 
+	// teamFormationQuery builds a session's team-formation snapshot
+	teamFormationQuery interface {
+		Snapshot(ctx context.Context, sessionID uuid.UUID) (*application.TeamFormationSnapshot, error)
+	}
+
 	// Handler handles HTTP requests for the activity module
 	Handler struct {
 		sessionTemplateService sessionTemplateService
@@ -123,6 +128,7 @@ type (
 		sessionInviteService   sessionInviteService
 		teamDraftService       teamDraftService
 		teamVotingService      teamVotingService
+		teamFormation          teamFormationQuery
 		logger                 *logger.Logger
 	}
 )
@@ -138,6 +144,7 @@ func NewHandler(
 	sessionInviteService sessionInviteService,
 	teamDraftService teamDraftService,
 	teamVotingService teamVotingService,
+	teamFormation teamFormationQuery,
 	logger *logger.Logger,
 ) *Handler {
 	return &Handler{
@@ -150,6 +157,7 @@ func NewHandler(
 		sessionInviteService:   sessionInviteService,
 		teamDraftService:       teamDraftService,
 		teamVotingService:      teamVotingService,
+		teamFormation:          teamFormation,
 		logger:                 logger.WithName("activity.http.handler"),
 	}
 }
@@ -295,6 +303,10 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"GET /api/v1/sessions/{id}/proposals",
 		middlewares.ThenFunc(h.GetTeamVoting),
+	)
+	mux.Handle(
+		"GET /api/v1/sessions/{id}/team-formation",
+		middlewares.ThenFunc(h.GetTeamFormation),
 	)
 
 	// Member routes (ordered from most specific to least specific)

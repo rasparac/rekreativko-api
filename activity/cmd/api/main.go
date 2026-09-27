@@ -234,6 +234,12 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		domainEventMgr,
 		appMetrics,
 	)
+	teamFormationQuery := application.NewTeamFormationQuery(
+		sessionRepo,
+		attendeeRepo,
+		teamDraftService,
+		teamVotingService,
+	)
 
 	mux := http.NewServeMux()
 
@@ -248,6 +254,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		sessionInviteService,
 		teamDraftService,
 		teamVotingService,
+		teamFormationQuery,
 		log,
 	)
 
