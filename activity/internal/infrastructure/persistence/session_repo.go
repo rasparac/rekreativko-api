@@ -56,6 +56,13 @@ type SessionRepository interface {
 	DiscoverSessions(ctx context.Context, filter DiscoverSessionsFilter) ([]SessionWithDistance, string, error)
 	DeleteSession(ctx context.Context, id uuid.UUID) error
 	FindSessionsPastEndTime(ctx context.Context) ([]*domain.Session, error)
+	// SoftDeleteGroupSessions marks every session of a group deleted, whatever
+	// its status, and returns how many it deleted.
+	SoftDeleteGroupSessions(ctx context.Context, activityGroupID uuid.UUID) (int64, error)
+	// ListActiveSessionIDsByGroup returns the IDs of a group's scheduled and
+	// started sessions. Unbounded on purpose - only used to cascade a group
+	// cancellation.
+	ListActiveSessionIDsByGroup(ctx context.Context, activityGroupID uuid.UUID) ([]uuid.UUID, error)
 	ReplaceTeams(ctx context.Context, session *domain.Session) error
 }
 
@@ -336,7 +343,7 @@ func (m *sessionManager) GetSessionByID(ctx context.Context, id uuid.UUID) (*dom
 			title, activity_type, difficulty_level, location_street, requires_approval,
 			team_count, min_players_per_team
 		FROM activity.session
-		WHERE id = $1
+		WHERE id = $1 AND deleted_at IS NULL
 	`
 
 	q := m.tx.Querier(ctx)
@@ -404,6 +411,7 @@ func (m *sessionManager) FindSessionsPastEndTime(ctx context.Context) ([]*domain
 			team_count, min_players_per_team
 		FROM activity.session
 		WHERE status IN ('scheduled', 'started') AND end_time IS NOT NULL AND end_time < now()
+			AND deleted_at IS NULL
 	`
 
 	q := m.tx.Querier(ctx)
@@ -465,6 +473,42 @@ func (m *sessionManager) FindSessionsPastEndTime(ctx context.Context) ([]*domain
 	return sessions, nil
 }
 
+func (m *sessionManager) ListActiveSessionIDsByGroup(ctx context.Context, activityGroupID uuid.UUID) ([]uuid.UUID, error) {
+	query := `
+		SELECT id
+		FROM activity.session
+		WHERE activity_group_id = $1 AND status IN ('scheduled', 'started') AND deleted_at IS NULL
+		ORDER BY start_time, id
+	`
+
+	rows, err := m.tx.Querier(ctx).Query(ctx, query, activityGroupID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list active group sessions: %w", err)
+	}
+
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan active group sessions: %w", err)
+	}
+
+	return ids, nil
+}
+
+func (m *sessionManager) SoftDeleteGroupSessions(ctx context.Context, activityGroupID uuid.UUID) (int64, error) {
+	query := `
+		UPDATE activity.session
+		SET deleted_at = now(), updated_at = now()
+		WHERE activity_group_id = $1 AND deleted_at IS NULL
+	`
+
+	result, err := m.tx.Querier(ctx).Exec(ctx, query, activityGroupID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete group sessions: %w", err)
+	}
+
+	return result.RowsAffected(), nil
+}
+
 func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter) ([]*domain.Session, string, error) {
 	qb := &postgres.QueryBuilder{
 		BaseQuery: `
@@ -497,7 +541,7 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 			team_count,
 			min_players_per_team
 		FROM activity.session
-		WHERE 1=1`,
+		WHERE deleted_at IS NULL`,
 		Args: make([]any, 0),
 	}
 
@@ -801,6 +845,7 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter DiscoverSe
 			FROM activity.session
 			WHERE visibility = 'public'
 				AND status = 'scheduled'
+				AND deleted_at IS NULL
 				AND (end_time IS NULL OR end_time > now())
 				AND location_lat BETWEEN $3 AND $4
 				AND location_lng BETWEEN $5 AND $6

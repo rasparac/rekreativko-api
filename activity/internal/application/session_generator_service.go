@@ -141,6 +141,13 @@ func (s *SessionGeneratorService) generateSessionsForTemplate(
 		return 0, fmt.Errorf("failed to get activity group for template: %w", err)
 	}
 
+	// A cancelled or deleted group's sessions were cancelled with it - don't
+	// schedule new ones.
+	if group.IsCancelled() || group.IsDeleted() {
+		s.logger.Info(ctx, "template group is cancelled or deleted", "template_id", template.ID(), "group_id", group.ID())
+		return 0, nil
+	}
+
 	title, err := domain.NewTitle(template.Title())
 	if err != nil {
 		return 0, fmt.Errorf("failed to build session title from template: %w", err)

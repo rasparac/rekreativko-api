@@ -17,12 +17,20 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// groupSessions cancels or deletes a group's sessions when the group itself
+// is cancelled or deleted - implemented by SessionService.
+type groupSessions interface {
+	CancelGroupSessions(ctx context.Context, activityGroupID, cancelledBy uuid.UUID, reason string) (int, error)
+	DeleteGroupSessions(ctx context.Context, activityGroupID, deletedBy uuid.UUID) (int, error)
+}
+
 // ActivityGroupService handles business logic for activity groups
 type ActivityGroupService struct {
 	logger      *logger.Logger
 	txManager   *postgres.TransactionManager
 	groupRepo   ActivityGroupRepository
 	memberRepo  MemberRepository
+	sessions    groupSessions
 	eventWriter domainevent.EventWriter
 	tracer      trace.Tracer
 	metrics     *metrics.Metrics
@@ -34,6 +42,7 @@ func NewActivityGroupService(
 	txManager *postgres.TransactionManager,
 	groupRepo ActivityGroupRepository,
 	memberRepo MemberRepository,
+	sessions groupSessions,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *ActivityGroupService {
@@ -42,6 +51,7 @@ func NewActivityGroupService(
 		txManager:   txManager,
 		groupRepo:   groupRepo,
 		memberRepo:  memberRepo,
+		sessions:    sessions,
 		eventWriter: eventWriter,
 		tracer:      telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:     metrics,
@@ -444,6 +454,13 @@ func (s *ActivityGroupService) CancelActivityGroup(
 			return fmt.Errorf("persist cancellation: %w", err)
 		}
 
+		// Same transaction: a cancelled group never has live sessions left.
+		cancelledSessions, err := s.sessions.CancelGroupSessions(tCtx, groupID, requesterID, reason)
+		if err != nil {
+			return fmt.Errorf("cancel group sessions: %w", err)
+		}
+		log.Debug(tCtx, "cancelled group sessions", "count", cancelledSessions)
+
 		err = s.eventWriter.InsertEvents(
 			tCtx,
 			activitySchema,
@@ -507,6 +524,14 @@ func (s *ActivityGroupService) DeleteActivityGroup(
 		if err != nil {
 			return fmt.Errorf("persist deletion: %w", err)
 		}
+
+		// Same transaction: live sessions are cancelled (attendees notified),
+		// then every session of the group is deleted with it.
+		deletedSessions, err := s.sessions.DeleteGroupSessions(tCtx, groupID, requesterID)
+		if err != nil {
+			return fmt.Errorf("delete group sessions: %w", err)
+		}
+		log.Debug(tCtx, "deleted group sessions", "count", deletedSessions)
 
 		err = s.eventWriter.InsertEvents(
 			tCtx,

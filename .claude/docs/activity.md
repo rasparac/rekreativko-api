@@ -10,7 +10,14 @@ Acitvity Group rules:
 - Only creator can cancel group
 - Any confirmed member can create session
 - Recurrence rule optiona (group can be non-recurring)
-- Cancelled group -> all future sessions cancelled
+- Cancelled group -> all future sessions cancelled: in the same transaction, every scheduled/started session gets
+  `Session.CancelFromGroup` (attendees notified via `session.cancelled`) and any running draft / open voting round
+  ends with `session_ended` (`SessionService.CancelGroupSessions`). The recurring-session cron generates nothing for
+  a cancelled or deleted group.
+- Deleted group -> its live sessions are cancelled exactly as above (reason `activity group deleted`), then every
+  session of the group, ended ones included, is soft-deleted (`session.deleted_at`) in the same transaction
+  (`SessionService.DeleteGroupSessions`). Deleted sessions are invisible: 404 on fetch, absent from every listing,
+  discover and the expiry cron.
 
 Session rules:
 - Any confirmed member can create session
@@ -523,6 +530,7 @@ All activity tables use the `activity` schema for namespace isolation (DDD bound
    - location (coordinates for mapping)
    - start_time, end_time, capacity
    - status: scheduled, started, cancelled, completed
+   - deleted_at: soft delete, set when the owning group is deleted (excluded from every read)
    - is_recurring flag
    - Indexed for upcoming sessions and location queries
    - team_count, min_players_per_team (NULL team_count = no teams yet; set by create-teams)

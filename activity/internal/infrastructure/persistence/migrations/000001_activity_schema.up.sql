@@ -238,7 +238,10 @@ CREATE TABLE IF NOT EXISTS activity.session(
     updated_at timestamptz NOT NULL DEFAULT NOW(),
     cancelled_at timestamptz DEFAULT NULL,
     started_at timestamptz DEFAULT NULL,
-    completed_at timestamptz DEFAULT NULL
+    completed_at timestamptz DEFAULT NULL,
+    -- soft delete: set when the owning activity group is deleted; a deleted
+    -- session is invisible everywhere
+    deleted_at timestamptz DEFAULT NULL
 );
 
 COMMENT ON COLUMN activity.session.session_template_id IS 'Links to the template that generated this session (NULL for manual sessions)';

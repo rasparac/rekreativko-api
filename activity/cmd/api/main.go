@@ -156,14 +156,6 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		domainEventMgr,
 		appMetrics,
 	)
-	activityGroupService := application.NewActivityGroupService(
-		log,
-		txManager,
-		activityGroupRepo,
-		memberRepo,
-		domainEventMgr,
-		appMetrics,
-	)
 	sessionService := application.NewSessionService(
 		log,
 		txManager,
@@ -174,6 +166,15 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		sessionInviteRepo,
 		teamDraftRepo,
 		teamVotingRepo,
+		domainEventMgr,
+		appMetrics,
+	)
+	activityGroupService := application.NewActivityGroupService(
+		log,
+		txManager,
+		activityGroupRepo,
+		memberRepo,
+		sessionService,
 		domainEventMgr,
 		appMetrics,
 	)

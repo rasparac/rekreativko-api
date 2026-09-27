@@ -62,6 +62,8 @@ type SessionRepository interface {
 	DiscoverSessions(ctx context.Context, filter persistence.DiscoverSessionsFilter) ([]persistence.SessionWithDistance, string, error)
 	DeleteSession(ctx context.Context, id uuid.UUID) error
 	FindSessionsPastEndTime(ctx context.Context) ([]*domain.Session, error)
+	ListActiveSessionIDsByGroup(ctx context.Context, activityGroupID uuid.UUID) ([]uuid.UUID, error)
+	SoftDeleteGroupSessions(ctx context.Context, activityGroupID uuid.UUID) (int64, error)
 	ReplaceTeams(ctx context.Context, session *domain.Session) error
 }
 

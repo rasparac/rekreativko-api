@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -889,6 +890,133 @@ func (s *SessionService) CancelSession(
 
 	return nil
 }
+
+// CancelGroupSessions cancels every scheduled or started session of a group
+// that is being cancelled, ending any running draft or open voting round on
+// them, and returns how many it cancelled. It joins the caller's transaction,
+// so the group and its sessions are cancelled atomically.
+func (s *SessionService) CancelGroupSessions(
+	ctx context.Context,
+	activityGroupID uuid.UUID,
+	cancelledBy uuid.UUID,
+	reason string,
+) (int, error) {
+	ctx, span := s.tracer.Start(
+		ctx,
+		"activity.service.CancelGroupSessions",
+	)
+	defer span.End()
+
+	span.SetAttributes(attribute.String("activity_group_id", activityGroupID.String()))
+
+	var cancelled int
+	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		sessionIDs, err := s.sessionRepo.ListActiveSessionIDsByGroup(tCtx, activityGroupID)
+		if err != nil {
+			return fmt.Errorf("list group sessions: %w", err)
+		}
+
+		for _, sessionID := range sessionIDs {
+			// Serializes with draft/voting commands and attendance changes;
+			// the session is (re-)read under the lock.
+			if err := lockSessionCapacity(tCtx, s.txManager, sessionID); err != nil {
+				return err
+			}
+
+			session, err := s.sessionRepo.GetSessionByID(tCtx, sessionID)
+			if err != nil {
+				return fmt.Errorf("get session: %w", err)
+			}
+
+			attendeeUserIDs, err := s.resolveSessionAttendeeUserIDs(tCtx, sessionID, cancelledBy)
+			if err != nil {
+				return fmt.Errorf("resolve session attendees: %w", err)
+			}
+
+			err = session.CancelFromGroup(reason, attendeeUserIDs)
+			if errors.Is(err, domain.ErrSessionCanceled) || errors.Is(err, domain.ErrSessionCompleted) {
+				// Ended between the listing and taking the lock.
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("cancel session: %w", err)
+			}
+
+			if err := s.sessionRepo.UpdateSession(tCtx, session); err != nil {
+				return fmt.Errorf("persist session cancellation: %w", err)
+			}
+
+			formationEvents, err := s.formation.sessionEnded(tCtx, sessionID, cancelledBy)
+			if err != nil {
+				return err
+			}
+
+			if err := s.eventWriter.InsertEvents(tCtx, activitySchema, append(session.Events(), formationEvents...)); err != nil {
+				return fmt.Errorf("insert domain events: %w", err)
+			}
+			session.ClearEvents()
+
+			cancelled++
+		}
+
+		return nil
+	})
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return 0, err
+	}
+
+	span.SetAttributes(attribute.Int("cancelled_count", cancelled))
+	span.SetStatus(codes.Ok, "group sessions cancelled")
+
+	return cancelled, nil
+}
+
+// DeleteGroupSessions removes a deleted group's sessions: live ones are
+// cancelled first (attendees notified, drafts/voting ended - see
+// CancelGroupSessions), then every session of the group, ended ones included,
+// is soft-deleted. It joins the caller's transaction.
+func (s *SessionService) DeleteGroupSessions(
+	ctx context.Context,
+	activityGroupID uuid.UUID,
+	deletedBy uuid.UUID,
+) (int, error) {
+	ctx, span := s.tracer.Start(
+		ctx,
+		"activity.service.DeleteGroupSessions",
+	)
+	defer span.End()
+
+	span.SetAttributes(attribute.String("activity_group_id", activityGroupID.String()))
+
+	var deleted int64
+	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		if _, err := s.CancelGroupSessions(tCtx, activityGroupID, deletedBy, groupDeletedReason); err != nil {
+			return err
+		}
+
+		var err error
+		deleted, err = s.sessionRepo.SoftDeleteGroupSessions(tCtx, activityGroupID)
+		if err != nil {
+			return fmt.Errorf("delete group sessions: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return 0, err
+	}
+
+	span.SetAttributes(attribute.Int64("deleted_count", deleted))
+	span.SetStatus(codes.Ok, "group sessions deleted")
+
+	return int(deleted), nil
+}
+
+// groupDeletedReason is the cancellation reason attendees see when a session
+// is cancelled because its group was deleted.
+const groupDeletedReason = "activity group deleted"
 
 // resolveSessionAttendeeUserIDs resolves who should be notified that a
 // session was cancelled: every attendee still interested in it, other than
