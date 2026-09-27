@@ -109,7 +109,10 @@ func (upsm *AccountProfileSettingsManager) CreateSettings(
 ) error {
 	settingsModels, metadata := toaccountSettingModel(settings)
 
-	if err := upsm.insertSettings(ctx, settingsModels); err != nil {
+	// Idempotent: existing rows are kept and only missing ones inserted, so a
+	// redelivered account.verified event (or a half-created account) doesn't
+	// fail on a unique violation.
+	if err := upsm.insertSettings(ctx, settingsModels, true); err != nil {
 		return err
 	}
 
@@ -151,7 +154,7 @@ func (upsm *AccountProfileSettingsManager) UpdateSettings(
 			return err
 		}
 
-		if err := upsm.insertSettings(ctx, settingsModels); err != nil {
+		if err := upsm.insertSettings(ctx, settingsModels, false); err != nil {
 			return err
 		}
 	}
@@ -163,7 +166,8 @@ func (r *AccountProfileSettingsManager) insertMetadata(ctx context.Context, meta
 	const query = `INSERT INTO
 		account_profile.account_settings_meta
 		(account_id, version, created_at, updated_at)
-	VALUES ($1, $2, $3, $4)`
+	VALUES ($1, $2, $3, $4)
+	ON CONFLICT (account_id) DO NOTHING`
 
 	_, err := r.txManager.Querier(ctx).Exec(ctx, query,
 		metadata.AccountID,
@@ -178,7 +182,9 @@ func (r *AccountProfileSettingsManager) insertMetadata(ctx context.Context, meta
 	return nil
 }
 
-func (r *AccountProfileSettingsManager) insertSettings(ctx context.Context, settings []*accountSettingModel) error {
+// insertSettings inserts settings rows; skipExisting leaves rows that already
+// exist untouched instead of failing on the (account_id, key) primary key.
+func (r *AccountProfileSettingsManager) insertSettings(ctx context.Context, settings []*accountSettingModel, skipExisting bool) error {
 	var (
 		settingValuesValues = make([]any, 0, len(settings)*5)
 		placeHolders        = make([]string, 0)
@@ -204,6 +210,9 @@ func (r *AccountProfileSettingsManager) insertSettings(ctx context.Context, sett
 		query,
 		strings.Join(placeHolders, ","),
 	)
+	if skipExisting {
+		insertSettingsQuery += " ON CONFLICT (account_id, key) DO NOTHING"
+	}
 
 	_, err := r.txManager.Querier(ctx).Exec(ctx, insertSettingsQuery, settingValuesValues...)
 	if err != nil {

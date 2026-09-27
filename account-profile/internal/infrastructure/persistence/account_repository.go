@@ -163,12 +163,13 @@ func (m *accountProfileManager) CreateAccountProfile(
 				created_at,
 				updated_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			ON CONFLICT (account_id) DO NOTHING`
 		model = toAccountProfileModel(profile)
 		tx    = m.tx.Querier(ctx)
 	)
 
-	_, err := tx.Exec(
+	cmdTag, err := tx.Exec(
 		ctx,
 		query,
 		model.accountID,
@@ -187,6 +188,13 @@ func (m *accountProfileManager) CreateAccountProfile(
 	)
 	if err != nil {
 		return err
+	}
+
+	// DO NOTHING rather than a unique violation, so the caller's transaction
+	// stays usable - e.g. a redelivered account.verified event can still go on
+	// to create missing settings.
+	if cmdTag.RowsAffected() == 0 {
+		return domain.ErrAccountProfileExists
 	}
 
 	return nil

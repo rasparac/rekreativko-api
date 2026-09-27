@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/rasparac/rekreativko-api/account-profile/internal/application"
@@ -81,11 +82,17 @@ func (avh *createProfileEventHandler) Handle(ctx context.Context, payload []byte
 		attribute.String("event.account_id", event.AccountID.String()),
 	)
 
+	// Events are delivered at least once, so a redelivery finds the profile
+	// already there - that's success, not a conflict. Settings are still
+	// created (idempotently) so a half-created account gets repaired.
 	err = avh.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
 		_, err := avh.accountProfile.CreateProfile(tCtx, application.CreateProfileParams{
 			AccountID: event.AccountID,
 		})
-		if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrAccountProfileExists):
+			log.Debug(tCtx, "account profile already exists, redelivered event")
+		case err != nil:
 			return fmt.Errorf("create profile: %w", err)
 		}
 

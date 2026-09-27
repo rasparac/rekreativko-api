@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -88,7 +89,11 @@ func (s *service) CreateProfile(ctx context.Context, createProfile CreateProfile
 	})
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
-		log.Error(ctx, "create a new account", "error", err)
+		if errors.Is(err, domain.ErrAccountProfileExists) {
+			log.Debug(ctx, "account profile already exists")
+		} else {
+			log.Error(ctx, "create a new account", "error", err)
+		}
 		return nil, mapToAppErr(err)
 	}
 
