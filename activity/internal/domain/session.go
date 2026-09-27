@@ -726,7 +726,7 @@ func (s *Session) Complete(
 		return ErrSessionNotStarted
 	}
 
-	if !requesterRole.CanManageMembers() {
+	if !s.canManageSession(requesterID, requesterRole) {
 		return ErrUnauthorized
 	}
 

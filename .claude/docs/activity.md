@@ -50,8 +50,7 @@ AcitivitySession:
 |
 |
 |----Permissions:
-|    |---- Edit/Cancel: session creator OR group admin/creator
-|    |---- Start/Complete: group admin/creator only
+|    |---- Edit/Cancel/Start/Complete: session creator OR group admin/creator (canManageSession)
 |
 |
 |----Capacity:

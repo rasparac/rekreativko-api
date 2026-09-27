@@ -367,7 +367,7 @@ func TestTeamDraftService_SessionEndingCancelsTheDraft(t *testing.T) {
 			name: "completed",
 			endSession: func(t *testing.T, env *sessionTeamTestEnv, session *domain.Session) {
 				require.NoError(t, env.sessionSvc.StartSession(env.ctx, session.ID(), session.CreatedByID(), ""))
-				require.NoError(t, env.sessionSvc.CompleteSession(env.ctx, session.ID(), session.CreatedByID(), string(domain.MemberRoleCreator)))
+				require.NoError(t, env.sessionSvc.CompleteSession(env.ctx, session.ID(), session.CreatedByID(), ""))
 			},
 		},
 		{
