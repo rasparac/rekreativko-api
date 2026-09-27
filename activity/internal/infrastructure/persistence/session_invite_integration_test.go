@@ -5,6 +5,7 @@ package persistence_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ import (
 type sessionInviteTestEnv struct {
 	ctx          context.Context
 	svc          *application.SessionInviteService
+	sessionSvc   *application.SessionService
 	inviteRepo   persistence.SessionInviteRepository
 	sessionRepo  application.SessionRepository
 	attendeeRepo application.AttendeeRepository
@@ -38,11 +40,16 @@ func setupSessionInviteTest(t *testing.T) *sessionInviteTestEnv {
 	inviteRepo := persistence.NewSessionInviteRepository(txManager, logger)
 	sessionRepo := persistence.NewSessionManager(txManager, logger)
 	attendeeRepo := persistence.NewAttendeeRepository(txManager, logger)
+	memberRepo := persistence.NewMemberRepository(txManager, logger)
+	groupRepo := persistence.NewActivityGroupRepository(txManager, logger)
+	draftRepo := persistence.NewTeamDraftRepository(txManager, logger)
+	votingRepo := persistence.NewTeamVotingRepository(txManager, logger)
 	eventWriter := domainevent.NewDomainEventManager(txManager)
 
 	return &sessionInviteTestEnv{
 		ctx:          context.Background(),
 		svc:          application.NewSessionInviteService(logger, txManager, inviteRepo, sessionRepo, attendeeRepo, eventWriter, testMetrics()),
+		sessionSvc:   application.NewSessionService(logger, txManager, sessionRepo, memberRepo, groupRepo, attendeeRepo, inviteRepo, draftRepo, votingRepo, eventWriter, testMetrics()),
 		inviteRepo:   inviteRepo,
 		sessionRepo:  sessionRepo,
 		attendeeRepo: attendeeRepo,
@@ -309,4 +316,62 @@ func TestSessionInviteService_ExpireStaleInvites(t *testing.T) {
 	stored, err := env.inviteRepo.GetInviteByID(env.ctx, stale.ID())
 	require.NoError(t, err)
 	assert.Equal(t, domain.InviteStatusExpired, stored.Status())
+}
+
+// canSee reports whether userID can see the session both on direct fetch
+// and in an unfiltered listing - the two must always agree.
+func (e *sessionInviteTestEnv) canSee(t *testing.T, session *domain.Session, userID uuid.UUID) bool {
+	t.Helper()
+
+	_, getErr := e.sessionSvc.GetSession(e.ctx, session.ID(), userID)
+	if getErr != nil {
+		requireAppErrorCode(t, getErr, "session_not_found")
+	}
+
+	listed, _, _, err := e.sessionSvc.ListSessions(e.ctx, application.ListSessionsParams{Limit: 100}, userID)
+	require.NoError(t, err)
+	inList := slices.ContainsFunc(listed, func(s *domain.Session) bool { return s.ID() == session.ID() })
+
+	require.Equal(t, getErr == nil, inList, "GetSession and ListSessions disagree on visibility")
+	return inList
+}
+
+func TestSessionService_PendingInvitee_CanSeePrivateSessionBeforeAccepting(t *testing.T) {
+	env := setupSessionInviteTest(t)
+	session := env.createPrivateStandaloneSession(t, 5)
+	invitee := uuid.New()
+
+	assert.False(t, env.canSee(t, session, invitee), "not visible before being invited")
+
+	env.invite(t, session, invitee)
+
+	assert.True(t, env.canSee(t, session, invitee), "visible while the invite is pending")
+	assert.False(t, env.canSee(t, session, uuid.New()), "still hidden from unrelated users")
+}
+
+func TestSessionService_DeclinedInvitee_LosesVisibility(t *testing.T) {
+	env := setupSessionInviteTest(t)
+	session := env.createPrivateStandaloneSession(t, 5)
+	invitee := uuid.New()
+
+	invite := env.invite(t, session, invitee)
+	require.NoError(t, env.svc.DeclineInvite(env.ctx, invite.ID(), invitee))
+
+	assert.False(t, env.canSee(t, session, invitee))
+}
+
+func TestSessionService_ExpiredInvitee_CannotSeePrivateSession(t *testing.T) {
+	env := setupSessionInviteTest(t)
+	session := env.createPrivateStandaloneSession(t, 5)
+	invitee := uuid.New()
+
+	// Still pending (the sweep hasn't run), but past its expiry.
+	stale := domain.ReconstructSessionInvite(
+		uuid.New(), session.ID(), invitee, session.CreatedByID(),
+		domain.InviteStatusPending,
+		time.Now().Add(-8*24*time.Hour), time.Now().Add(-time.Hour), nil,
+	)
+	require.NoError(t, env.inviteRepo.CreateInvite(env.ctx, stale))
+
+	assert.False(t, env.canSee(t, session, invitee))
 }

@@ -29,6 +29,7 @@ type SessionService struct {
 	memberRepo   MemberRepository
 	groupRepo    ActivityGroupRepository
 	attendeeRepo AttendeeRepository
+	inviteRepo   SessionInviteRepository
 	formation    teamFormation
 	eventWriter  domainevent.EventWriter
 	tracer       trace.Tracer
@@ -60,6 +61,7 @@ func NewSessionService(
 	memberRepo MemberRepository,
 	groupRepo ActivityGroupRepository,
 	attendeeRepo AttendeeRepository,
+	inviteRepo SessionInviteRepository,
 	draftRepo TeamDraftRepository,
 	votingRepo TeamVotingRepository,
 	eventWriter domainevent.EventWriter,
@@ -72,6 +74,7 @@ func NewSessionService(
 		memberRepo:   memberRepo,
 		groupRepo:    groupRepo,
 		attendeeRepo: attendeeRepo,
+		inviteRepo:   inviteRepo,
 		formation:    newTeamFormation(sessionRepo, attendeeRepo, draftRepo, votingRepo),
 		eventWriter:  eventWriter,
 		tracer:       telemetry.Tracer(telemetry.TracerActivityService),
@@ -437,16 +440,24 @@ func (s *SessionService) ListTeamMembers(
 	return members, nil
 }
 
-// isSessionRelated reports whether userID is either an attendee of this
-// session or a confirmed member of its owning group (creator/admin
-// included, since a group-scoped session's creator is already a confirmed
-// member by construction) - the "isRelated" input Session.IsVisibleTo needs
-// for a private session. A standalone session has no group, so only the
-// attendee check applies to it - the creator, added as an auto-attendee on
-// creation, always satisfies it for their own private standalone session.
+// isSessionRelated reports whether userID is an attendee of this session,
+// holds a pending, unexpired invite to it, or is a confirmed member of its
+// owning group (creator/admin included, since a group-scoped session's
+// creator is already a confirmed member by construction) - the "isRelated"
+// input Session.IsVisibleTo needs for a private session. A standalone
+// session has no group, so only the attendee and invite checks apply to it -
+// the creator, added as an auto-attendee on creation, always satisfies the
+// former for their own private standalone session. The invite check lets an
+// invitee see what they're being invited to before deciding to accept; it
+// grants read access only, since RSVPing is authorized separately.
 func (s *SessionService) isSessionRelated(ctx context.Context, session *domain.Session, userID uuid.UUID) bool {
 	attendee, err := s.attendeeRepo.GetAttendeeBySessionAndUser(ctx, session.ID(), userID)
 	if err == nil && attendee != nil {
+		return true
+	}
+
+	invite, err := s.inviteRepo.GetPendingInviteBySessionAndUser(ctx, session.ID(), userID)
+	if err == nil && invite != nil && !invite.IsExpired() {
 		return true
 	}
 
@@ -1044,9 +1055,9 @@ func (s *SessionService) ListSessions(
 
 	// Scopes every listing shape (activity_group_id, created_by_id,
 	// attendee_id, or none) to what requesterID may actually see: public
-	// sessions, plus any private one they created, attend, or belong to a
-	// group they're a confirmed member of. Same rule GetSession applies on
-	// direct fetch, via Session.IsVisibleTo.
+	// sessions, plus any private one they created, attend, hold a pending
+	// invite to, or belong to a group they're a confirmed member of. Same
+	// rule GetSession applies on direct fetch, via Session.IsVisibleTo.
 	filter.RequesterID = requesterID
 
 	// Browsing someone else's profile (?attendee_id=<not you> or

@@ -143,6 +143,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		memberRepo,
 		activityGroupRepo,
 		attendeeRepo,
+		sessionInviteRepo,
 		persistence.NewTeamDraftRepository(txManager, log),
 		persistence.NewTeamVotingRepository(txManager, log),
 		domainEventMgr,

@@ -171,6 +171,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		memberRepo,
 		activityGroupRepo,
 		attendeeRepo,
+		sessionInviteRepo,
 		teamDraftRepo,
 		teamVotingRepo,
 		domainEventMgr,

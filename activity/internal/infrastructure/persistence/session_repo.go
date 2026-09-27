@@ -77,8 +77,9 @@ type SessionFilter struct {
 	AttendeeID       *uuid.UUID
 	AttendeeStatuses []domain.AttendeeStatus
 	// RequesterID scopes results to what this caller may actually see: public
-	// sessions, plus any private session they created, are an attendee of, or
-	// belong to a group they're a confirmed member of. Mirrors
+	// sessions, plus any private session they created, are an attendee of,
+	// hold a pending unexpired invite to, or belong to a group they're a
+	// confirmed member of. Mirrors
 	// ActivityGroupFilter.RequesterID - applied unconditionally, regardless of
 	// which other filters (ActivityGroupID, CreatedByID, AttendeeID, ...) are
 	// also set, so a private session an unrelated caller has no relationship
@@ -566,10 +567,10 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 
 	if filter.RequesterID != uuid.Nil {
 		// Public sessions are visible to everyone; a private one only to its
-		// creator, one of its attendees, or a confirmed member of the group
-		// it belongs to (moot for a standalone session, which has no group) -
-		// anyone else must not see it in listings at all, not just be denied
-		// on direct fetch.
+		// creator, one of its attendees, someone holding a pending unexpired
+		// invite to it, or a confirmed member of the group it belongs to (moot
+		// for a standalone session, which has no group) - anyone else must not
+		// see it in listings at all, not just be denied on direct fetch.
 		qb.ParamCount++
 		requesterParam := qb.ParamCount
 		qb.BaseQuery += fmt.Sprintf(
@@ -577,9 +578,10 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 				visibility = 'public'
 				OR created_by_id = $%d
 				OR id IN (SELECT session_id FROM activity.session_attendee WHERE account_id = $%d AND deleted_at IS NULL)
+				OR id IN (SELECT session_id FROM activity.session_invites WHERE invited_user_id = $%d AND status = 'pending' AND expires_at > now())
 				OR activity_group_id IN (SELECT activity_group_id FROM activity.member WHERE account_id = $%d AND status = 'confirmed' AND deleted_at IS NULL)
 			)`,
-			requesterParam, requesterParam, requesterParam,
+			requesterParam, requesterParam, requesterParam, requesterParam,
 		)
 		qb.Args = append(qb.Args, filter.RequesterID)
 	}
