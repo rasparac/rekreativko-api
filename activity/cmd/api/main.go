@@ -213,6 +213,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		log,
 		txManager,
 		sessionRepo,
+		memberRepo,
 		attendeeRepo,
 		teamDraftRepo,
 		teamVotingRepo,

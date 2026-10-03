@@ -20,6 +20,9 @@ type TeamVotingRepository interface {
 	UpdateRound(ctx context.Context, round *domain.TeamVotingRound) error
 	GetOpenRound(ctx context.Context, sessionID uuid.UUID) (*domain.TeamVotingRound, error)
 	GetLatestRound(ctx context.Context, sessionID uuid.UUID) (*domain.TeamVotingRound, error)
+	// MarkTieNotified records the tie (see domain.TieError.Key) the managers
+	// were told about. It reports false when the round already has that key.
+	MarkTieNotified(ctx context.Context, roundID uuid.UUID, tieKey string) (bool, error)
 }
 
 type teamVotingManager struct {
@@ -105,6 +108,21 @@ func (m *teamVotingManager) UpdateRound(ctx context.Context, round *domain.TeamV
 	}
 
 	return m.insertContent(ctx, round)
+}
+
+func (m *teamVotingManager) MarkTieNotified(ctx context.Context, roundID uuid.UUID, tieKey string) (bool, error) {
+	result, err := m.tx.Querier(ctx).Exec(
+		ctx,
+		`UPDATE activity.session_team_voting_round
+		SET last_tie_key = $2
+		WHERE id = $1 AND status = 'open' AND last_tie_key IS DISTINCT FROM $2`,
+		roundID, tieKey,
+	)
+	if err != nil {
+		return false, fmt.Errorf("failed to mark team voting tie notified: %w", err)
+	}
+
+	return result.RowsAffected() > 0, nil
 }
 
 func (m *teamVotingManager) insertContent(ctx context.Context, round *domain.TeamVotingRound) error {

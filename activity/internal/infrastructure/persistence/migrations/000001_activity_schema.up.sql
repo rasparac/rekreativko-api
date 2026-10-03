@@ -390,6 +390,9 @@ CREATE TABLE IF NOT EXISTS activity.session_team_voting_round(
     -- deleted when the round ends), or kept_current
     winner_proposal_id uuid DEFAULT NULL,
     kept_current boolean NOT NULL DEFAULT FALSE,
+    -- the tied option set the managers were last told about (see
+    -- TieError.Key), so repeated Close attempts on the same tie notify once
+    last_tie_key text DEFAULT NULL,
     version int NOT NULL DEFAULT 1,
     started_at timestamptz NOT NULL DEFAULT NOW(),
     ended_at timestamptz DEFAULT NULL

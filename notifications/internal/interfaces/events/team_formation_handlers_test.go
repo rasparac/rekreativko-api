@@ -287,6 +287,28 @@ func TestVotingCancelledHandler(t *testing.T) {
 	})
 }
 
+func TestVotingTiedHandler_NotifiesManagersButNotTheCloser(t *testing.T) {
+	creator := &recordingCreator{}
+	h := &votingTiedHandler{notifications: creator, logger: logger.New("error", "json")}
+	eventID, sessionID, closer := uuid.New(), uuid.New(), uuid.New()
+	managers := []uuid.UUID{uuid.New(), uuid.New()}
+	tied := []uuid.UUID{uuid.New(), uuid.New()}
+
+	handle(t, h, teamPayload(t, eventID, "activity.session.voting.tied", map[string]any{
+		"session_id":        sessionID,
+		"round_id":          uuid.New(),
+		"tied_proposal_ids": tied,
+		"keep_current_tied": true,
+		"closed_by":         closer,
+		"manager_user_ids":  append([]uuid.UUID{closer}, managers...),
+	}))
+
+	require.Equal(t, managers, recipients(creator.calls))
+	requireTeamNotification(t, creator.calls[0], eventID, sessionID, domain.NotificationTypeTeamVotingTied, domain.ScreenTeamVoting)
+	assert.Equal(t, tied, creator.calls[0].Data["tied_proposal_ids"])
+	assert.Equal(t, true, creator.calls[0].Data["keep_current_tied"])
+}
+
 func TestAttendeeTeamChangedHandler_NotifiesMovedAttendee(t *testing.T) {
 	creator := &recordingCreator{}
 	h := &attendeeTeamChangedHandler{notifications: creator, logger: logger.New("error", "json")}
@@ -328,6 +350,7 @@ func TestTeamFormationHandlers_MalformedPayloadIsPermanent(t *testing.T) {
 		"voting_opened":      &votingOpenedHandler{notifications: &recordingCreator{}, logger: log},
 		"voting_closed":      &votingClosedHandler{notifications: &recordingCreator{}, logger: log},
 		"voting_cancelled":   &votingCancelledHandler{notifications: &recordingCreator{}, logger: log},
+		"voting_tied":        &votingTiedHandler{notifications: &recordingCreator{}, logger: log},
 		"team_changed":       &attendeeTeamChangedHandler{notifications: &recordingCreator{}, logger: log},
 	}
 

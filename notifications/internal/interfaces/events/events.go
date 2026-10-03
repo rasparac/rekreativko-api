@@ -216,6 +216,16 @@ type votingCancelledEvent struct {
 	ParticipantUserIDs []uuid.UUID `json:"participant_user_ids"`
 }
 
+type votingTiedEvent struct {
+	EventID         uuid.UUID   `json:"event_id"`
+	SessionID       uuid.UUID   `json:"session_id"`
+	RoundID         uuid.UUID   `json:"round_id"`
+	TiedProposalIDs []uuid.UUID `json:"tied_proposal_ids"`
+	KeepCurrentTied bool        `json:"keep_current_tied"`
+	ClosedBy        uuid.UUID   `json:"closed_by"`
+	ManagerUserIDs  []uuid.UUID `json:"manager_user_ids"`
+}
+
 type attendeeTeamChangedEvent struct {
 	EventID        uuid.UUID `json:"event_id"`
 	SessionID      uuid.UUID `json:"session_id"`

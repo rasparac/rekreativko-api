@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
+	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/logger"
@@ -35,6 +36,7 @@ type TeamVotingService struct {
 	logger      *logger.Logger
 	txManager   *postgres.TransactionManager
 	sessionRepo SessionRepository
+	memberRepo  MemberRepository
 	votingRepo  TeamVotingRepository
 	formation   teamFormation
 	eventWriter domainevent.EventWriter
@@ -47,6 +49,7 @@ func NewTeamVotingService(
 	logger *logger.Logger,
 	txManager *postgres.TransactionManager,
 	sessionRepo SessionRepository,
+	memberRepo MemberRepository,
 	attendeeRepo AttendeeRepository,
 	draftRepo TeamDraftRepository,
 	votingRepo TeamVotingRepository,
@@ -57,6 +60,7 @@ func NewTeamVotingService(
 		logger:      logger.WithName("activity.team_voting_service"),
 		txManager:   txManager,
 		sessionRepo: sessionRepo,
+		memberRepo:  memberRepo,
 		votingRepo:  votingRepo,
 		formation:   newTeamFormation(sessionRepo, attendeeRepo, draftRepo, votingRepo),
 		eventWriter: eventWriter,
@@ -304,6 +308,11 @@ func (s *TeamVotingService) Close(ctx context.Context, params CloseVotingParams)
 		return nil
 	})
 	if err != nil {
+		var tie *domain.TieError
+		if errors.As(err, &tie) {
+			s.notifyTie(ctx, params, tie)
+		}
+
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to close voting", "error", err)
 		return nil, mapToAppErr(err)
@@ -312,6 +321,89 @@ func (s *TeamVotingService) Close(ctx context.Context, params CloseVotingParams)
 	span.SetStatus(codes.Ok, "voting closed")
 
 	return state, nil
+}
+
+// notifyTie tells the other managers that a Close hit a tie and needs a
+// winner. Close rolled back, so the event is written in a transaction of its
+// own; a tie already announced (same tied set) is not repeated. It is best
+// effort - the closer gets the 409 either way.
+func (s *TeamVotingService) notifyTie(ctx context.Context, params CloseVotingParams, tie *domain.TieError) {
+	log := s.logger.WithValues("method", "notifyTie", "session_id", params.SessionID)
+
+	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
+		if err != nil {
+			return fmt.Errorf("get session: %w", err)
+		}
+
+		round, err := s.formation.openVoting(tCtx, params.SessionID)
+		if err != nil {
+			return err
+		}
+		if round == nil {
+			return nil
+		}
+
+		managers, err := s.sessionManagers(tCtx, session, params.RequesterID)
+		if err != nil {
+			return err
+		}
+		if len(managers) == 0 {
+			return nil
+		}
+
+		first, err := s.votingRepo.MarkTieNotified(tCtx, round.ID(), tie.Key())
+		if err != nil {
+			return err
+		}
+		if !first {
+			return nil
+		}
+
+		return s.insertEvents(tCtx, []domainevent.Event{
+			domain.NewVotingTiedEvent(round, tie, params.RequesterID, managers),
+		})
+	})
+	if err != nil {
+		log.Error(ctx, "failed to notify voting tie", "error", err)
+	}
+}
+
+// sessionManagers returns who can pick a tie's winner: the group's confirmed
+// admins/creator and the session creator, without except.
+func (s *TeamVotingService) sessionManagers(ctx context.Context, session *domain.Session, except uuid.UUID) ([]uuid.UUID, error) {
+	managers := []uuid.UUID{session.CreatedByID()}
+
+	if groupID := session.ActivityGroupID(); groupID != nil {
+		confirmed := domain.MemberStatusConfirmed
+		members, _, err := s.memberRepo.ListMembers(ctx, persistence.MemberFilter{
+			ActivityGroupID: groupID,
+			Status:          &confirmed,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list confirmed members: %w", err)
+		}
+		for _, m := range members {
+			if m.Role().CanManageMembers() {
+				managers = append(managers, m.UserID())
+			}
+		}
+	}
+
+	seen := make(map[uuid.UUID]struct{}, len(managers))
+	unique := managers[:0]
+	for _, id := range managers {
+		if id == except || id == uuid.Nil {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+
+	return unique, nil
 }
 
 // GetVoting returns the session's latest round (any status, or none) with the

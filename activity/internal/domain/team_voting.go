@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -67,6 +68,21 @@ func (e *TieError) Error() string {
 
 func (e *TieError) Unwrap() error {
 	return ErrTieRequiresWinner
+}
+
+// Key identifies the tied option set independent of order, so the same tie
+// seen on two Close attempts compares equal and a changed tie does not.
+func (e *TieError) Key() string {
+	parts := make([]string, 0, len(e.ProposalIDs)+1)
+	for _, id := range e.ProposalIDs {
+		parts = append(parts, id.String())
+	}
+	if e.KeepCurrentTied {
+		parts = append(parts, "keep_current")
+	}
+	slices.Sort(parts)
+
+	return strings.Join(parts, ",")
 }
 
 // TeamProposal is one suggested division: teams in order (first = Team A),

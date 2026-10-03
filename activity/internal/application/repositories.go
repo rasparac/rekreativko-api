@@ -92,6 +92,9 @@ type TeamVotingRepository interface {
 	UpdateRound(ctx context.Context, round *domain.TeamVotingRound) error
 	GetOpenRound(ctx context.Context, sessionID uuid.UUID) (*domain.TeamVotingRound, error)
 	GetLatestRound(ctx context.Context, sessionID uuid.UUID) (*domain.TeamVotingRound, error)
+	// MarkTieNotified records the tie (see domain.TieError.Key) the managers
+	// were told about. It reports false when the round already has that key.
+	MarkTieNotified(ctx context.Context, roundID uuid.UUID, tieKey string) (bool, error)
 }
 
 // AttendeeRepository defines the interface for attendee persistence

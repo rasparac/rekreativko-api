@@ -301,6 +301,35 @@ func (h *votingCancelledHandler) Handle(ctx context.Context, payload []byte) err
 		})
 }
 
+// votingTiedHandler tells the session's managers (except the one who pressed
+// Close and saw the 409) that the vote is tied and one of them has to pick the
+// winner.
+type votingTiedHandler struct {
+	notifications notificationCreator
+	logger        *logger.Logger
+}
+
+func (h *votingTiedHandler) Handle(ctx context.Context, payload []byte) error {
+	var event votingTiedEvent
+	if err := decodeEvent(payload, &event); err != nil {
+		return err
+	}
+	ctx = api.WithEventID(ctx, event.EventID.String())
+
+	return notifyEach(ctx, h.notifications, h.logger, event.EventID, event.ManagerUserIDs, event.ClosedBy,
+		domain.NotificationTypeTeamVotingTied,
+		func(uuid.UUID) map[string]any {
+			return map[string]any{
+				"session_id":        event.SessionID,
+				"round_id":          event.RoundID,
+				"tied_proposal_ids": event.TiedProposalIDs,
+				"keep_current_tied": event.KeepCurrentTied,
+				"closed_by":         event.ClosedBy,
+				"screen":            domain.ScreenTeamVoting,
+			}
+		})
+}
+
 // attendeeTeamChangedHandler tells an attendee an organizer moved them to
 // another team. Teams replaced by a draft or vote emit team_assigned instead,
 // so this only fires for manual moves.

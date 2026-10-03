@@ -3,6 +3,7 @@
 package persistence_test
 
 import (
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -144,6 +145,55 @@ func TestTeamVoting_TieNeedsTheOrganizer(t *testing.T) {
 	require.NoError(t, err)
 	teamA := env.teamIDAt(t, session, 0)
 	assert.Equal(t, &teamA, env.teamOf(t, session, u[2]))
+}
+
+func TestTeamVoting_TieNotifiesOtherManagersOnce(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session, u := env.draftSession(t, 4)
+
+	state, err := env.propose(session, u[0], []uuid.UUID{u[0], u[1]}, []uuid.UUID{u[2], u[3]})
+	require.NoError(t, err)
+	first := state.Round.Proposals()[0].ID()
+	state, err = env.propose(session, u[1], []uuid.UUID{u[0], u[2]}, []uuid.UUID{u[1], u[3]})
+	require.NoError(t, err)
+	second := state.Round.Proposals()[1].ID()
+	require.NoError(t, env.vote(session, u[0], first))
+	require.NoError(t, env.vote(session, u[1], second))
+
+	closeAs := func(requester uuid.UUID, role string) error {
+		_, err := env.votingSvc.Close(env.ctx, application.CloseVotingParams{
+			SessionID:     session.ID(),
+			RequesterID:   requester,
+			RequesterRole: role,
+		})
+		return err
+	}
+
+	// the creator closing is the only manager, and they saw the 409
+	var tie *domain.TieError
+	require.ErrorAs(t, closeAs(session.CreatedByID(), ""), &tie)
+	assert.Zero(t, env.outboxCount(t, "activity.session.voting.tied"))
+
+	// an admin closing: the creator is told
+	admin := uuid.New()
+	require.ErrorAs(t, closeAs(admin, "admin"), &tie)
+	assert.Equal(t, 1, env.outboxCount(t, "activity.session.voting.tied"))
+
+	// the same tie again is not announced twice
+	require.ErrorAs(t, closeAs(admin, "admin"), &tie)
+	assert.Equal(t, 1, env.outboxCount(t, "activity.session.voting.tied"))
+
+	var payload struct {
+		ManagerUserIDs []uuid.UUID `json:"manager_user_ids"`
+	}
+	var raw []byte
+	require.NoError(t, env.txManager.Querier(env.ctx).QueryRow(env.ctx,
+		`SELECT payload FROM activity.event_outbox WHERE event_type = 'activity.session.voting.tied'`,
+	).Scan(&raw))
+	require.NoError(t, json.Unmarshal(raw, &payload))
+	assert.Equal(t, []uuid.UUID{session.CreatedByID()}, payload.ManagerUserIDs)
+
+	assert.True(t, env.voting(t, session).Round.IsOpen(), "a tie changes nothing")
 }
 
 func TestTeamVoting_AttendanceChanges(t *testing.T) {

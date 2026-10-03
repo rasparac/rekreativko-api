@@ -396,3 +396,17 @@ func TestSession_ApplyProposalTeams(t *testing.T) {
 	assert.Equal(t, intPtr(2), session.TeamConfig().MinPlayersPerTeam())
 	assert.True(t, session.Events()[0].(*SessionTeamsCreatedEvent).Replaced)
 }
+
+func TestTieError_KeyIgnoresOrderAndTellsTiesApart(t *testing.T) {
+	a, b := uuid.New(), uuid.New()
+
+	assert.Equal(t,
+		(&TieError{ProposalIDs: []uuid.UUID{a, b}}).Key(),
+		(&TieError{ProposalIDs: []uuid.UUID{b, a}}).Key())
+	assert.NotEqual(t,
+		(&TieError{ProposalIDs: []uuid.UUID{a, b}}).Key(),
+		(&TieError{ProposalIDs: []uuid.UUID{a}}).Key())
+	assert.NotEqual(t,
+		(&TieError{ProposalIDs: []uuid.UUID{a}}).Key(),
+		(&TieError{ProposalIDs: []uuid.UUID{a}, KeepCurrentTied: true}).Key())
+}

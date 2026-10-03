@@ -69,6 +69,7 @@ const (
 	EventActivitySessionVotingPlayerRemoved = "activity.session.voting.player_removed"
 	EventActivitySessionVotingClosed        = "activity.session.voting.closed"
 	EventActivitySessionVotingCancelled     = "activity.session.voting.cancelled"
+	EventActivitySessionVotingTied          = "activity.session.voting.tied"
 	EventActivitySessionDraftCancelled      = "activity.session.draft.cancelled"
 	EventActivitySessionAttendeeAutoPending = "activity.session.attendee.auto_pending"
 
@@ -1518,6 +1519,30 @@ func NewVotingCancelledEvent(r *TeamVotingRound, participants []uuid.UUID) *Voti
 		votingEventBase:    newVotingEventBase(r, EventActivitySessionVotingCancelled),
 		Reason:             r.cancelReason,
 		ParticipantUserIDs: slices.Clone(participants),
+	}
+}
+
+// VotingTiedEvent is raised when the organizer's Close hit a tie and needs to
+// pick the winner. ManagerUserIDs are the people who can pick - group
+// admins/creator and the session creator - without the person who pressed
+// Close, who already got the 409. Unlike the other voting events it is not
+// raised by the round: Close rolls back on a tie, so the service writes it in
+// its own transaction.
+type VotingTiedEvent struct {
+	votingEventBase
+	TiedProposalIDs []uuid.UUID `json:"tied_proposal_ids"`
+	KeepCurrentTied bool        `json:"keep_current_tied"`
+	ClosedBy        uuid.UUID   `json:"closed_by"`
+	ManagerUserIDs  []uuid.UUID `json:"manager_user_ids"`
+}
+
+func NewVotingTiedEvent(r *TeamVotingRound, tie *TieError, closedBy uuid.UUID, managers []uuid.UUID) *VotingTiedEvent {
+	return &VotingTiedEvent{
+		votingEventBase: newVotingEventBase(r, EventActivitySessionVotingTied),
+		TiedProposalIDs: slices.Clone(tie.ProposalIDs),
+		KeepCurrentTied: tie.KeepCurrentTied,
+		ClosedBy:        closedBy,
+		ManagerUserIDs:  slices.Clone(managers),
 	}
 }
 

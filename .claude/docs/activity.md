@@ -432,10 +432,13 @@ deep-link `screen` (`team_draft`, `team_voting`, `session_teams`).
 | `voting.opened` | `team_voting_opened` | people going (`proposal_id`) |
 | `voting.closed` | `team_voting_closed` | people going (`winner_proposal_id` / `kept_current`) |
 | `voting.cancelled` | `team_voting_cancelled` | people going, only for `not_enough_players` |
+| `voting.tied` | `team_voting_tied` | session managers (group admins/creator + session creator) except the one who pressed Close |
 | `attendee.team_changed` | `team_changed` | the moved attendee (manual moves only) |
 
-A voting tie raises no event (close just returns 409 to the organizer), so there is no "tie needs a winner"
-notification.
+A tie makes Close roll back, so `voting.tied` is written in a second transaction after the 409 is decided
+(best effort). `session_team_voting_round.last_tie_key` (`TieError.Key()`: the sorted tied options) dedupes it:
+repeating Close on the same tie notifies once, a changed tied set notifies again. Managers are resolved in
+activity (`manager_user_ids`) so notifications never reads membership data.
 
 
 ====================================================================================================

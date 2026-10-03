@@ -44,6 +44,7 @@ const (
 	NotificationTypeTeamVotingOpened         NotificationType = "team_voting_opened"
 	NotificationTypeTeamVotingClosed         NotificationType = "team_voting_closed"
 	NotificationTypeTeamVotingCancelled      NotificationType = "team_voting_cancelled"
+	NotificationTypeTeamVotingTied           NotificationType = "team_voting_tied"
 	NotificationTypeTeamChanged              NotificationType = "team_changed"
 )
 
