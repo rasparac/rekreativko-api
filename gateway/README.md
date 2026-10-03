@@ -41,7 +41,7 @@ Per-prefix method restrictions: `account-profile` only allows `POST`, `GET`, `PU
 
 ### What an authenticated request gets
 
-On success, `RequireAuth` parses the JWT and puts `accountID` in context; the router's `addUserHeaders` then forwards it to the backend as `X-User-Id` and `X-User-Roles` headers — backends trust these headers rather than re-validating the JWT themselves (see `shared/authcontext`).
+On success, `RequireAuth` parses the JWT and puts `accountID` in context; the router's `addUserHeaders` then forwards it to the backend as the `X-User-ID` header (a client-sent value is always dropped) — backends trust this header rather than re-validating the JWT themselves (see `shared/authcontext`).
 
 ### Service-to-service secret (`X-Gateway-Key`)
 

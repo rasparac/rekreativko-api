@@ -162,7 +162,7 @@ sequenceDiagram
     C->>GW: POST /activity/api/v1/sessions<br/>Authorization: Bearer <JWT>
     GW->>GW: Recover, RequestID, ClientInfo,<br/>Logging, Tracing, CORS, RateLimiter
     GW->>GW: RequireAuth: validate JWT, extract accountID
-    GW->>GW: Router: check path's AuthRule,<br/>set X-User-Id / X-User-Roles headers
+    GW->>GW: Router: check path's AuthRule,<br/>set X-User-ID header
     GW->>GW: AddGatewayKey: attach X-Gateway-Key
     GW->>ACT: strip "/activity" prefix,<br/>proxy POST /api/v1/sessions
     ACT->>ACT: CheckGatewayKey, ExtractUserContext

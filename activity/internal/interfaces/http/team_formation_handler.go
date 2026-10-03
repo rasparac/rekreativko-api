@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/mapper"
 	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/authcontext"
@@ -45,5 +46,8 @@ func (h *Handler) GetTeamFormation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api.WriteOkResponse(w, mapper.TeamFormationSnapshotToResponse(snapshot, accountID), "")
+	// Typed so this file imports dtos: swag resolves the @Success type
+	// through the file's imports and fails on a package it doesn't import.
+	var response *dtos.TeamFormationResponse = mapper.TeamFormationSnapshotToResponse(snapshot, accountID)
+	api.WriteOkResponse(w, response, "")
 }

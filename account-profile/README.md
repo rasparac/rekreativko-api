@@ -4,7 +4,7 @@ User profiles (name, nickname, bio, location, activity interests) and per-accoun
 
 ## Running it
 
-Part of `docker compose up` (container `account-profile`). Every route requires a bearer token at the gateway; the gateway restricts this prefix to `GET`/`POST`/`PUT` only (no `DELETE`, no `PATCH`) — matching the fact that none of this service's current routes use those methods. No route has a `RequiredRoles` restriction: any authenticated user can call any endpoint here, including bulk profile search.
+Part of `docker compose up` (container `account-profile`). Every route requires a bearer token at the gateway; the gateway restricts this prefix to `GET`/`POST`/`PUT` only (no `DELETE`, no `PATCH`) — matching the fact that none of this service's current routes use those methods. Any authenticated user can call any endpoint here, including bulk profile search.
 
 Unlike `identity`/`activity`, this service has **no `validate:` tags anywhere** — all request validation happens by hand in the domain layer (value objects) and application layer, not via a validator library.
 
