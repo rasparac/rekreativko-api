@@ -204,9 +204,15 @@ The gateway uses custom routing logic in `internal/gateway/router.go`:
 
 - Routes are defined with path prefixes that map to backend services
 - Each route has auth rules using regex patterns
-- Public endpoints (login, register) are explicitly allowed
-- Authenticated requests have user context headers added (`X-User-ID`, `X-User-Roles`)
+- Public endpoints (login, register) are explicitly allowed via `RequireAuth: false` rules - the only place they
+  are declared; `main.go` builds the `AuthMiddleware` public-path list from `Router.PublicPaths()`
+- Authenticated requests get the caller's account in `X-User-ID`; a client-sent `X-User-ID` is always dropped,
+  so only the gateway sets it. There are no global roles - roles exist per activity group and are checked by
+  the activity service against its own membership data
 - Paths are stripped before proxying to backend services
+- Long-lived streaming endpoints (SSE) are declared in `Route.StreamPaths` and proxied by `StreamToService`
+  without the 15s WriteTimeout and per-service timeout - only connecting and the wait for response headers
+  are bounded
 
 ## Authentication Flow
 

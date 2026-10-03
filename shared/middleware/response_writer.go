@@ -27,3 +27,10 @@ func (w *responseWriter) Write(b []byte) (int, error) {
 	w.written += int64(n)
 	return n, err
 }
+
+// Unwrap exposes the wrapped writer so http.ResponseController can reach its
+// optional capabilities (Flush, SetWriteDeadline, ...) - streaming responses
+// such as server-sent events rely on it.
+func (w *responseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}

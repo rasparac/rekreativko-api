@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -47,14 +48,25 @@ func NewReverseProxy(
 	// ever reaches the backend's handler - and unlike GET, a POST/PUT/DELETE
 	// on a dead connection is never safely auto-retried by net/http. Always
 	// dialing fresh trades a bit of per-request latency for correctness.
-	transport := &http.Transport{
-		DisableKeepAlives: true,
-	}
-
+	//
+	// The dial timeout and ResponseHeaderTimeout bound connecting to the
+	// backend and then waiting for its response headers - not the body.
+	// Ordinary requests are also bounded as a whole by the per-service
+	// context timeout in ProxyToService; streams (StreamToService) have no
+	// such timeout, so these are what still fail an unreachable backend
+	// (without a dial timeout, the OS TCP connect timeout of ~2 minutes) or
+	// one that never answers. One transport per service, since the timeout
+	// differs per service.
 	for name, cfg := range services {
 		target, err := url.Parse(cfg.URL)
 		if err != nil {
 			return nil, err
+		}
+
+		transport := &http.Transport{
+			DialContext:           (&net.Dialer{Timeout: cfg.Timeout}).DialContext,
+			DisableKeepAlives:     true,
+			ResponseHeaderTimeout: cfg.Timeout,
 		}
 
 		proxy := &httputil.ReverseProxy{
@@ -89,6 +101,8 @@ func NewReverseProxy(
 	return rp, nil
 }
 
+// ProxyToService proxies an ordinary request: the whole exchange must finish
+// within the service's timeout.
 func (rp *ReverseProxy) ProxyToService(serviceName string, w http.ResponseWriter, r *http.Request) {
 	srv, ok := rp.services[serviceName]
 	if !ok {
@@ -102,4 +116,27 @@ func (rp *ReverseProxy) ProxyToService(serviceName string, w http.ResponseWriter
 	req := r.WithContext(ctx)
 
 	srv.proxy.ServeHTTP(w, req)
+}
+
+// StreamToService proxies a long-lived streaming response (server-sent
+// events). It runs until the client or the backend closes the stream: the
+// server's WriteTimeout is lifted for this response and there is no
+// per-service context timeout. The backend must still send its response
+// headers within the service's timeout (Transport.ResponseHeaderTimeout).
+// The client hanging up cancels the request context, which cancels the
+// backend request too.
+func (rp *ReverseProxy) StreamToService(serviceName string, w http.ResponseWriter, r *http.Request) {
+	srv, ok := rp.services[serviceName]
+	if !ok {
+		http.Error(w, "Service not found", http.StatusNotFound)
+		return
+	}
+
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil {
+		rp.logger.Error(r.Context(), "response writer cannot stream", "error", err, "service", serviceName)
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	srv.proxy.ServeHTTP(w, r)
 }

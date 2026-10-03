@@ -14,9 +14,6 @@ func ExtractUserContext(next http.Handler) http.Handler {
 
 		ctx = authcontext.WithAccountID(ctx, accountID)
 
-		roles := authcontext.GetRolesFromHeader(r.Header)
-		ctx = authcontext.WithRoles(ctx, roles)
-
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -23,13 +23,20 @@ type (
 		StripPrefix bool
 		Methods     []string
 		AuthRule    []AuthRule
+		// StreamPaths are patterns of long-lived streaming endpoints
+		// (server-sent events). They are proxied without the write and
+		// service timeouts that bound ordinary requests. Declared here, not
+		// detected from the request, so a client can't lift the timeouts on
+		// an arbitrary route.
+		StreamPaths []string
+
+		streamCompiled []*regexp.Regexp
 	}
 
 	AuthRule struct {
-		PathPattern   string
-		RequireAuth   bool
-		RequiredRoles []string
-		compiled      *regexp.Regexp
+		PathPattern string
+		RequireAuth bool
+		compiled    *regexp.Regexp
 	}
 )
 
@@ -84,6 +91,9 @@ func (r *Router) loadRoutes() {
 				RequireAuth: true,
 			},
 		},
+		StreamPaths: []string{
+			"^/activity/api/v1/sessions/[^/]+/events$", // team-formation live updates
+		},
 	})
 
 	r.addRoute(Route{
@@ -126,7 +136,37 @@ func (r *Router) addRoute(route Route) {
 		route.AuthRule[i].compiled = comp
 	}
 
+	for _, pattern := range route.StreamPaths {
+		comp, err := regexp.Compile(pattern)
+		if err != nil {
+			// Fails safe: the path is proxied as an ordinary request.
+			slog.Error(
+				"invalid stream path pattern",
+				"pattern", pattern,
+				"error", err,
+			)
+			continue
+		}
+		route.streamCompiled = append(route.streamCompiled, comp)
+	}
+
 	r.routes = append(r.routes, route)
+}
+
+// PublicPaths returns the patterns of every auth rule that does not require
+// auth. The routes are the single source of truth for public endpoints: the
+// gateway's AuthMiddleware runs before the router and must be built from this
+// list, otherwise it rejects (or lets through) a route the router disagrees on.
+func (r *Router) PublicPaths() []string {
+	var paths []string
+	for _, route := range r.routes {
+		for _, rule := range route.AuthRule {
+			if !rule.RequireAuth {
+				paths = append(paths, rule.PathPattern)
+			}
+		}
+	}
+	return paths
 }
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -147,18 +187,20 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if !r.hasRequiredRoles(authRule, req) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
 	r.addUserHeaders(req)
+
+	stream := route.isStream(req.URL.Path)
 
 	if route.StripPrefix {
 		req.URL.Path = strings.TrimPrefix(req.URL.Path, route.Prefix)
 		if req.URL.Path == "" {
 			req.URL.Path = "/"
 		}
+	}
+
+	if stream {
+		r.proxy.StreamToService(route.Service, w, req)
+		return
 	}
 
 	r.proxy.ProxyToService(route.Service, w, req)
@@ -173,6 +215,17 @@ func (r *Router) matchRoute(path string) *Route {
 	}
 
 	return nil
+}
+
+// isStream reports whether path (before the prefix is stripped) is one of the
+// route's streaming endpoints.
+func (route *Route) isStream(path string) bool {
+	for _, re := range route.streamCompiled {
+		if re.MatchString(path) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Router) matchAuthRule(route *Route, path string) *AuthRule {
@@ -209,38 +262,14 @@ func (r *Router) isAuthSatisfied(authRule *AuthRule, req *http.Request) bool {
 	return userID != uuid.Nil
 }
 
-func (r *Router) hasRequiredRoles(authRule *AuthRule, req *http.Request) bool {
-	if authRule == nil || len(authRule.RequiredRoles) == 0 {
-		return true
-	}
-
-	userRoles := authcontext.GetRoles(req.Context())
-	if len(userRoles) == 0 {
-		return false
-	}
-
-	roleSet := make(map[string]struct{}, len(userRoles))
-	for _, role := range userRoles {
-		roleSet[strings.TrimSpace(role)] = struct{}{}
-	}
-
-	for _, requiredRole := range authRule.RequiredRoles {
-		if _, exists := roleSet[requiredRole]; !exists {
-			return false
-		}
-	}
-
-	return true
-}
-
+// addUserHeaders tells the backend who the caller is. Only the gateway may
+// set X-User-ID - backends trust it as the authenticated account - so a value
+// the client sent is always dropped, and replaced only when the caller is
+// authenticated (public routes forward no identity at all).
 func (r *Router) addUserHeaders(req *http.Request) {
-	ctx := req.Context()
-	userID := authcontext.GetAccountID(ctx)
-	if userID != uuid.Nil {
+	req.Header.Del(authcontext.XUserIDHeader)
+
+	if userID := authcontext.GetAccountID(req.Context()); userID != uuid.Nil {
 		req.Header.Set(authcontext.XUserIDHeader, userID.String())
 	}
-
-	authcontext.GetRoles(ctx)
-	roles := strings.Join(authcontext.GetRoles(ctx), ",")
-	req.Header.Set(authcontext.XUserRolesHeader, roles)
 }

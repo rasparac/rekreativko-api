@@ -13,9 +13,7 @@ type (
 
 const (
 	AccountIDContextKey contextKey = "accountID"
-	RolesContextKey     contextKey = "roles"
 	XUserIDHeader                  = "X-User-ID"
-	XUserRolesHeader               = "X-User-Roles"
 )
 
 func GetAccountID(ctx context.Context) uuid.UUID {
@@ -26,14 +24,6 @@ func GetAccountID(ctx context.Context) uuid.UUID {
 	return accountID
 }
 
-func GetRoles(ctx context.Context) []string {
-	roles, ok := ctx.Value(RolesContextKey).([]string)
-	if !ok {
-		return []string{}
-	}
-	return roles
-}
-
 func GetAccountIDFromHeader(header http.Header) uuid.UUID {
 	accountID, err := uuid.Parse(header.Get(XUserIDHeader))
 	if err != nil {
@@ -42,14 +32,6 @@ func GetAccountIDFromHeader(header http.Header) uuid.UUID {
 	return accountID
 }
 
-func GetRolesFromHeader(header http.Header) []string {
-	return header.Values(XUserRolesHeader)
-}
-
 func WithAccountID(ctx context.Context, accountID uuid.UUID) context.Context {
 	return context.WithValue(ctx, AccountIDContextKey, accountID)
-}
-
-func WithRoles(ctx context.Context, roles []string) context.Context {
-	return context.WithValue(ctx, RolesContextKey, roles)
 }

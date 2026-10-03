@@ -117,11 +117,10 @@ func main() {
 		log.Info(ctx, "swagger UI enabled", "url", fmt.Sprintf("%s/swagger/index.html", cfg.Server.Address()))
 	}
 
-	publicPaths := []string{
-		`^/identity/api/v1/(login|register|verify-account|resend-verification-code|refresh-token)$`,
-		"^/swagger/.*",
-		"^/health$",
-	}
+	// Public endpoints are declared once, on the router's auth rules. /health
+	// and /swagger/ are registered on the mux directly and never pass through
+	// this chain.
+	publicPaths := router.PublicPaths()
 
 	// CORS configuration
 	// Note: AllowCredentials cannot be true when AllowedOrigins is "*"
