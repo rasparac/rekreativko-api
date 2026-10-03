@@ -265,7 +265,7 @@ func TestTeamDraft_AttendeeLeft(t *testing.T) {
 	t.Run("ignored once the draft ended", func(t *testing.T) {
 		users := newUsers(4)
 		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		require.NoError(t, draft.Cancel(session, session.CreatedByID(), ""))
+		require.NoError(t, draft.Cancel(session, session.CreatedByID(), "", nil))
 		draft.ClearEvents()
 
 		draft.AttendeeLeft(users[0], users[1:])
@@ -386,11 +386,11 @@ func TestTeamDraft_Cancel(t *testing.T) {
 	users := newUsers(4)
 	session, draft := newTestDraft(t, users, PickOrderSnake, nil)
 
-	assert.ErrorIs(t, draft.Cancel(session, uuid.New(), MemberRoleMember), ErrUnauthorized)
+	assert.ErrorIs(t, draft.Cancel(session, uuid.New(), MemberRoleMember, nil), ErrUnauthorized)
 
-	require.NoError(t, draft.Cancel(session, session.CreatedByID(), ""))
+	require.NoError(t, draft.Cancel(session, session.CreatedByID(), "", nil))
 	assert.Equal(t, DraftCancelReasonOrganizer, draft.CancelReason())
-	assert.ErrorIs(t, draft.Cancel(session, session.CreatedByID(), ""), ErrDraftNotActive)
+	assert.ErrorIs(t, draft.Cancel(session, session.CreatedByID(), "", nil), ErrDraftNotActive)
 	assert.ErrorIs(t, draft.Pick(session, users[0], users[2], users), ErrDraftNotActive)
 
 	t.Run("works while paused", func(t *testing.T) {
@@ -398,7 +398,7 @@ func TestTeamDraft_Cancel(t *testing.T) {
 		draft.AttendeeLeft(users[0], users[1:])
 		require.Equal(t, DraftStatusPaused, draft.Status())
 
-		require.NoError(t, draft.Cancel(session, session.CreatedByID(), ""))
+		require.NoError(t, draft.Cancel(session, session.CreatedByID(), "", nil))
 		assert.Equal(t, DraftStatusCancelled, draft.Status())
 		assert.Empty(t, draft.PausedReason())
 	})
@@ -435,7 +435,7 @@ func TestTeamDraft_SessionEnded(t *testing.T) {
 
 	t.Run("leaves a finished draft alone", func(t *testing.T) {
 		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		require.NoError(t, draft.Cancel(session, session.CreatedByID(), ""))
+		require.NoError(t, draft.Cancel(session, session.CreatedByID(), "", nil))
 		draft.ClearEvents()
 
 		draft.SessionEnded(session.CreatedByID())
@@ -459,7 +459,7 @@ func TestTeamDraft_TurnOrder(t *testing.T) {
 	// someone joins: one more turn at the end
 	assert.Equal(t, []int{0, 1, 1, 0, 0}, sidesOf(draft.TurnOrder(4)))
 
-	require.NoError(t, draft.Cancel(session, session.CreatedByID(), ""))
+	require.NoError(t, draft.Cancel(session, session.CreatedByID(), "", nil))
 	assert.Equal(t, []int{0}, sidesOf(draft.TurnOrder(3)), "ended: only the turns taken")
 }
 
@@ -484,7 +484,7 @@ func TestTeamDraft_VersionBumpsOnEveryChange(t *testing.T) {
 	require.NoError(t, draft.ReplaceCaptain(session, session.CreatedByID(), "", DraftSideA, users[2], going))
 	assert.Equal(t, 5, draft.Version())
 
-	require.NoError(t, draft.Cancel(session, session.CreatedByID(), ""))
+	require.NoError(t, draft.Cancel(session, session.CreatedByID(), "", nil))
 	assert.Equal(t, 6, draft.Version())
 }
 

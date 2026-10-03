@@ -34,6 +34,27 @@ const (
 	NotificationTypeSessionInviteAccepted NotificationType = "session_invite_accepted"
 	NotificationTypeSessionInviteDeclined NotificationType = "session_invite_declined"
 	NotificationTypeSessionInviteExpired  NotificationType = "session_invite_expired"
+	// Team formation - Data carries session_id plus "screen" (see Screen*)
+	// so the client can deep-link to the right view.
+	NotificationTypeTeamDraftCaptainSelected NotificationType = "team_draft_captain_selected"
+	NotificationTypeTeamDraftYourTurn        NotificationType = "team_draft_your_turn"
+	NotificationTypeTeamDraftPaused          NotificationType = "team_draft_paused"
+	NotificationTypeTeamDraftCompleted       NotificationType = "team_draft_completed"
+	NotificationTypeTeamDraftCancelled       NotificationType = "team_draft_cancelled"
+	NotificationTypeTeamVotingOpened         NotificationType = "team_voting_opened"
+	NotificationTypeTeamVotingClosed         NotificationType = "team_voting_closed"
+	NotificationTypeTeamVotingCancelled      NotificationType = "team_voting_cancelled"
+	NotificationTypeTeamChanged              NotificationType = "team_changed"
+)
+
+// Screen is the deep-link target a team formation notification's Data
+// carries under "screen", next to session_id.
+type Screen string
+
+const (
+	ScreenTeamDraft    Screen = "team_draft"
+	ScreenTeamVoting   Screen = "team_voting"
+	ScreenSessionTeams Screen = "session_teams"
 )
 
 // Notification is a single item in a recipient's notification feed. Data

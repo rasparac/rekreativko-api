@@ -42,6 +42,15 @@ type Subscriber struct {
 	sessionInviteAcceptedHandler *sessionInviteAcceptedHandler
 	sessionInviteDeclinedHandler *sessionInviteDeclinedHandler
 	sessionInviteExpiredHandler  *sessionInviteExpiredHandler
+	draftStartedHandler          *draftStartedHandler
+	draftTurnChangedHandler      *draftTurnChangedHandler
+	draftPausedHandler           *draftPausedHandler
+	draftCompletedHandler        *draftCompletedHandler
+	draftCancelledHandler        *draftCancelledHandler
+	votingOpenedHandler          *votingOpenedHandler
+	votingClosedHandler          *votingClosedHandler
+	votingCancelledHandler       *votingCancelledHandler
+	attendeeTeamChangedHandler   *attendeeTeamChangedHandler
 }
 
 func NewSubscriber(
@@ -71,6 +80,15 @@ func NewSubscriber(
 		sessionInviteAcceptedHandler: &sessionInviteAcceptedHandler{notifications: notifications, logger: logger},
 		sessionInviteDeclinedHandler: &sessionInviteDeclinedHandler{notifications: notifications, logger: logger},
 		sessionInviteExpiredHandler:  &sessionInviteExpiredHandler{notifications: notifications, logger: logger},
+		draftStartedHandler:          &draftStartedHandler{notifications: notifications, logger: logger},
+		draftTurnChangedHandler:      &draftTurnChangedHandler{notifications: notifications, logger: logger},
+		draftPausedHandler:           &draftPausedHandler{notifications: notifications, logger: logger},
+		draftCompletedHandler:        &draftCompletedHandler{notifications: notifications, logger: logger},
+		draftCancelledHandler:        &draftCancelledHandler{notifications: notifications, logger: logger},
+		votingOpenedHandler:          &votingOpenedHandler{notifications: notifications, logger: logger},
+		votingClosedHandler:          &votingClosedHandler{notifications: notifications, logger: logger},
+		votingCancelledHandler:       &votingCancelledHandler{notifications: notifications, logger: logger},
+		attendeeTeamChangedHandler:   &attendeeTeamChangedHandler{notifications: notifications, logger: logger},
 	}
 }
 
@@ -101,6 +119,15 @@ func (s *Subscriber) Subscribe(ctx context.Context) error {
 		{"activity.session_invite.accepted", s.sessionInviteAcceptedHandler.Handle},
 		{"activity.session_invite.declined", s.sessionInviteDeclinedHandler.Handle},
 		{"activity.session_invite.expired", s.sessionInviteExpiredHandler.Handle},
+		{"activity.session.draft.started", s.draftStartedHandler.Handle},
+		{"activity.session.draft.turn_changed", s.draftTurnChangedHandler.Handle},
+		{"activity.session.draft.paused", s.draftPausedHandler.Handle},
+		{"activity.session.draft.completed", s.draftCompletedHandler.Handle},
+		{"activity.session.draft.cancelled", s.draftCancelledHandler.Handle},
+		{"activity.session.voting.opened", s.votingOpenedHandler.Handle},
+		{"activity.session.voting.closed", s.votingClosedHandler.Handle},
+		{"activity.session.voting.cancelled", s.votingCancelledHandler.Handle},
+		{"activity.session.attendee.team_changed", s.attendeeTeamChangedHandler.Handle},
 	}
 
 	for _, sub := range subscriptions {

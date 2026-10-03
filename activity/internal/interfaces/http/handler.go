@@ -8,6 +8,7 @@ import (
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
+	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/live"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/middleware"
 )
@@ -117,6 +118,12 @@ type (
 		Snapshot(ctx context.Context, sessionID uuid.UUID) (*application.TeamFormationSnapshot, error)
 	}
 
+	// liveHub feeds the team-formation event stream
+	liveHub interface {
+		Connect(ctx context.Context, sessionID, viewerID uuid.UUID) (*live.Client, error)
+		Disconnect(client *live.Client)
+	}
+
 	// Handler handles HTTP requests for the activity module
 	Handler struct {
 		sessionTemplateService sessionTemplateService
@@ -129,6 +136,7 @@ type (
 		teamDraftService       teamDraftService
 		teamVotingService      teamVotingService
 		teamFormation          teamFormationQuery
+		live                   liveHub
 		logger                 *logger.Logger
 	}
 )
@@ -145,6 +153,7 @@ func NewHandler(
 	teamDraftService teamDraftService,
 	teamVotingService teamVotingService,
 	teamFormation teamFormationQuery,
+	live liveHub,
 	logger *logger.Logger,
 ) *Handler {
 	return &Handler{
@@ -158,6 +167,7 @@ func NewHandler(
 		teamDraftService:       teamDraftService,
 		teamVotingService:      teamVotingService,
 		teamFormation:          teamFormation,
+		live:                   live,
 		logger:                 logger.WithName("activity.http.handler"),
 	}
 }
@@ -307,6 +317,10 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"GET /api/v1/sessions/{id}/team-formation",
 		middlewares.ThenFunc(h.GetTeamFormation),
+	)
+	mux.Handle(
+		"GET /api/v1/sessions/{id}/events",
+		middlewares.ThenFunc(h.StreamTeamFormation),
 	)
 
 	// Member routes (ordered from most specific to least specific)

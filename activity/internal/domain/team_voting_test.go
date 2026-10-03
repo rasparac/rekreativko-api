@@ -212,7 +212,7 @@ func TestTeamVotingRound_Close(t *testing.T) {
 		require.NoError(t, round.Vote(users[1], second.ID(), users))
 		require.NoError(t, round.Vote(users[2], first.ID(), users))
 
-		winning, err := round.Close(session, session.CreatedByID(), "", nil)
+		winning, err := round.Close(session, session.CreatedByID(), "", nil, nil)
 
 		require.NoError(t, err)
 		assert.Equal(t, second.ID(), winning.ID())
@@ -226,7 +226,7 @@ func TestTeamVotingRound_Close(t *testing.T) {
 		session, round, _, _, users := setup(t)
 		require.NoError(t, round.Vote(users[0], KeepCurrentTeams, users))
 
-		winning, err := round.Close(session, session.CreatedByID(), "", nil)
+		winning, err := round.Close(session, session.CreatedByID(), "", nil, nil)
 
 		require.NoError(t, err)
 		assert.Nil(t, winning)
@@ -238,7 +238,7 @@ func TestTeamVotingRound_Close(t *testing.T) {
 		require.NoError(t, round.Vote(users[0], first.ID(), users))
 		require.NoError(t, round.Vote(users[1], second.ID(), users))
 
-		_, err := round.Close(session, session.CreatedByID(), "", nil)
+		_, err := round.Close(session, session.CreatedByID(), "", nil, nil)
 
 		var tie *TieError
 		require.True(t, errors.As(err, &tie))
@@ -248,7 +248,7 @@ func TestTeamVotingRound_Close(t *testing.T) {
 		assert.True(t, round.IsOpen(), "a rejected close changes nothing")
 
 		winner := second.ID()
-		winning, err := round.Close(session, session.CreatedByID(), "", &winner)
+		winning, err := round.Close(session, session.CreatedByID(), "", &winner, nil)
 		require.NoError(t, err)
 		assert.Equal(t, second.ID(), winning.ID())
 	})
@@ -256,7 +256,7 @@ func TestTeamVotingRound_Close(t *testing.T) {
 	t.Run("no votes at all ties every option, keep current included", func(t *testing.T) {
 		session, round, _, _, _ := setup(t)
 
-		_, err := round.Close(session, session.CreatedByID(), "", nil)
+		_, err := round.Close(session, session.CreatedByID(), "", nil, nil)
 
 		var tie *TieError
 		require.True(t, errors.As(err, &tie))
@@ -269,26 +269,26 @@ func TestTeamVotingRound_Close(t *testing.T) {
 		require.NoError(t, round.Vote(users[0], first.ID(), users))
 
 		loser := second.ID()
-		_, err := round.Close(session, session.CreatedByID(), "", &loser)
+		_, err := round.Close(session, session.CreatedByID(), "", &loser, nil)
 		assert.ErrorIs(t, err, ErrInvalidWinner)
 	})
 
 	t.Run("regular member can't close", func(t *testing.T) {
 		session, round, _, _, _ := setup(t)
-		_, err := round.Close(session, uuid.New(), MemberRoleMember, nil)
+		_, err := round.Close(session, uuid.New(), MemberRoleMember, nil, nil)
 		assert.ErrorIs(t, err, ErrUnauthorized)
 	})
 
 	t.Run("closed round rejects everything", func(t *testing.T) {
 		session, round, first, _, users := setup(t)
 		require.NoError(t, round.Vote(users[0], first.ID(), users))
-		_, err := round.Close(session, session.CreatedByID(), "", nil)
+		_, err := round.Close(session, session.CreatedByID(), "", nil, nil)
 		require.NoError(t, err)
 
 		assert.ErrorIs(t, round.Vote(users[1], first.ID(), users), ErrVotingNotOpen)
 		_, err = round.Propose(session, users[1], [][]uuid.UUID{users[:2], users[2:]}, users)
 		assert.ErrorIs(t, err, ErrVotingNotOpen)
-		_, err = round.Close(session, session.CreatedByID(), "", nil)
+		_, err = round.Close(session, session.CreatedByID(), "", nil, nil)
 		assert.ErrorIs(t, err, ErrVotingNotOpen)
 	})
 }
@@ -383,7 +383,7 @@ func TestSession_ApplyProposalTeams(t *testing.T) {
 	assert.ErrorIs(t, session.ApplyProposalTeams(round, session.CreatedByID()), ErrVotingNotOpen, "only a closed round with a winner")
 
 	require.NoError(t, round.Vote(users[0], proposal.ID(), users))
-	_, err = round.Close(session, session.CreatedByID(), "", nil)
+	_, err = round.Close(session, session.CreatedByID(), "", nil, nil)
 	require.NoError(t, err)
 	session.ClearEvents()
 

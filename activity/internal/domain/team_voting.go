@@ -188,7 +188,7 @@ func OpenTeamVoting(input OpenVotingInput) (*TeamVotingRound, *TeamProposal, err
 	}
 
 	r.proposals = append(r.proposals, proposal)
-	r.addEvent(NewVotingOpenedEvent(r, proposal))
+	r.addEvent(NewVotingOpenedEvent(r, proposal, input.Confirmed))
 
 	return r, proposal, nil
 }
@@ -351,11 +351,13 @@ func (r *TeamVotingRound) Vote(voterID, choice uuid.UUID, confirmed []uuid.UUID)
 // organizer must pass winner (one of the tied options) - a nil winner then
 // fails with a *TieError. It returns the winning proposal, or nil when
 // "keep current teams" won (nothing changes). Proposals and votes are cleared.
+// confirmed (the people going) is who gets told.
 func (r *TeamVotingRound) Close(
 	session *Session,
 	requesterID uuid.UUID,
 	requesterRole MemberRole,
 	winner *uuid.UUID,
+	confirmed []uuid.UUID,
 ) (*TeamProposal, error) {
 	if !session.canManageSession(requesterID, requesterRole) {
 		return nil, ErrUnauthorized
@@ -404,7 +406,7 @@ func (r *TeamVotingRound) Close(
 	r.status = VotingStatusClosed
 	r.endedAt = &now
 	r.version++
-	r.addEvent(NewVotingClosedEvent(r, requesterID))
+	r.addEvent(NewVotingClosedEvent(r, requesterID, confirmed))
 
 	r.clear()
 
@@ -422,7 +424,7 @@ func (r *TeamVotingRound) AttendeeLeft(userID uuid.UUID, confirmed []uuid.UUID) 
 	r.version++
 
 	if len(confirmed) < r.PlayersNeeded() {
-		r.cancel(VotingCancelReasonNotEnoughPlayers)
+		r.cancel(VotingCancelReasonNotEnoughPlayers, confirmed)
 		return
 	}
 
@@ -442,7 +444,7 @@ func (r *TeamVotingRound) TeamsReplaced() {
 	}
 
 	r.version++
-	r.cancel(VotingCancelReasonTeamsReplaced)
+	r.cancel(VotingCancelReasonTeamsReplaced, nil)
 }
 
 // SessionEnded cancels an open round because its session was cancelled or
@@ -453,16 +455,16 @@ func (r *TeamVotingRound) SessionEnded() {
 	}
 
 	r.version++
-	r.cancel(VotingCancelReasonSessionEnded)
+	r.cancel(VotingCancelReasonSessionEnded, nil)
 }
 
-func (r *TeamVotingRound) cancel(reason VotingCancelReason) {
+func (r *TeamVotingRound) cancel(reason VotingCancelReason, participants []uuid.UUID) {
 	now := time.Now().UTC()
 	r.status = VotingStatusCancelled
 	r.cancelReason = reason
 	r.endedAt = &now
 
-	r.addEvent(NewVotingCancelledEvent(r))
+	r.addEvent(NewVotingCancelledEvent(r, participants))
 
 	r.clear()
 }

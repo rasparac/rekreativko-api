@@ -274,7 +274,7 @@ func (s *TeamVotingService) Close(ctx context.Context, params CloseVotingParams)
 			return err
 		}
 
-		winning, err := round.Close(session, params.RequesterID, requesterRole, winner)
+		winning, err := round.Close(session, params.RequesterID, requesterRole, winner, confirmedIDs)
 		if err != nil {
 			return fmt.Errorf("close voting: %w", err)
 		}

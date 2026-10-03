@@ -15,9 +15,11 @@ import (
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	activityHttp "github.com/rasparac/rekreativko-api/activity/internal/interfaces/http"
+	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/live"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/config"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
+	"github.com/rasparac/rekreativko-api/shared/events"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/middleware"
 	metricstracer "github.com/rasparac/rekreativko-api/shared/store/metrics_tracer"
@@ -241,6 +243,24 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		teamVotingService,
 	)
 
+	// Live team-formation updates: every instance receives every session event
+	// (broadcast, not the service's shared durable consumer) and pushes fresh
+	// snapshots to the clients streaming from it.
+	messageBroker, err := events.NewNatsBroker(
+		cfg.NatsConfig.URL,
+		cfg.Service.Name,
+		log,
+	)
+	if err != nil {
+		return err
+	}
+	defer messageBroker.Close(ctx)
+
+	liveHub := live.NewHub(teamFormationQuery, sessionService, log)
+	if err := messageBroker.SubscribeBroadcast(ctx, live.TopicPattern, liveHub.HandleEvent); err != nil {
+		return err
+	}
+
 	mux := http.NewServeMux()
 
 	// Initialize HTTP handler
@@ -255,6 +275,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		teamDraftService,
 		teamVotingService,
 		teamFormationQuery,
+		liveHub,
 		log,
 	)
 
@@ -284,12 +305,13 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	activityHandler.RegisterRoutes(mux, middlewaresChain)
 
-	return startServer(cfg.Server.Address(), mux, log)
+	return startServer(cfg.Server.Address(), mux, liveHub, log)
 }
 
 func startServer(
 	addr string,
 	handler http.Handler,
+	liveHub *live.Hub,
 	log *logger.Logger,
 ) error {
 	trimmed := strings.TrimPrefix(addr, "https://")
@@ -302,6 +324,10 @@ func startServer(
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+
+	// SSE streams never end on their own; have the hub close them when
+	// Shutdown starts so it doesn't wait out the grace period.
+	srv.RegisterOnShutdown(liveHub.Shutdown)
 
 	serverErrors := make(chan error, 1)
 

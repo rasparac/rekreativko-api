@@ -116,3 +116,39 @@ func TestNatsBroker_PermanentErrorDeadLettersImmediately(t *testing.T) {
 	assert.Equal(t, "1", msg.Headers().Get(headerDLQNumDelivered))
 	assert.Len(t, deliveries, 1, "a permanent error is not retried")
 }
+
+func TestNatsBroker_SubscribeBroadcast_ReachesEveryInstance(t *testing.T) {
+	url := startNATS(t)
+
+	// Two instances of the same service: a durable Subscribe would split the
+	// events between them, a broadcast subscription must reach both.
+	type received struct{ topic, payload string }
+	instances := make([]chan received, 2)
+	for i := range instances {
+		b, err := NewNatsBroker(url, "same-svc", logger.New("error", "json"))
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = b.Close(context.Background()) })
+
+		got := make(chan received, 1)
+		instances[i] = got
+		require.NoError(t, b.SubscribeBroadcast(context.Background(), "test.broadcast.>", func(_ context.Context, topic string, payload []byte) {
+			got <- received{topic: topic, payload: string(payload)}
+		}))
+	}
+
+	publisher, err := NewNatsBroker(url, "publisher", logger.New("error", "json"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = publisher.Close(context.Background()) })
+
+	require.NoError(t, publisher.Publish(context.Background(), "test.broadcast.hello", []byte(`{"n":1}`)))
+
+	for i, got := range instances {
+		select {
+		case msg := <-got:
+			assert.Equal(t, "test.broadcast.hello", msg.topic, "instance %d", i)
+			assert.JSONEq(t, `{"n":1}`, msg.payload, "instance %d", i)
+		case <-time.After(10 * time.Second):
+			t.Fatalf("instance %d never received the broadcast", i)
+		}
+	}
+}

@@ -341,7 +341,8 @@ mobile team's decisions D4-D9 (see the ticket design).
   for the same turn can't both win (`not_your_turn`).
 - **Events** `activity.session.draft.*` (all carry `version`, team positions 0/1): `started` (captains, pick
   order), `turn_changed` (whose turn - "your turn" notifications), `player_picked`, `player_dropped`, `paused`
-  (captain who left, organizer), `captain_replaced` (`resumed`), `completed` (both rosters), `cancelled` (reason).
+  (captain who left, organizer), `captain_replaced` (`resumed`), `completed` (both rosters), `cancelled` (reason,
+  `participant_user_ids` = people going; empty for `session_ended`).
 - **Errors:** `not_your_turn`, `player_not_available`, `not_draft_captain` (403), `draft_not_active`,
   `draft_paused`, `draft_not_paused`, `draft_already_active`, `invalid_captains` (422), `not_enough_players`,
   `draft_not_found` (404), `unauthorized`.
@@ -386,7 +387,55 @@ teams. Product rules are the mobile team's D10-D16 plus backend decisions on the
   this is what keeps concurrent votes from being lost.
 - **Events** `activity.session.voting.*`: `opened` (first proposal), `proposal_created`, `vote_cast` (`changed`),
   `player_removed`, `closed` (winner / kept_current), `cancelled` (reason); a winner also emits `teams_created`
-  and `team_assigned`.
+  and `team_assigned`. `opened`, `closed` and `cancelled` carry `participant_user_ids` (people going; empty on
+  `cancelled` for `teams_replaced` / `session_ended`).
+
+### Live updates (6gg.4)
+
+`GET /api/v1/sessions/{id}/events` streams a session's team formation as server-sent events
+(`interfaces/http/team_formation_stream.go`, `interfaces/live/hub.go`).
+
+- **Delivery:** every activity instance subscribes to `activity.session.>` with `SubscribeBroadcast` (plain NATS,
+  at-most-once, every instance gets every event) - a phone's stream lives on one instance. On each event the hub
+  rebuilds the session's snapshot once and pushes it to that session's clients. Latency = outbox poll interval.
+- **Wire format:** first event `snapshot`, then one event per change named without the `activity.session.` prefix
+  (e.g. `draft.player_picked`); `data` = `{change, snapshot}` (raw domain event + full state, same document as
+  `GET /team-formation`, `my_vote` personalised); `id` = snapshot version. `: ping` every 20s. Before closing on
+  its own the server sends `disconnected` with `reason` (`removed`, `not_found`, `slow_consumer`, `server_shutdown`). No
+  replay - a reconnect starts from a fresh snapshot. On shutdown `main.go` registers `Hub.Shutdown` via
+  `srv.RegisterOnShutdown`: every client gets `server_shutdown` (and later connects are closed at once), so
+  `http.Server.Shutdown` doesn't wait out its grace period and clients reconnect to another instance.
+- **Guarantees:** a client never gets an older snapshot than its last (version check); a client more than 16
+  updates behind is disconnected (`slow_consumer`) instead of blocking others; a viewer removed from the session
+  (or no longer able to see it) is disconnected.
+- **Timeouts:** the handler lifts the server's WriteTimeout for its response (`http.ResponseController`, which
+  reaches the real writer through the middlewares' `responseWriter.Unwrap`). In the gateway the route is declared
+  in `Route.StreamPaths` and proxied by `ReverseProxy.StreamToService`: no WriteTimeout, no per-service context
+  timeout, but connecting to the backend (dial timeout) and receiving its headers
+  (`Transport.ResponseHeaderTimeout`) are each bounded by the service timeout.
+  The client hanging up cancels the backend request.
+
+### Team formation notifications (6gg.5)
+
+The notifications service turns team formation events into in-app notifications
+(`notifications/internal/interfaces/events/team_formation_handlers.go`). Recipients come from the event payload
+(activity is never queried); whoever triggered the event is skipped. Every `data` carries `session_id` and a
+deep-link `screen` (`team_draft`, `team_voting`, `session_teams`).
+
+| Event | Notification type | Recipients |
+|---|---|---|
+| `draft.started` | `team_draft_captain_selected` | both captains (`team_position`) |
+| `draft.turn_changed` | `team_draft_your_turn` | the captain whose turn it is |
+| `draft.paused` | `team_draft_paused` | the organizer who started the draft |
+| `draft.completed` | `team_draft_completed` | every drafted player (`team_position`) |
+| `draft.cancelled` | `team_draft_cancelled` | people going (not for `session_ended`) |
+| `voting.opened` | `team_voting_opened` | people going (`proposal_id`) |
+| `voting.closed` | `team_voting_closed` | people going (`winner_proposal_id` / `kept_current`) |
+| `voting.cancelled` | `team_voting_cancelled` | people going, only for `not_enough_players` |
+| `attendee.team_changed` | `team_changed` | the moved attendee (manual moves only) |
+
+A voting tie raises no event (close just returns 409 to the organizer), so there is no "tie needs a winner"
+notification.
 
 
 ====================================================================================================

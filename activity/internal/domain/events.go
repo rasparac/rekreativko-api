@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -1365,17 +1366,22 @@ func NewDraftCompletedEvent(d *TeamDraft) *DraftCompletedEvent {
 
 // DraftCancelledEvent is raised when a draft stops without result. CancelledBy
 // is uuid.Nil when it was cancelled automatically (not_enough_players).
+// ParticipantUserIDs are the people going at that moment, so consumers can
+// notify them without querying activity; empty when the session ended (its
+// own session_cancelled event already reaches everyone).
 type DraftCancelledEvent struct {
 	draftEventBase
-	Reason      DraftCancelReason `json:"reason"`
-	CancelledBy uuid.UUID         `json:"cancelled_by"`
+	Reason             DraftCancelReason `json:"reason"`
+	CancelledBy        uuid.UUID         `json:"cancelled_by"`
+	ParticipantUserIDs []uuid.UUID       `json:"participant_user_ids"`
 }
 
-func NewDraftCancelledEvent(d *TeamDraft, cancelledBy uuid.UUID) *DraftCancelledEvent {
+func NewDraftCancelledEvent(d *TeamDraft, cancelledBy uuid.UUID, participants []uuid.UUID) *DraftCancelledEvent {
 	return &DraftCancelledEvent{
-		draftEventBase: newDraftEventBase(d, EventActivitySessionDraftCancelled),
-		Reason:         d.cancelReason,
-		CancelledBy:    cancelledBy,
+		draftEventBase:     newDraftEventBase(d, EventActivitySessionDraftCancelled),
+		Reason:             d.cancelReason,
+		CancelledBy:        cancelledBy,
+		ParticipantUserIDs: slices.Clone(participants),
 	}
 }
 
@@ -1404,19 +1410,22 @@ func newVotingEventBase(r *TeamVotingRound, eventType string) votingEventBase {
 }
 
 // VotingOpenedEvent is raised with a round's first proposal - "voting opened".
+// ParticipantUserIDs are the people going (the eligible voters).
 type VotingOpenedEvent struct {
 	votingEventBase
-	ProposalID uuid.UUID `json:"proposal_id"`
-	AuthorID   uuid.UUID `json:"author_id"`
-	TeamCount  int       `json:"team_count"`
+	ProposalID         uuid.UUID   `json:"proposal_id"`
+	AuthorID           uuid.UUID   `json:"author_id"`
+	TeamCount          int         `json:"team_count"`
+	ParticipantUserIDs []uuid.UUID `json:"participant_user_ids"`
 }
 
-func NewVotingOpenedEvent(r *TeamVotingRound, p *TeamProposal) *VotingOpenedEvent {
+func NewVotingOpenedEvent(r *TeamVotingRound, p *TeamProposal, participants []uuid.UUID) *VotingOpenedEvent {
 	return &VotingOpenedEvent{
-		votingEventBase: newVotingEventBase(r, EventActivitySessionVotingOpened),
-		ProposalID:      p.ID(),
-		AuthorID:        p.AuthorID(),
-		TeamCount:       r.teamCount,
+		votingEventBase:    newVotingEventBase(r, EventActivitySessionVotingOpened),
+		ProposalID:         p.ID(),
+		AuthorID:           p.AuthorID(),
+		TeamCount:          r.teamCount,
+		ParticipantUserIDs: slices.Clone(participants),
 	}
 }
 
@@ -1474,33 +1483,41 @@ func NewVotingPlayerRemovedEvent(r *TeamVotingRound, userID uuid.UUID) *VotingPl
 
 // VotingClosedEvent is raised when the organizer closes voting. Either
 // WinnerProposalID is set (its teams follow as teams_created + team_assigned
-// events) or KeptCurrent is true (nothing changes).
+// events) or KeptCurrent is true (nothing changes). ParticipantUserIDs are
+// the people going at close.
 type VotingClosedEvent struct {
 	votingEventBase
-	WinnerProposalID *uuid.UUID `json:"winner_proposal_id"`
-	KeptCurrent      bool       `json:"kept_current"`
-	ClosedBy         uuid.UUID  `json:"closed_by"`
+	WinnerProposalID   *uuid.UUID  `json:"winner_proposal_id"`
+	KeptCurrent        bool        `json:"kept_current"`
+	ClosedBy           uuid.UUID   `json:"closed_by"`
+	ParticipantUserIDs []uuid.UUID `json:"participant_user_ids"`
 }
 
-func NewVotingClosedEvent(r *TeamVotingRound, closedBy uuid.UUID) *VotingClosedEvent {
+func NewVotingClosedEvent(r *TeamVotingRound, closedBy uuid.UUID, participants []uuid.UUID) *VotingClosedEvent {
 	return &VotingClosedEvent{
-		votingEventBase:  newVotingEventBase(r, EventActivitySessionVotingClosed),
-		WinnerProposalID: r.winnerProposalID,
-		KeptCurrent:      r.keptCurrent,
-		ClosedBy:         closedBy,
+		votingEventBase:    newVotingEventBase(r, EventActivitySessionVotingClosed),
+		WinnerProposalID:   r.winnerProposalID,
+		KeptCurrent:        r.keptCurrent,
+		ClosedBy:           closedBy,
+		ParticipantUserIDs: slices.Clone(participants),
 	}
 }
 
 // VotingCancelledEvent is raised when a round ends without result.
+// ParticipantUserIDs are the people going when it was cancelled for
+// not_enough_players; empty for teams_replaced and session_ended, which
+// consumers learn about from their own events.
 type VotingCancelledEvent struct {
 	votingEventBase
-	Reason VotingCancelReason `json:"reason"`
+	Reason             VotingCancelReason `json:"reason"`
+	ParticipantUserIDs []uuid.UUID        `json:"participant_user_ids"`
 }
 
-func NewVotingCancelledEvent(r *TeamVotingRound) *VotingCancelledEvent {
+func NewVotingCancelledEvent(r *TeamVotingRound, participants []uuid.UUID) *VotingCancelledEvent {
 	return &VotingCancelledEvent{
-		votingEventBase: newVotingEventBase(r, EventActivitySessionVotingCancelled),
-		Reason:          r.cancelReason,
+		votingEventBase:    newVotingEventBase(r, EventActivitySessionVotingCancelled),
+		Reason:             r.cancelReason,
+		ParticipantUserIDs: slices.Clone(participants),
 	}
 }
 

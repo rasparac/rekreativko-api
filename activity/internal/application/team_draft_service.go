@@ -345,7 +345,12 @@ func (s *TeamDraftService) CancelDraft(ctx context.Context, params CancelDraftPa
 			return err
 		}
 
-		if err := draft.Cancel(session, params.RequesterID, requesterRole); err != nil {
+		_, confirmedIDs, err := s.formation.confirmedAttendees(tCtx, params.SessionID)
+		if err != nil {
+			return err
+		}
+
+		if err := draft.Cancel(session, params.RequesterID, requesterRole, confirmedIDs); err != nil {
 			return fmt.Errorf("cancel draft: %w", err)
 		}
 

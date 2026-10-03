@@ -216,6 +216,47 @@ func (b *natsBroker) Subscribe(
 	return nil
 }
 
+// SubscribeBroadcast delivers every event matching topic (a subject pattern
+// without the "events." prefix, wildcards allowed, e.g. "activity.session.>")
+// to this process, independently of every other instance. Subscribe instead
+// shares one durable consumer between all instances of a service, so each
+// event reaches only one of them. Delivery is at-most-once - a plain NATS
+// subscription with no acks or redelivery, and nothing published while this
+// process was down - so use it only for live, best-effort fan-out whose
+// receivers can resync on their own (e.g. pushing state to connected
+// clients). Messages are handled one at a time, in order. The subscription
+// ends when ctx is done or the broker is closed.
+func (b *natsBroker) SubscribeBroadcast(
+	ctx context.Context,
+	topic string,
+	handler BroadcastHandler,
+) error {
+	subject := "events." + topic
+
+	sub, err := b.conn.Subscribe(subject, func(msg *nats.Msg) {
+		handler(ctx, strings.TrimPrefix(msg.Subject, "events."), msg.Data)
+	})
+	if err != nil {
+		return fmt.Errorf("subscribe to %s: %w", subject, err)
+	}
+
+	// Round-trip to the server so the subscription is registered before we
+	// return - otherwise an event published right after could be missed.
+	if err := b.conn.Flush(); err != nil {
+		_ = sub.Unsubscribe()
+		return fmt.Errorf("register subscription to %s: %w", subject, err)
+	}
+
+	go func() {
+		<-ctx.Done()
+		_ = sub.Unsubscribe()
+	}()
+
+	b.logger.Info(ctx, "created broadcast subscription", "subject", subject)
+
+	return nil
+}
+
 func (b *natsBroker) Close(ctx context.Context) error {
 	for topic, cancel := range b.cancelFns {
 		cancel()

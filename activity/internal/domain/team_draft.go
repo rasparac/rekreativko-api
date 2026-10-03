@@ -357,7 +357,7 @@ func (d *TeamDraft) AttendeeLeft(userID uuid.UUID, confirmed []uuid.UUID) {
 	now := time.Now().UTC()
 
 	if !d.teamConfig.HasEnoughPlayers(len(confirmed)) {
-		d.cancel(DraftCancelReasonNotEnoughPlayers, uuid.Nil, now)
+		d.cancel(DraftCancelReasonNotEnoughPlayers, uuid.Nil, confirmed, now)
 		return
 	}
 
@@ -379,8 +379,8 @@ func (d *TeamDraft) AttendeeLeft(userID uuid.UUID, confirmed []uuid.UUID) {
 }
 
 // Cancel stops a running (active or paused) draft; the session's teams stay
-// as they were.
-func (d *TeamDraft) Cancel(session *Session, requesterID uuid.UUID, requesterRole MemberRole) error {
+// as they were. confirmed (the people going) is who gets told.
+func (d *TeamDraft) Cancel(session *Session, requesterID uuid.UUID, requesterRole MemberRole, confirmed []uuid.UUID) error {
 	if !session.canManageSession(requesterID, requesterRole) {
 		return ErrUnauthorized
 	}
@@ -390,7 +390,7 @@ func (d *TeamDraft) Cancel(session *Session, requesterID uuid.UUID, requesterRol
 	}
 
 	d.version++
-	d.cancel(DraftCancelReasonOrganizer, requesterID, time.Now().UTC())
+	d.cancel(DraftCancelReasonOrganizer, requesterID, confirmed, time.Now().UTC())
 
 	return nil
 }
@@ -404,16 +404,16 @@ func (d *TeamDraft) SessionEnded(endedBy uuid.UUID) {
 	}
 
 	d.version++
-	d.cancel(DraftCancelReasonSessionEnded, endedBy, time.Now().UTC())
+	d.cancel(DraftCancelReasonSessionEnded, endedBy, nil, time.Now().UTC())
 }
 
-func (d *TeamDraft) cancel(reason DraftCancelReason, by uuid.UUID, now time.Time) {
+func (d *TeamDraft) cancel(reason DraftCancelReason, by uuid.UUID, participants []uuid.UUID, now time.Time) {
 	d.status = DraftStatusCancelled
 	d.cancelReason = reason
 	d.pausedReason = ""
 	d.endedAt = &now
 
-	d.addEvent(NewDraftCancelledEvent(d, by))
+	d.addEvent(NewDraftCancelledEvent(d, by, participants))
 }
 
 // settle completes an active draft once nobody is left to pick. announceTurn
