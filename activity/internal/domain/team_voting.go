@@ -167,6 +167,10 @@ func OpenTeamVoting(input OpenVotingInput) (*TeamVotingRound, *TeamProposal, err
 		return nil, nil, err
 	}
 
+	if err := session.requireProposalsAllowed(); err != nil {
+		return nil, nil, err
+	}
+
 	if !session.ActivityType().IsTeamSport() {
 		return nil, nil, ErrTeamsNotSupported
 	}
@@ -258,6 +262,10 @@ func (r *TeamVotingRound) Propose(session *Session, authorID uuid.UUID, teams []
 	}
 
 	if err := session.requireTeamsChangeable(); err != nil {
+		return nil, err
+	}
+
+	if err := session.requireProposalsAllowed(); err != nil {
 		return nil, err
 	}
 

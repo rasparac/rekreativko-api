@@ -248,3 +248,72 @@ func TestTeamReset_OrganizerCanResetByHand(t *testing.T) {
 		assert.ErrorIs(t, err, domain.ErrSessionCompleted)
 	})
 }
+
+func (e *sessionTeamTestEnv) teamsSource(t *testing.T, session *domain.Session) string {
+	t.Helper()
+
+	snapshot, err := e.formation.Snapshot(e.ctx, session.ID())
+	require.NoError(t, err)
+	return string(snapshot.Session.TeamsSource())
+}
+
+// Picked teams are not put to a vote, and which teams are current is recorded,
+// not guessed from the latest draft.
+func TestTeamsSource_ProposalsAreRefusedForDraftedTeams(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session, u := env.draftSession(t, 4)
+	assert.Empty(t, env.teamsSource(t, session), "no teams yet")
+
+	env.finishDraft(t, session, u)
+	assert.Equal(t, "draft", env.teamsSource(t, session), "read back from the database")
+
+	a, b := divide(u)
+	_, err := env.propose(session, u[0], a, b)
+	assert.ErrorIs(t, err, domain.ErrTeamsDrafted)
+
+	t.Run("still refused after a re-draft is cancelled", func(t *testing.T) {
+		_, err := env.startDraft(session, u[2], u[3], nil)
+		require.NoError(t, err)
+		_, err = env.draftSvc.CancelDraft(env.ctx, application.CancelDraftParams{
+			SessionID: session.ID(), RequesterID: session.CreatedByID(),
+		})
+		require.NoError(t, err)
+
+		assert.Equal(t, "draft", env.teamsSource(t, session), "the drafted teams are still the current ones")
+		_, err = env.propose(session, u[0], a, b)
+		assert.ErrorIs(t, err, domain.ErrTeamsDrafted)
+	})
+
+	t.Run("allowed once the organizer replaces the teams by hand", func(t *testing.T) {
+		_, err := env.createTeams(session, nil, nil, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "manual", env.teamsSource(t, session))
+
+		_, err = env.propose(session, u[0], a, b)
+		require.NoError(t, err)
+	})
+
+	t.Run("a vote winner makes the source vote, and proposals stay allowed", func(t *testing.T) {
+		state := env.voting(t, session)
+		require.True(t, state.Round.IsOpen())
+		require.NoError(t, env.vote(session, u[0], state.Round.Proposals()[0].ID()))
+		_, err := env.closeVoting(session, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "vote", env.teamsSource(t, session))
+
+		_, err = env.propose(session, u[1], a, b)
+		require.NoError(t, err)
+	})
+}
+
+func TestTeamsSource_AResetClearsIt(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session, u := env.draftSession(t, 4)
+	env.finishDraft(t, session, u)
+	require.Equal(t, "draft", env.teamsSource(t, session))
+
+	require.NoError(t, env.resetTeams(session, session.CreatedByID(), ""))
+
+	assert.Empty(t, env.teamsSource(t, session))
+	env.requireInitialFormation(t, session, u)
+}

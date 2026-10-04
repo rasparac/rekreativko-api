@@ -438,3 +438,97 @@ func TestTeamVotingRound_Reset(t *testing.T) {
 		})
 	}
 }
+
+// Picked teams are not put to a vote: proposals are refused while the current
+// teams came from a captain draft, until they are replaced or reset.
+func TestSession_TeamsSourceDecidesWhetherProposalsAreAllowed(t *testing.T) {
+	users := newUsers(4)
+	config := newTestTeamConfig(t, nil)
+
+	draftedSession := func(t *testing.T) *Session {
+		t.Helper()
+		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
+		require.NoError(t, draft.Pick(session, users[0], users[2], users))
+		require.NoError(t, draft.Pick(session, users[1], users[3], users))
+		require.NoError(t, session.ApplyDraftTeams(draft))
+		return session
+	}
+	propose := func(session *Session) error {
+		_, _, err := OpenTeamVoting(OpenVotingInput{
+			Session:   session,
+			AuthorID:  users[0],
+			Teams:     [][]uuid.UUID{users[:2], users[2:]},
+			Confirmed: users,
+		})
+		return err
+	}
+
+	t.Run("no teams: allowed", func(t *testing.T) {
+		session := newTestSessionOfType(t, ActivityTypeBasketball)
+		assert.Empty(t, session.TeamsSource())
+		assert.NoError(t, propose(session))
+	})
+
+	t.Run("teams made by hand: allowed", func(t *testing.T) {
+		session := newTestTeamSession(t, config)
+		assert.Equal(t, TeamsSourceManual, session.TeamsSource())
+		assert.NoError(t, propose(session))
+	})
+
+	t.Run("teams from a draft: refused, to open a round and to join one", func(t *testing.T) {
+		session := draftedSession(t)
+		assert.Equal(t, TeamsSourceDraft, session.TeamsSource())
+		assert.ErrorIs(t, propose(session), ErrTeamsDrafted)
+
+		// a round opened before the draft finished cannot take more proposals
+		other := newTestSessionOfType(t, ActivityTypeBasketball)
+		round, _ := openVoting(t, other, users)
+		other.teamsSource = TeamsSourceDraft
+		_, err := round.Propose(other, users[1], [][]uuid.UUID{users[:2], users[2:]}, users)
+		assert.ErrorIs(t, err, ErrTeamsDrafted)
+	})
+
+	t.Run("a re-draft that is cancelled leaves the drafted teams, so still refused", func(t *testing.T) {
+		session := draftedSession(t)
+		redraft, err := NewTeamDraft(TeamDraftInput{
+			Session:     session,
+			RequesterID: session.CreatedByID(),
+			CaptainIDs:  [2]uuid.UUID{users[0], users[1]},
+			PickOrder:   PickOrderSnake,
+			Confirmed:   users,
+		})
+		require.NoError(t, err)
+		require.NoError(t, redraft.Cancel(session, session.CreatedByID(), "", nil))
+
+		assert.Equal(t, TeamsSourceDraft, session.TeamsSource())
+		assert.ErrorIs(t, propose(session), ErrTeamsDrafted)
+	})
+
+	t.Run("replaced by hand: allowed again", func(t *testing.T) {
+		session := draftedSession(t)
+		require.NoError(t, session.CreateTeams(session.CreatedByID(), "", *config))
+
+		assert.Equal(t, TeamsSourceManual, session.TeamsSource())
+		assert.NoError(t, propose(session))
+	})
+
+	t.Run("reset: allowed again", func(t *testing.T) {
+		session := draftedSession(t)
+		require.NoError(t, session.ResetTeams(uuid.New(), TeamsResetReasonOrganizer, users))
+
+		assert.Empty(t, session.TeamsSource())
+		assert.NoError(t, propose(session))
+	})
+
+	t.Run("replaced by a vote winner: allowed, source is vote", func(t *testing.T) {
+		session := newTestTeamSession(t, config)
+		round, proposal := openVoting(t, session, users)
+		require.NoError(t, round.Vote(users[0], proposal.ID(), users))
+		_, err := round.Close(session, session.CreatedByID(), "", nil, users)
+		require.NoError(t, err)
+		require.NoError(t, session.ApplyProposalTeams(round, session.CreatedByID()))
+
+		assert.Equal(t, TeamsSourceVote, session.TeamsSource())
+		assert.NoError(t, propose(session))
+	})
+}

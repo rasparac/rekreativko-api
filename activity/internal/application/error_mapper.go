@@ -154,6 +154,8 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.ValidationError("invalid_captains", "Draft captains must be going", err)
 	case errors.Is(err, domain.ErrDraftAlreadyActive):
 		return domainerror.Conflict("draft_already_active", "A team draft is running for this session", err)
+	case errors.Is(err, domain.ErrTeamsDrafted):
+		return domainerror.Conflict("teams_drafted", "The current teams were picked in a captain draft; reset the teams to propose new ones", err)
 	case errors.Is(err, domain.ErrDraftNotActive):
 		return domainerror.Conflict("draft_not_active", "No team draft is running for this session", err)
 	case errors.Is(err, domain.ErrDraftPaused):

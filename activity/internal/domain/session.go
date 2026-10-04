@@ -191,6 +191,9 @@ type Session struct {
 	// teams is only populated when loaded for a single session (see
 	// SessionRepository.GetSessionByID) - list queries leave it empty.
 	teams []*Team
+	// teamsSource is where the current teams came from (empty without teams):
+	// it decides whether proposals are allowed - see TeamsSourceDraft.
+	teamsSource TeamsSource
 
 	createdAt   time.Time
 	updatedAt   time.Time
@@ -289,6 +292,7 @@ func ReconstructSession(
 	openAt *time.Time,
 	teamConfig *TeamConfig,
 	teams []*Team,
+	teamsSource TeamsSource,
 	createdAt time.Time,
 	updatedAt time.Time,
 	cancelledAt *time.Time,
@@ -314,6 +318,7 @@ func ReconstructSession(
 		openAt:           openAt,
 		teamConfig:       teamConfig,
 		teams:            teams,
+		teamsSource:      teamsSource,
 		createdAt:        createdAt,
 		updatedAt:        updatedAt,
 		cancelledAt:      cancelledAt,
@@ -484,9 +489,35 @@ func (s *Session) CreateTeams(
 
 	s.teamConfig = &config
 	s.teams = newTeams(s.id, config, now)
+	s.teamsSource = TeamsSourceManual
 	s.updatedAt = now
 
 	s.addEvent(NewSessionTeamsCreatedEvent(s, requesterID, replaced))
+
+	return nil
+}
+
+// TeamsSource is where a session's current teams came from.
+type TeamsSource string
+
+const (
+	TeamsSourceManual TeamsSource = "manual" // POST /teams, then assigned by hand
+	TeamsSourceDraft  TeamsSource = "draft"  // a completed captain draft - not put to a vote
+	TeamsSourceVote   TeamsSource = "vote"   // the winning proposal of a vote
+)
+
+// TeamsSource is where the current teams came from; empty when the session has
+// none (or they predate this being recorded).
+func (s *Session) TeamsSource() TeamsSource { return s.teamsSource }
+
+// requireProposalsAllowed refuses proposals while the current teams came from a
+// captain draft: picked teams are not put to a vote. It stays that way after a
+// re-draft is cancelled (the drafted teams are still the current ones) and ends
+// with a reset or when the teams are replaced by hand or by a vote.
+func (s *Session) requireProposalsAllowed() error {
+	if s.teamsSource == TeamsSourceDraft {
+		return ErrTeamsDrafted
+	}
 
 	return nil
 }
@@ -526,6 +557,7 @@ func (s *Session) ResetTeams(resetBy uuid.UUID, reason TeamsResetReason, partici
 
 	s.teamConfig = nil
 	s.teams = nil
+	s.teamsSource = ""
 	s.updatedAt = time.Now().UTC()
 
 	s.addEvent(NewSessionTeamsResetEvent(s, resetBy, reason, participants))
@@ -554,6 +586,7 @@ func (s *Session) ApplyDraftTeams(draft *TeamDraft) error {
 
 	s.teamConfig = &config
 	s.teams = newTeams(s.id, config, now)
+	s.teamsSource = TeamsSourceDraft
 	s.updatedAt = now
 
 	s.addEvent(NewSessionTeamsCreatedEvent(s, draft.StartedBy(), replaced))
@@ -587,6 +620,7 @@ func (s *Session) ApplyProposalTeams(round *TeamVotingRound, closedBy uuid.UUID)
 
 	s.teamConfig = &config
 	s.teams = newTeams(s.id, config, now)
+	s.teamsSource = TeamsSourceVote
 	s.updatedAt = now
 
 	s.addEvent(NewSessionTeamsCreatedEvent(s, closedBy, replaced))

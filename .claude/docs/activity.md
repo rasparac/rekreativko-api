@@ -387,6 +387,18 @@ teams. Product rules are the mobile team's D10-D16 plus backend decisions on the
   and `team_assigned`. `opened`, `closed` and `cancelled` carry `participant_user_ids` (people going; empty on
   `cancelled` for `teams_replaced` / `session_ended`).
 
+### Teams source (6gg.12)
+
+`session.teams_source` (`manual` | `draft` | `vote`, NULL without teams) records where the **current** teams came
+from: `POST /teams` -> `manual`, a completed captain draft -> `draft`, a winning proposal -> `vote`; a reset clears
+it. Picked teams are not put to a vote, so while it is `draft` `POST /proposals` fails with **409
+`teams_drafted`** (`Session.requireProposalsAllowed`, checked when opening a round and when adding a proposal).
+It is tracked rather than read off the latest draft on purpose: a re-draft that gets cancelled leaves the drafted
+teams in place, so proposals stay refused. Proposals are allowed again after a reset, or once the organizer
+replaces the teams by hand (`manual`) or a vote does (`vote`). Sessions whose teams predate the column have no
+source and allow proposals. The snapshot exposes it as `teams_source` (null without teams), so clients need not
+infer it from `GET /draft`.
+
 ### Team formation reset (6gg.11)
 
 "As if there had never been a draft": the session goes back to its initial state.
@@ -398,6 +410,7 @@ teams. Product rules are the mobile team's D10-D16 plus backend decisions on the
   session (`DeleteSessionDrafts` / `DeleteSessionRounds`), so `GET /draft` is 404 again, the snapshot has no draft
   and proposals are allowed. Nothing happens - and no event is raised - when there is nothing to reset (no teams,
   no running draft, no open round).
+- **Also clears `teams_source`** (see above), so proposals are allowed again.
 - **Triggers:** (1) **automatically** whenever a confirmed (going/promoted) attendee stops holding a spot - RSVP
   cancelled, switched to maybe/not_going, or removed by a manager - whoever they are (any leaver, not just a team
   member), reason `roster_changed`, after any waitlist promotion. A finished or called-off session keeps its

@@ -19,6 +19,10 @@ func TeamFormationSnapshotToResponse(snapshot *application.TeamFormationSnapshot
 		GoingUserIDs: snapshot.GoingUserIDs,
 		Voting:       TeamVotingStateToResponse(snapshot.Voting, viewerID),
 	}
+	if source := snapshot.Session.TeamsSource(); source != "" {
+		value := string(source)
+		resp.TeamsSource = &value
+	}
 	if resp.Teams == nil {
 		resp.Teams = []dtos.TeamResponse{}
 	}

@@ -14,7 +14,7 @@ import (
 // ProposeTeams handles POST /api/v1/sessions/{id}/proposals
 //
 //	@Summary		Propose a division into teams
-//	@Description	Anyone going proposes how everyone going splits into teams (first team = Team A). The first proposal opens a voting round; later ones join it. A valid proposal puts everyone going on exactly one team, nobody who isn't going, every team at or above min_players_per_team (sessions with teams), and uses the round's team count (the session's teams, else the first proposal's). Proposing never changes the current teams. Team sports only; not while a captain draft runs.
+//	@Description	Anyone going proposes how everyone going splits into teams (first team = Team A). The first proposal opens a voting round; later ones join it. A valid proposal puts everyone going on exactly one team, nobody who isn't going, every team at or above min_players_per_team (sessions with teams), and uses the round's team count (the session's teams, else the first proposal's). Proposing never changes the current teams. Team sports only; not while a captain draft runs, and not while the current teams came from a completed captain draft (teams_source "draft": picked teams are not put to a vote) - reset the teams first (DELETE /sessions/{id}/teams), or replace them by hand.
 //	@Tags			Team voting
 //	@Accept			json
 //	@Produce		json
@@ -25,7 +25,7 @@ import (
 //	@Failure		400		{object}	api.Response[any]					"Invalid request"
 //	@Failure		401		{object}	api.Response[any]					"Unauthorized"
 //	@Failure		404		{object}	api.Response[any]					"Session not found"
-//	@Failure		409		{object}	api.Response[any]					"Caller not going (attendee_not_going), not enough people (not_enough_players), a draft is running (draft_already_active), or session canceled/completed"
+//	@Failure		409		{object}	api.Response[any]					"Caller not going (attendee_not_going), not enough people (not_enough_players), a draft is running (draft_already_active), the current teams came from a draft (teams_drafted), or session canceled/completed"
 //	@Failure		422		{object}	api.Response[any]					"invalid_division (details.reason: wrong_team_count, player_not_going, duplicate_player, missing_players, team_below_minimum; details.user_ids), or not a team sport"
 //	@Failure		500		{object}	api.Response[any]					"Internal server error"
 //	@Router			/api/v1/sessions/{id}/proposals [post]

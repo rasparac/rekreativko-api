@@ -18,6 +18,10 @@ type TeamFormationResponse struct {
 	Version int64 `json:"version" example:"1790000000000000"`
 	// TeamConfig is null until the session is split into teams.
 	TeamConfig *TeamConfigResponse `json:"team_config"`
+	// TeamsSource is where the current teams came from: "manual", "draft" (a
+	// completed captain draft: proposals are refused, 409 teams_drafted) or
+	// "vote"; null without teams. A reset clears it.
+	TeamsSource *string `json:"teams_source" enums:"manual,draft,vote"`
 	// Teams with their current members, in position order; empty without teams.
 	Teams []TeamResponse `json:"teams"`
 	// GoingUserIDs are the people going (going/promoted), in join order. With

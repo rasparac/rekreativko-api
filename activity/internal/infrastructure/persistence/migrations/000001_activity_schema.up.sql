@@ -234,6 +234,10 @@ CREATE TABLE IF NOT EXISTS activity.session(
     -- optional minimum players per team to play (no maximum), independent of
     -- capacity; NULL = no minimum
     min_players_per_team smallint DEFAULT NULL CHECK (min_players_per_team IS NULL OR min_players_per_team > 0),
+    -- where the current teams came from: manual (POST /teams), draft (a completed
+    -- captain draft) or vote (a winning proposal); NULL = no teams. Proposals are
+    -- refused while it is 'draft'.
+    teams_source varchar(10) DEFAULT NULL CHECK (teams_source IS NULL OR teams_source IN ('manual', 'draft', 'vote')),
     created_at timestamptz NOT NULL DEFAULT NOW(),
     updated_at timestamptz NOT NULL DEFAULT NOW(),
     cancelled_at timestamptz DEFAULT NULL,

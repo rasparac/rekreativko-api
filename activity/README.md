@@ -44,6 +44,8 @@ Service methods that exist but have **no route** (incomplete/parked, not necessa
 
 For team sports (basketball, football, volleyball) a session can be split into teams in three ways: a manager assigns people directly, a **captain draft** (a manager picks two captains who take turns picking from everyone going), or **proposals and voting** (anyone going proposes a full division, everyone going votes, a manager closes the round and the winner replaces the teams; a tie needs the manager to pick). Existing teams are never reset by merely suggesting a new division.
 
+**Proposals and drafted teams:** the session records where its current teams came from (`teams_source`: `manual`, `draft`, `vote`; null without teams; exposed on the team-formation snapshot). Picked teams are not put to a vote: while the source is `draft` (including after a cancelled re-draft) `POST /sessions/{id}/proposals` returns 409 `teams_drafted`, until the teams are replaced by hand or by a vote, or reset.
+
 **Reset:** team formation goes back to its initial state ("as if there had never been a draft") - teams and team setup deleted, a running draft and an open vote cancelled, draft and vote history cleared (`GET /draft` is 404, proposals are allowed). It happens automatically whenever a confirmed attendee stops going (cancels, switches to Maybe/Not going, or is removed - any leaver, not just a team member; a joiner does not reset anything) and by hand with `DELETE /sessions/{id}/teams` (managers only, idempotent). It raises `activity.session.teams_reset` and everyone still going gets one `team_formation_reset` notification.
 
 Commands are plain REST; the stream below only tells clients that state changed.

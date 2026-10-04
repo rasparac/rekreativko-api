@@ -39,6 +39,7 @@ type sessionModel struct {
 	isRecurring       bool
 	teamCount         sql.NullInt32 // NULL = session has no teams
 	minPlayersPerTeam sql.NullInt32
+	teamsSource       sql.NullString // NULL = session has no teams
 	note              sql.NullString
 	createdAt         sql.NullTime
 	updatedAt         sql.NullTime
@@ -191,10 +192,11 @@ func (m *sessionManager) ReplaceTeams(ctx context.Context, session *domain.Sessi
 
 	model := sessionModelFromDomain(session)
 	result, err := q.Exec(ctx,
-		`UPDATE activity.session SET team_count = $2, min_players_per_team = $3, updated_at = $4 WHERE id = $1`,
+		`UPDATE activity.session SET team_count = $2, min_players_per_team = $3, teams_source = $4, updated_at = $5 WHERE id = $1`,
 		model.id,
 		model.teamCount,
 		model.minPlayersPerTeam,
+		model.teamsSource,
 		model.updatedAt,
 	)
 	if err != nil {
@@ -341,7 +343,7 @@ func (m *sessionManager) GetSessionByID(ctx context.Context, id uuid.UUID) (*dom
 			start_time, end_time, capacity, status, visibility, is_recurring, note,
 			created_at, updated_at, cancelled_at, started_at, completed_at,
 			title, activity_type, difficulty_level, location_street, requires_approval,
-			team_count, min_players_per_team
+			team_count, min_players_per_team, teams_source
 		FROM activity.session
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -377,6 +379,7 @@ func (m *sessionManager) GetSessionByID(ctx context.Context, id uuid.UUID) (*dom
 		&model.requiresApproval,
 		&model.teamCount,
 		&model.minPlayersPerTeam,
+		&model.teamsSource,
 	)
 
 	if err != nil {
@@ -408,7 +411,7 @@ func (m *sessionManager) FindSessionsPastEndTime(ctx context.Context) ([]*domain
 			start_time, end_time, capacity, status, visibility, is_recurring, note,
 			created_at, updated_at, cancelled_at, started_at, completed_at,
 			title, activity_type, difficulty_level, location_street, requires_approval,
-			team_count, min_players_per_team
+			team_count, min_players_per_team, teams_source
 		FROM activity.session
 		WHERE status IN ('scheduled', 'started') AND end_time IS NOT NULL AND end_time < now()
 			AND deleted_at IS NULL
@@ -453,6 +456,7 @@ func (m *sessionManager) FindSessionsPastEndTime(ctx context.Context) ([]*domain
 			&model.requiresApproval,
 			&model.teamCount,
 			&model.minPlayersPerTeam,
+			&model.teamsSource,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan session: %w", err)
@@ -539,7 +543,8 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 			location_street,
 			requires_approval,
 			team_count,
-			min_players_per_team
+			min_players_per_team,
+			teams_source
 		FROM activity.session
 		WHERE deleted_at IS NULL`,
 		Args: make([]any, 0),
@@ -695,6 +700,7 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 			&model.requiresApproval,
 			&model.teamCount,
 			&model.minPlayersPerTeam,
+			&model.teamsSource,
 		)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to scan session: %w", err)
@@ -837,6 +843,7 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter DiscoverSe
 				requires_approval,
 				team_count,
 				min_players_per_team,
+				teams_source,
 				(6371 * acos(LEAST(1, GREATEST(-1,
 					cos(radians($1)) * cos(radians(location_lat)) *
 					cos(radians(location_lng) - radians($2)) +
@@ -909,6 +916,7 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter DiscoverSe
 			&model.requiresApproval,
 			&model.teamCount,
 			&model.minPlayersPerTeam,
+			&model.teamsSource,
 			&distanceKM,
 		)
 		if err != nil {
@@ -1008,6 +1016,10 @@ func sessionModelFromDomain(s *domain.Session) *sessionModel {
 	// Capacity
 	if cap := s.Capacity(); cap != nil {
 		model.capacity = sql.NullInt32{Int32: int32(*cap), Valid: true}
+	}
+
+	if source := s.TeamsSource(); source != "" {
+		model.teamsSource = sql.NullString{String: string(source), Valid: true}
 	}
 
 	// Team config
@@ -1148,6 +1160,7 @@ func sessionModelToDomain(model *sessionModel, teams []*domain.Team) (*domain.Se
 		nil, // openAt is not persisted yet
 		teamConfig,
 		teams,
+		domain.TeamsSource(model.teamsSource.String),
 		model.createdAt.Time,
 		model.updatedAt.Time,
 		cancelledAt,
