@@ -1,5 +1,6 @@
 BEGIN;
 DROP TABLE IF EXISTS activity.event_outbox;
+DROP FUNCTION IF EXISTS activity.notify_event_outbox();
 DROP TABLE IF EXISTS activity.session_statistics;
 DROP TABLE IF EXISTS activity.activity_group_statistics;
 DROP TABLE IF EXISTS activity.session_invites;

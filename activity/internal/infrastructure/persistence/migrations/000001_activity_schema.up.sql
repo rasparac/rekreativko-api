@@ -511,3 +511,17 @@ CREATE INDEX idx_event_outbox_published_at ON activity.event_outbox(published_at
 CREATE INDEX idx_event_outbox_pending ON activity.event_outbox(created_at)
     WHERE published_at IS NULL AND failed_at IS NULL;
 
+-- Wake the outbox publisher as soon as a transaction that wrote events
+-- commits (NOTIFY is delivered on commit) instead of on its next poll. The
+-- payload is the schema; the publisher's poll stays as the fallback.
+CREATE OR REPLACE FUNCTION activity.notify_event_outbox() RETURNS trigger AS $$
+BEGIN
+    PERFORM pg_notify('outbox_events', TG_TABLE_SCHEMA);
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_event_outbox_notify
+    AFTER INSERT ON activity.event_outbox
+    FOR EACH STATEMENT EXECUTE FUNCTION activity.notify_event_outbox();
+

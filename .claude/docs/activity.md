@@ -397,7 +397,8 @@ teams. Product rules are the mobile team's D10-D16 plus backend decisions on the
 
 - **Delivery:** every activity instance subscribes to `activity.session.>` with `SubscribeBroadcast` (plain NATS,
   at-most-once, every instance gets every event) - a phone's stream lives on one instance. On each event the hub
-  rebuilds the session's snapshot once and pushes it to that session's clients. Latency = outbox poll interval.
+  rebuilds the session's snapshot once and pushes it to that session's clients. Latency = outbox
+  publish time: the publisher is woken by Postgres `LISTEN/NOTIFY` (see below), the poll is only the fallback.
 - **Wire format:** first event `snapshot`, then one event per change named without the `activity.session.` prefix
   (e.g. `draft.player_picked`); `data` = `{change, snapshot}` (raw domain event + full state, same document as
   `GET /team-formation`, `my_vote` personalised); `id` = snapshot version. `: ping` every 20s. Before closing on
@@ -420,6 +421,15 @@ teams. Product rules are the mobile team's D10-D16 plus backend decisions on the
   timeout, but connecting to the backend (dial timeout) and receiving its headers
   (`Transport.ResponseHeaderTimeout`) are each bounded by the service timeout.
   The client hanging up cancels the backend request.
+
+### Outbox wake-up (q2l)
+
+Every service's `event_outbox` has an `AFTER INSERT ... FOR EACH STATEMENT` trigger that runs
+`pg_notify('outbox_events', <schema>)`; Postgres delivers it on commit, so the publisher never sees an
+uncommitted event. `outbox-publisher` LISTENs on a connection of its own (`events.ListenOutbox`, built on
+[`jackc/pgxlisten`](https://github.com/jackc/pgxlisten), which reconnects every 2s after a failure) and publishes the named schema at once, draining full batches but stopping at the first failed event
+(retries keep the poll's pace). After every (re)connect it does a full pass, since notifications sent while it
+was down are lost. `OUTBOX_POLL_INTERVAL` (5s) stays as the fallback; `OUTBOX_LISTEN=false` turns the listener off.
 
 ### Team formation notifications (6gg.5)
 

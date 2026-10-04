@@ -20,6 +20,7 @@ type (
 		pollIntervalS time.Duration
 		metrics       *Metrics
 		schemas       []string
+		wakeups       <-chan string
 	}
 
 	eventOutboxReader interface {
@@ -59,6 +60,14 @@ func NewOutboxPublisher(
 	}
 }
 
+// WithWakeups makes the publisher publish a schema as soon as its name arrives
+// on wakeups ("" = every schema) instead of waiting for the next poll, which
+// stays as the fallback. See ListenOutbox.
+func (op *outboxPublisher) WithWakeups(wakeups <-chan string) *outboxPublisher {
+	op.wakeups = wakeups
+	return op
+}
+
 func (op *outboxPublisher) Start(ctx context.Context) error {
 
 	err := op.publish(ctx)
@@ -70,11 +79,60 @@ func (op *outboxPublisher) Start(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case schema, ok := <-op.wakeups:
+			if !ok {
+				// The listener stopped; keep polling.
+				op.wakeups = nil
+				continue
+			}
+			op.publishWoken(ctx, schema)
 		case <-time.After(op.pollIntervalS):
 			err := op.publish(ctx)
 			if err != nil {
 				op.logger.Error(ctx, "failed to publish outbox event", "error", err)
 			}
+		}
+	}
+}
+
+// publishWoken publishes the schemas named by a notification and by any
+// already waiting behind it (a burst of commits is one pass, not one each).
+func (op *outboxPublisher) publishWoken(ctx context.Context, first string) {
+	woken := map[string]struct{}{first: {}}
+	for drained := false; !drained; {
+		select {
+		case schema, ok := <-op.wakeups:
+			if !ok {
+				drained = true
+				break
+			}
+			woken[schema] = struct{}{}
+		default:
+			drained = true
+		}
+	}
+
+	for _, schema := range op.schemas {
+		_, all := woken[""]
+		if _, ok := woken[schema]; !ok && !all {
+			continue
+		}
+		op.publishSchemaBacklog(ctx, schema)
+	}
+}
+
+// publishSchemaBacklog publishes batches until the schema has none left. It
+// stops at the first failure so a failing event is retried on the poll's
+// schedule rather than burning its retries back to back.
+func (op *outboxPublisher) publishSchemaBacklog(ctx context.Context, schema string) {
+	for ctx.Err() == nil {
+		failed, published, err := op.publishFromSchema(ctx, schema)
+		if err != nil {
+			op.logger.Error(ctx, "failed to publish from schema", "schema", schema, "error", err)
+			return
+		}
+		if failed > 0 || published < op.readLimit {
+			return
 		}
 	}
 }

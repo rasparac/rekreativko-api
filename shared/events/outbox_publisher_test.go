@@ -131,3 +131,176 @@ func TestPublishFromSchema_MarkPublishedErrorRollsBackBatch(t *testing.T) {
 
 	assert.ErrorContains(t, err, "db down")
 }
+
+func TestPublishWoken_PublishesOnlyTheNamedSchemas(t *testing.T) {
+	newPublisher := func(r *fakeReader, wakeups chan string) *outboxPublisher {
+		return NewOutboxPublisher(r, &fakeTx{}, &fakeBroker{}, logger.New("error", "json"), 10, 3, time.Hour,
+			newTestMetrics(), []string{"activity", "identity"}).WithWakeups(wakeups)
+	}
+
+	tests := []struct {
+		name      string
+		woken     []string
+		wantReads int
+	}{
+		{"named schema", []string{"activity"}, 1},
+		{"unknown schema is ignored", []string{"other"}, 0},
+		{"empty means every schema", []string{""}, 2},
+		{"a burst is one pass per schema", []string{"activity", "activity", "identity"}, 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &fakeReader{}
+			wakeups := make(chan string, 8)
+			for _, schema := range tt.woken[1:] {
+				wakeups <- schema
+			}
+
+			newPublisher(r, wakeups).publishWoken(context.Background(), tt.woken[0])
+
+			assert.Equal(t, tt.wantReads, r.readCalls)
+		})
+	}
+}
+
+// batchReader serves its batches one per read, then nothing.
+type batchReader struct {
+	fakeReader
+	batches [][]domainevent.BrokerEvent
+}
+
+func (b *batchReader) ReadEvents(context.Context, string, int) ([]domainevent.BrokerEvent, error) {
+	b.readCalls++
+	if len(b.batches) == 0 {
+		return nil, nil
+	}
+	next := b.batches[0]
+	b.batches = b.batches[1:]
+	return next, nil
+}
+
+func TestPublishSchemaBacklog_DrainsFullBatches(t *testing.T) {
+	batch := func(n int) []domainevent.BrokerEvent {
+		events := make([]domainevent.BrokerEvent, n)
+		for i := range events {
+			events[i] = domainevent.BrokerEvent{EventID: uuid.New(), EventType: "e"}
+		}
+		return events
+	}
+
+	// read limit is 10: two full batches mean there may be more, the short
+	// one is the end.
+	r := &batchReader{batches: [][]domainevent.BrokerEvent{batch(10), batch(10), batch(3)}}
+	op := newTestPublisher(&r.fakeReader, &fakeBroker{}, &fakeTx{}, 3)
+	op.eventReader = r
+
+	op.publishSchemaBacklog(context.Background(), "identity")
+
+	assert.Equal(t, 3, r.readCalls)
+	assert.Len(t, r.published, 23)
+}
+
+func TestPublishSchemaBacklog_StopsAtFirstFailure(t *testing.T) {
+	events := make([]domainevent.BrokerEvent, 10)
+	for i := range events {
+		events[i] = domainevent.BrokerEvent{EventID: uuid.New(), EventType: "bad.event"}
+	}
+	r := &batchReader{batches: [][]domainevent.BrokerEvent{events, events}}
+	op := newTestPublisher(&r.fakeReader, &fakeBroker{failFor: map[string]struct{}{"bad.event": {}}}, &fakeTx{}, 3)
+	op.eventReader = r
+
+	op.publishSchemaBacklog(context.Background(), "identity")
+
+	assert.Equal(t, 1, r.readCalls, "a failing event is retried on the poll's schedule")
+}
+
+// signalReader is safe to use from the publisher's goroutine while the test
+// waits on it: reads are reported on a channel, nothing else is shared.
+type signalReader struct {
+	reads chan string
+}
+
+func (s *signalReader) ReadEvents(_ context.Context, schema string, _ int) ([]domainevent.BrokerEvent, error) {
+	s.reads <- schema
+	return nil, nil
+}
+
+func (s *signalReader) MarkEventAsPublished(context.Context, string, uuid.UUID) error { return nil }
+
+func (s *signalReader) MarkEventAsFailed(context.Context, string, uuid.UUID, error, int) (bool, error) {
+	return false, nil
+}
+
+func startPublisher(t *testing.T, poll time.Duration, wakeups chan string) (reads chan string, stop func()) {
+	t.Helper()
+
+	reader := &signalReader{reads: make(chan string, 64)}
+	op := NewOutboxPublisher(reader, &fakeTx{}, &fakeBroker{}, logger.New("error", "json"), 10, 3,
+		poll, newTestMetrics(), []string{"activity", "identity"}).WithWakeups(wakeups)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- op.Start(ctx) }()
+
+	return reader.reads, func() {
+		cancel()
+		select {
+		case err := <-done:
+			assert.ErrorIs(t, err, context.Canceled)
+		case <-time.After(3 * time.Second):
+			t.Fatal("Start did not stop")
+		}
+	}
+}
+
+func expectRead(t *testing.T, reads <-chan string, want string) {
+	t.Helper()
+
+	select {
+	case got := <-reads:
+		assert.Equal(t, want, got)
+	case <-time.After(3 * time.Second):
+		t.Fatalf("no read of %q", want)
+	}
+}
+
+// With the poll an hour away, a wake-up is the only thing that can make Start
+// publish. Run with -race: the wake-up comes from another goroutine.
+func TestStart_PublishesOnWakeup(t *testing.T) {
+	wakeups := make(chan string)
+	reads, stop := startPublisher(t, time.Hour, wakeups)
+	defer stop()
+
+	// Start's first pass reads every schema.
+	expectRead(t, reads, "activity")
+	expectRead(t, reads, "identity")
+
+	wakeups <- "identity"
+	expectRead(t, reads, "identity")
+
+	select {
+	case extra := <-reads:
+		t.Fatalf("unexpected read of %q: only the woken schema is published", extra)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// A closed wake-up channel (the listener stopped) must not stop or spin the
+// publisher: it keeps polling.
+func TestStart_KeepsPollingWhenTheListenerStops(t *testing.T) {
+	wakeups := make(chan string)
+	reads, stop := startPublisher(t, 20*time.Millisecond, wakeups)
+	defer stop()
+
+	close(wakeups)
+
+	// First pass plus several polls: 2 schemas each.
+	for range 8 {
+		select {
+		case <-reads:
+		case <-time.After(3 * time.Second):
+			t.Fatal("the publisher stopped polling")
+		}
+	}
+}

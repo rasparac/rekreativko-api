@@ -127,3 +127,17 @@ CREATE INDEX idx_account_profile_event_outbox_published_at ON account_profile.ev
 -- Pending (not published, not dead-lettered) events, in publish order.
 CREATE INDEX idx_account_profile_event_outbox_pending ON account_profile.event_outbox(created_at)
     WHERE published_at IS NULL AND failed_at IS NULL;
+
+-- Wake the outbox publisher as soon as a transaction that wrote events
+-- commits (NOTIFY is delivered on commit) instead of on its next poll. The
+-- payload is the schema; the publisher's poll stays as the fallback.
+CREATE OR REPLACE FUNCTION account_profile.notify_event_outbox() RETURNS trigger AS $$
+BEGIN
+    PERFORM pg_notify('outbox_events', TG_TABLE_SCHEMA);
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_event_outbox_notify
+    AFTER INSERT ON account_profile.event_outbox
+    FOR EACH STATEMENT EXECUTE FUNCTION account_profile.notify_event_outbox();

@@ -110,10 +110,15 @@ type (
 	}
 
 	OutboxConfig struct {
+		// PollIntervalS is how often the outbox is polled. With Listen on it is
+		// only the fallback for notifications that were missed.
 		PollIntervalS time.Duration `envconfig:"OUTBOX_POLL_INTERVAL" default:"5s"`
-		ReadLimit     int           `envconfig:"OUTBOX_READ_LIMIT" default:"100"`
-		Schemas       string        `envconfig:"OUTBOX_SCHEMAS" required:"true"`
-		MaxRetries    int           `envconfig:"OUTBOX_MAX_RETRIES" default:"5"`
+		// Listen publishes as soon as a transaction commits events, via
+		// Postgres LISTEN/NOTIFY, instead of waiting for the next poll.
+		Listen     bool   `envconfig:"OUTBOX_LISTEN" default:"true"`
+		ReadLimit  int    `envconfig:"OUTBOX_READ_LIMIT" default:"100"`
+		Schemas    string `envconfig:"OUTBOX_SCHEMAS" required:"true"`
+		MaxRetries int    `envconfig:"OUTBOX_MAX_RETRIES" default:"5"`
 	}
 
 	NatsConfig struct {

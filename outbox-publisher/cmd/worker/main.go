@@ -94,6 +94,10 @@ func main() {
 		schemas,
 	)
 
+	if cfg.Outbox.Listen {
+		outboxPublisher.WithWakeups(events.ListenOutbox(ctx, pg.Pool.Config().ConnConfig, log))
+	}
+
 	go func() {
 		err := outboxPublisher.Start(ctx)
 		if err != nil {

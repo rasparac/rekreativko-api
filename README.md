@@ -121,10 +121,10 @@ graph TB
     ACT -.writes events to.-> OUT3[(activity.event_outbox)]
     NOT -.writes events to.-> OUT4[(notifications.event_outbox)]
 
-    OP[Outbox Publisher] -.polls every 5s.-> OUT1
-    OP -.polls every 5s.-> OUT2
-    OP -.polls every 5s.-> OUT3
-    OP -.polls every 5s.-> OUT4
+    OP[Outbox Publisher] -.NOTIFY wake-up, 5s poll fallback.-> OUT1
+    OP -.NOTIFY wake-up, 5s poll fallback.-> OUT2
+    OP -.NOTIFY wake-up, 5s poll fallback.-> OUT3
+    OP -.NOTIFY wake-up, 5s poll fallback.-> OUT4
     OP -->|publish| NATS[(NATS JetStream)]
 
     NATS -->|identity.account.verified| AP
@@ -177,7 +177,7 @@ The two auth checks in the gateway (`RequireAuth` and the router's own `AuthRule
 
 ## How Events Are Used
 
-Every service uses the **transactional outbox pattern**: a domain event and the business change that caused it are written in the *same* database transaction, so they can never disagree (no "the row saved but the event didn't fire" case). Nothing publishes to NATS directly — only `outbox-publisher` does, by polling.
+Every service uses the **transactional outbox pattern**: a domain event and the business change that caused it are written in the *same* database transaction, so they can never disagree (no "the row saved but the event didn't fire" case). Nothing publishes to NATS directly — only `outbox-publisher` does. It is woken by a Postgres `NOTIFY` the moment a transaction commits events (so events reach NATS within milliseconds), and polls every few seconds as a fallback.
 
 ```mermaid
 sequenceDiagram
@@ -192,13 +192,14 @@ sequenceDiagram
     SVC->>DB: INSERT event_outbox row (event_type, payload)
     SVC->>DB: COMMIT
     Note over SVC,DB: Business change and event are atomic
+    DB-->>OP: NOTIFY outbox_events (payload = schema), delivered on commit
 
-    loop every OUTBOX_POLL_INTERVAL (default 5s)
-        OP->>DB: SELECT * FROM <schema>.event_outbox WHERE published_at IS NULL
-        OP->>NATS: Publish(event_type, payload)
-        NATS-->>OP: ack
-        OP->>DB: UPDATE event_outbox SET published_at = NOW()
-    end
+    OP->>DB: SELECT ... FROM <schema>.event_outbox WHERE published_at IS NULL<br/>FOR UPDATE SKIP LOCKED
+    OP->>NATS: Publish(event_type, payload)
+    NATS-->>OP: ack
+    OP->>DB: UPDATE event_outbox SET published_at = NOW()
+
+    Note over OP,DB: Fallback: the same publish pass also runs every<br/>OUTBOX_POLL_INTERVAL (default 5s), in case a NOTIFY was missed
 
     NATS->>SUB: deliver to durable consumer<br/>(subject: events.<event_type>)
     SUB->>SUB: Handle(ctx, payload)
