@@ -56,6 +56,23 @@ Each subscription creates its own durable JetStream consumer (`<service>+<subjec
 | `activity.session_invite.declined` | `session_invite_declined` (to the inviter) |
 | `activity.session_invite.expired` | `session_invite_expired` (to the inviter) |
 
+**Team formation** (in-app notifications; `data` always carries `session_id` and a deep-link `screen` of `team_draft`, `team_voting` or `session_teams`; whoever triggered the event is skipped; recipients come from the event payload, activity is never queried):
+
+| Topic | `NotificationType` | Recipients |
+|---|---|---|
+| `activity.session.draft.started` | `team_draft_captain_selected` | both captains |
+| `activity.session.draft.turn_changed` | `team_draft_your_turn` | the captain whose turn it is |
+| `activity.session.draft.paused` | `team_draft_paused` | the organizer who started the draft |
+| `activity.session.draft.completed` | `team_draft_completed` | every drafted player |
+| `activity.session.draft.cancelled` | `team_draft_cancelled` | people going (not when the session ended) |
+| `activity.session.voting.opened` | `team_voting_opened` | people going, except the author |
+| `activity.session.voting.closed` | `team_voting_closed` | people going |
+| `activity.session.voting.cancelled` | `team_voting_cancelled` | people going, only for `not_enough_players` |
+| `activity.session.voting.tied` | `team_voting_tied` | session managers except the one who pressed Close |
+| `activity.session.attendee.team_changed` | `team_changed` | the moved attendee (manual moves only) |
+
+These are stored in the feed and read with `GET /notifications`. They are **not** pushed: there is no push delivery yet, so the app only sees them when it next fetches the feed. Live updates while a team screen is open come from activity's SSE stream, a separate channel (see [activity README](../activity/README.md#team-formation-and-live-updates)).
+
 ## Domain model
 
 ```

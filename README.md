@@ -12,7 +12,7 @@ This is a **service-centric monorepo** where each service is independently deplo
 - **Identity** (`:8081`) - registration, login, email/phone verification, JWT issuance, refresh-token rotation. [→ README](identity/README.md)
 - **Account Profile** (`:8082`) - user profiles, per-account settings, activity interests. [→ README](account-profile/README.md)
 - **Activity** (`:8084`) - the core domain: activity groups, sessions, invites, RSVP/attendance, recurring session templates. Also ships a separate one-shot cron job (session generation, invite/session expiry). [→ README](activity/README.md)
-- **Notifications** (`:8083`) - in-app notification feed, plus identity's account-lifecycle email/SMS delivery. [→ README](notifications/README.md)
+- **Notifications** (`:8083`) - in-app notification feed (no push yet), plus identity's account-lifecycle email/SMS delivery. [→ README](notifications/README.md)
 - **Outbox Publisher** - background worker relaying every service's domain events from its database outbox to NATS. The only service that publishes to NATS. [→ README](outbox-publisher/README.md)
 
 Each service above has its own README with full API reference, domain model, configuration, and known issues — this file covers the system as a whole.
@@ -227,6 +227,13 @@ sequenceDiagram
 | A group invite is sent/accepted/declined/expires | `activity.invite.*` | notifications | notifies the relevant party |
 
 `identity` and `activity` publish several more event types (account registration, login attempts, group/session lifecycle transitions, etc.) that currently have no subscriber — see each service's own README for the full list.
+
+### Live updates and notifications
+
+Two separate channels tell the app that something happened; neither is push.
+
+- **SSE** - `GET /activity/api/v1/sessions/{id}/events`: a live stream of a session's team formation (captain draft, proposals and votes, team assignments). Only clients that have it open receive events, and anyone who can see the session may open it - joining is not required. Events reach it within milliseconds of the commit (outbox `NOTIFY`, above). Details: [activity README](activity/README.md#team-formation-and-live-updates).
+- **In-app notifications** - rows in the notifications feed (`GET /notifications`), created by the notifications service from the same events. They are stored, so they survive a closed app, but nothing pushes them: the app sees them on its next fetch. Push delivery is not built yet. See the [notifications README](notifications/README.md).
 
 ## Getting Started
 

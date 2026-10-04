@@ -36,7 +36,51 @@ Routes, grouped by resource (all under `/api/v1`):
 
 **RSVP / attendees**: `POST/PUT/DELETE/GET /sessions/{sessionId}/rsvp`, `GET /sessions/{sessionId}/attendees`, `POST .../rsvp/{userId}/approve`, `POST .../rsvp/{userId}/reject`, `DELETE .../rsvp/{userId}` (remove a confirmed attendee — distinct from the no-`{userId}` self-cancel route).
 
+**Team formation** (team sports only - see [Team formation and live updates](#team-formation-and-live-updates)): `POST /sessions/{id}/teams`, `POST/GET/DELETE /sessions/{id}/draft`, `PUT /sessions/{id}/draft/captains`, `POST /sessions/{id}/draft/picks`, `POST/GET /sessions/{id}/proposals`, `PUT /sessions/{id}/proposals/vote`, `POST /sessions/{id}/proposals/close`, `GET /sessions/{id}/team-formation` (whole state as one document), `GET /sessions/{id}/events` (SSE stream of that document).
+
 Service methods that exist but have **no route** (incomplete/parked, not necessarily broken): `CancelActivityGroup`, invite-link create/revoke/use (the `InviteLink` domain aggregate is fully built), `PromoteMember`/`DemoteMember` (only the generic `PATCH .../role` is exposed).
+
+## Team formation and live updates
+
+For team sports (basketball, football, volleyball) a session can be split into teams in three ways: a manager assigns people directly, a **captain draft** (a manager picks two captains who take turns picking from everyone going), or **proposals and voting** (anyone going proposes a full division, everyone going votes, a manager closes the round and the winner replaces the teams; a tie needs the manager to pick). Existing teams are never reset by merely suggesting a new division. Commands are plain REST; the stream below only tells clients that state changed.
+
+### The SSE stream
+
+`GET /api/v1/sessions/{id}/events` (via the gateway: `/activity/api/v1/sessions/{id}/events`) is a server-sent-events stream of the session's whole team-formation state.
+
+- **Who can connect:** whoever can *see* the session - not only people who joined. A public session accepts any logged-in user; a private one only its creator and related users (group members, attendees, invitees), everyone else gets a 404. Joining is not required.
+- **Who receives events:** every client with the stream open for that session. Being joined does not subscribe anyone; the client opens the stream (the mobile app does so while the draft or vote screen is showing). Someone on another screen, or with the app closed, gets nothing over SSE.
+- **What is sent:** first a `snapshot` event, then one event per change named after it (`draft.player_picked`, `voting.vote_cast`, `voting.tied`, `attendee.team_assigned`, ...). `data` is `{change, snapshot}`: the domain event plus the full state after it, the same document as `GET /sessions/{id}/team-formation` (`my_vote` is personalised per viewer). `id` is the snapshot version; clients ignore anything older than what they have. A reconnect starts from a fresh snapshot - there is no replay.
+- **Keep-alive and ending:** a `: ping` comment every 20s. Before the server closes a stream it sends `disconnected` with a reason: `removed` (no longer able to see the session), `not_found`, `slow_consumer` (16+ updates behind), `server_shutdown` (reconnect to another instance), `token_expired` (the access token ran out - refresh it first, an expired one is a 401).
+- **Latency:** an event reaches clients right after the change commits: the outbox publisher is woken by Postgres `NOTIFY` (see [outbox-publisher](../outbox-publisher/README.md)), publishes to NATS, and every activity instance fans it out to its own connected clients. The 5s outbox poll only matters if a `NOTIFY` is missed.
+- **Multiple instances:** every instance subscribes to `activity.session.>` with a plain (non-durable) NATS subscription and only fans out to the clients connected to it.
+- **Gateway:** the route is declared in `Route.StreamPaths`, so it is proxied without the gateway's 15s write timeout or per-service request timeout. The gateway forwards the token's expiry as `X-Token-Expires-At` (a client-sent value is dropped).
+- **Metrics:** `text/event-stream` responses are counted but left out of the duration and size histograms.
+
+### SSE is not the notification feed
+
+| | SSE stream | In-app notification |
+|---|---|---|
+| Needs the app open on that screen | Yes - the stream must be open | No |
+| Stored | No, live only | Yes (`notifications.notification`, read with `GET /notifications`) |
+| Content | full team-formation snapshot | short item with `session_id` and a deep-link `screen` |
+| Purpose | live screen updates | "something happened that concerns you" |
+
+There is **no push yet** (push is a separate, unbuilt epic): a notification only shows when the app next fetches the feed. What each user gets, assuming they are going and sit on the session details screen with no stream open:
+
+| Event | SSE | In-app notification |
+|---|---|---|
+| Draft started | no | only the two captains |
+| Captain's turn to pick | no | only that captain |
+| Draft completed | no | every drafted player |
+| First proposal of a round | no | everyone going except the author |
+| Further proposals, votes | no | no |
+| Vote closed / cancelled | no | everyone going |
+| Vote tied at Close | no | session managers except the one who pressed Close |
+
+With the stream open, the same user gets every row above live as an SSE event.
+
+Detailed behaviour (wire format, guarantees, timeouts, notification payloads) is in `.claude/docs/activity.md`.
 
 ## Domain model
 
@@ -71,6 +115,7 @@ Grouped by aggregate (see `activity/internal/domain/events.go` for full payload 
 - **Session**: created, updated, started, cancelled, completed, expired, visibility_changed (`deleted` constant exists but nothing emits it)
 - **Attendee**: auto_confirmed, rsvp_going, rsvp_not_going, rsvp_maybe, rsvp_auto_pending, promoted, join_requested, join_approved, join_rejected, removed
 - **SessionTemplate**: created, activated, deactivated, deleted, updated
+- **Team formation** (`activity.session.draft.*`, `voting.*`, `team*`, `attendee.team_*`): draft started, turn_changed, player_picked, paused, completed, cancelled; voting opened, proposal_created, vote_cast, closed, cancelled, tied (`voting.tied` is written in its own transaction because a tie rolls the close back; deduped per round and tied set); teams created, team assigned/changed. All of them also feed the SSE stream.
 
 ## Configuration & schema
 
