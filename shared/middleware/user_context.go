@@ -14,6 +14,10 @@ func ExtractUserContext(next http.Handler) http.Handler {
 
 		ctx = authcontext.WithAccountID(ctx, accountID)
 
+		if expiresAt := authcontext.GetTokenExpiresAtFromHeader(r.Header); !expiresAt.IsZero() {
+			ctx = authcontext.WithTokenExpiresAt(ctx, expiresAt)
+		}
+
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

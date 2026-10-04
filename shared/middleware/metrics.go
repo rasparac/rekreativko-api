@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -40,6 +41,13 @@ func Metrics(m httpMetrics) func(http.Handler) http.Handler {
 				r.URL.Path,
 				status,
 			).Inc()
+
+			// A server-sent-events stream stays open for minutes: its duration
+			// and size would only skew the latency histograms. It is still
+			// counted above.
+			if strings.HasPrefix(rw.Header().Get("Content-Type"), "text/event-stream") {
+				return
+			}
 
 			duration := time.Since(start).Seconds()
 

@@ -401,10 +401,16 @@ teams. Product rules are the mobile team's D10-D16 plus backend decisions on the
 - **Wire format:** first event `snapshot`, then one event per change named without the `activity.session.` prefix
   (e.g. `draft.player_picked`); `data` = `{change, snapshot}` (raw domain event + full state, same document as
   `GET /team-formation`, `my_vote` personalised); `id` = snapshot version. `: ping` every 20s. Before closing on
-  its own the server sends `disconnected` with `reason` (`removed`, `not_found`, `slow_consumer`, `server_shutdown`). No
+  its own the server sends `disconnected` with `reason` (`removed`, `not_found`, `slow_consumer`, `server_shutdown`, `token_expired`). No
   replay - a reconnect starts from a fresh snapshot. On shutdown `main.go` registers `Hub.Shutdown` via
   `srv.RegisterOnShutdown`: every client gets `server_shutdown` (and later connects are closed at once), so
   `http.Server.Shutdown` doesn't wait out its grace period and clients reconnect to another instance.
+- **Token expiry:** the gateway checks the JWT once, on connect. It forwards the token's `exp` as
+  `X-Token-Expires-At` (unix seconds; a client-sent value is always dropped, like `X-User-ID`) and the handler ends
+  the stream with `disconnected` / `token_expired` when it passes. The client refreshes its token and reconnects;
+  reconnecting with the expired one is a 401.
+- **Metrics:** `middleware.Metrics` still counts a `text/event-stream` response but leaves it out of the duration
+  and response-size histograms (a stream lasts minutes and would skew p95/p99).
 - **Guarantees:** a client never gets an older snapshot than its last (version check); a client more than 16
   updates behind is disconnected (`slow_consumer`) instead of blocking others; a viewer removed from the session
   (or no longer able to see it) is disconnected.

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -265,11 +266,17 @@ func (r *Router) isAuthSatisfied(authRule *AuthRule, req *http.Request) bool {
 // addUserHeaders tells the backend who the caller is. Only the gateway may
 // set X-User-ID - backends trust it as the authenticated account - so a value
 // the client sent is always dropped, and replaced only when the caller is
-// authenticated (public routes forward no identity at all).
+// authenticated (public routes forward no identity at all). The same goes
+// for X-Token-Expires-At.
 func (r *Router) addUserHeaders(req *http.Request) {
 	req.Header.Del(authcontext.XUserIDHeader)
+	req.Header.Del(authcontext.XTokenExpiresAtHeader)
 
 	if userID := authcontext.GetAccountID(req.Context()); userID != uuid.Nil {
 		req.Header.Set(authcontext.XUserIDHeader, userID.String())
+	}
+
+	if expiresAt := authcontext.GetTokenExpiresAt(req.Context()); !expiresAt.IsZero() {
+		req.Header.Set(authcontext.XTokenExpiresAtHeader, strconv.FormatInt(expiresAt.Unix(), 10))
 	}
 }

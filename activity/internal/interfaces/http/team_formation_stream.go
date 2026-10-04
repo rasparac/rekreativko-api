@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/mapper"
+	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/live"
 	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/authcontext"
 )
@@ -22,7 +23,7 @@ var sseHeartbeatInterval = 20 * time.Second
 // StreamTeamFormation handles GET /api/v1/sessions/{id}/events
 //
 //	@Summary		Stream team-formation changes
-//	@Description	Server-sent events stream of the session's team formation (captain draft, proposals and votes, team assignments). The first event is "snapshot"; every later event is named after the change (e.g. "draft.player_picked", "voting.vote_cast", "attendee.team_assigned"). Every event's data is {change, snapshot}: the domain event with the ids involved, and the whole state after it (same document as GET /sessions/{id}/team-formation); its id is the snapshot version. A ": ping" comment keeps idle connections alive. Before closing a stream on its own the server sends a "disconnected" event with a reason. On reconnect you get a fresh snapshot - no replay. Changes arrive within the outbox poll interval (5s by default).
+//	@Description	Server-sent events stream of the session's team formation (captain draft, proposals and votes, team assignments). The first event is "snapshot"; every later event is named after the change (e.g. "draft.player_picked", "voting.vote_cast", "attendee.team_assigned"). Every event's data is {change, snapshot}: the domain event with the ids involved, and the whole state after it (same document as GET /sessions/{id}/team-formation); its id is the snapshot version. A ": ping" comment keeps idle connections alive. Before closing a stream on its own the server sends a "disconnected" event with a reason (removed, not_found, slow_consumer, server_shutdown, or token_expired when the access token runs out - refresh it before reconnecting, an expired one gets a 401). On reconnect you get a fresh snapshot - no replay. Changes arrive within the outbox poll interval (5s by default).
 //	@Tags			Team formation
 //	@Produce		text/event-stream
 //	@Security		GatewayKeyAuth && BearerAuth
@@ -80,6 +81,15 @@ func (h *Handler) StreamTeamFormation(w http.ResponseWriter, r *http.Request) {
 	heartbeat := time.NewTicker(sseHeartbeatInterval)
 	defer heartbeat.Stop()
 
+	// The gateway checked the token once, on connect; end the stream when it
+	// runs out so a stream cannot outlive its credentials.
+	var tokenExpired <-chan time.Time
+	if expiresAt := authcontext.GetTokenExpiresAt(ctx); !expiresAt.IsZero() {
+		timer := time.NewTimer(time.Until(expiresAt))
+		defer timer.Stop()
+		tokenExpired = timer.C
+	}
+
 	for {
 		var err error
 
@@ -93,6 +103,12 @@ func (h *Handler) StreamTeamFormation(w http.ResponseWriter, r *http.Request) {
 				_ = writeSSE(w, "", "disconnected", dtos.StreamDisconnectedData{Reason: reason})
 				_ = rc.Flush()
 			}
+			return
+
+		case <-tokenExpired:
+			h.logger.Debug(ctx, "team-formation stream closed by server", "session_id", sessionID, "reason", live.ReasonTokenExpired)
+			_ = writeSSE(w, "", "disconnected", dtos.StreamDisconnectedData{Reason: live.ReasonTokenExpired})
+			_ = rc.Flush()
 			return
 
 		case update := <-client.Updates():

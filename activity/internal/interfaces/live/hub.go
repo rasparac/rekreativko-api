@@ -33,6 +33,7 @@ const (
 	ReasonNotFound     = "not_found"       // the session is gone
 	ReasonSlowConsumer = "slow_consumer"   // the client could not keep up
 	ReasonShutdown     = "server_shutdown" // this instance is shutting down; reconnect to another one
+	ReasonTokenExpired = "token_expired"   // the viewer's access token ran out; refresh it and reconnect
 )
 
 type (

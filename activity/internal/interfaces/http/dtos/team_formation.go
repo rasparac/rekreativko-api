@@ -40,7 +40,9 @@ type TeamFormationEventData struct {
 // StreamDisconnectedData is the data of the final "disconnected" event, sent
 // before the server closes a stream on its own. Reconnecting after "removed"
 // or "not_found" fails; after "slow_consumer" or "server_shutdown" it resyncs
-// (on shutdown the gateway routes the reconnect to another instance).
+// (on shutdown the gateway routes the reconnect to another instance). After
+// "token_expired" refresh the access token first: reconnecting with the
+// expired one is a 401.
 type StreamDisconnectedData struct {
-	Reason string `json:"reason" example:"removed" enums:"removed,not_found,slow_consumer,server_shutdown"`
+	Reason string `json:"reason" example:"removed" enums:"removed,not_found,slow_consumer,server_shutdown,token_expired"`
 }

@@ -101,6 +101,9 @@ func (m *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 		}
 
 		ctx = context.WithValue(ctx, authcontext.AccountIDContextKey, accountID)
+		if claims.ExpiresAt != nil {
+			ctx = authcontext.WithTokenExpiresAt(ctx, claims.ExpiresAt.Time)
+		}
 
 		// Report back to Logging's access-log line, if it ran earlier in
 		// this chain and seeded the pointer - see accountIDLogPointer.

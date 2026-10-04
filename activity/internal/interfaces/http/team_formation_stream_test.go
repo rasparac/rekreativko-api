@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -121,7 +122,11 @@ func newStreamEnv(t *testing.T) *streamEnv {
 	mux.HandleFunc("GET /api/v1/sessions/{id}/events", func(w http.ResponseWriter, r *http.Request) {
 		// Stands in for ExtractUserContext: the viewer comes from a test header.
 		viewer, _ := uuid.Parse(r.Header.Get("X-Test-Viewer"))
-		h.StreamTeamFormation(w, r.WithContext(authcontext.WithAccountID(r.Context(), viewer)))
+		ctx := authcontext.WithAccountID(r.Context(), viewer)
+		if expiresAt := authcontext.GetTokenExpiresAtFromHeader(r.Header); !expiresAt.IsZero() {
+			ctx = authcontext.WithTokenExpiresAt(ctx, expiresAt)
+		}
+		h.StreamTeamFormation(w, r.WithContext(ctx))
 	})
 
 	server := httptest.NewUnstartedServer(mux)
@@ -289,4 +294,26 @@ func TestStreamTeamFormation_InvisibleSessionIsNotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	assert.NotEqual(t, "text/event-stream", resp.Header.Get("Content-Type"))
+}
+
+func TestStreamTeamFormation_EndsWhenTheTokenExpires(t *testing.T) {
+	env := newStreamEnv(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.server.URL+"/api/v1/sessions/"+env.session.ID().String()+"/events", nil)
+	require.NoError(t, err)
+	req.Header.Set("X-Test-Viewer", uuid.New().String())
+	req.Header.Set(authcontext.XTokenExpiresAtHeader, strconv.FormatInt(time.Now().Add(time.Second).Unix(), 10))
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+
+	stream := readSSE(resp)
+	assert.Equal(t, "snapshot", stream.next(t).event)
+
+	ev := stream.next(t)
+	assert.Equal(t, "disconnected", ev.event)
+	assert.JSONEq(t, `{"reason":"token_expired"}`, ev.data)
+	stream.requireEnded(t)
 }

@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/shared/authcontext"
@@ -124,6 +125,48 @@ func TestRouter_DropsClientSuppliedUserID(t *testing.T) {
 			} else {
 				assert.Equal(t, []string{tt.want}, got)
 			}
+		})
+	}
+}
+
+// Like X-User-ID, X-Token-Expires-At is the gateway's word: the backend ends
+// streams by it, so a client-supplied value must never get through.
+func TestRouter_TokenExpiryHeaderIsTheGatewaysOwn(t *testing.T) {
+	expiresAt := time.Unix(1_900_000_000, 0)
+
+	tests := []struct {
+		name    string
+		path    string
+		account bool
+		want    []string
+	}{
+		{"public route drops the spoofed value", "/identity/api/v1/login", false, nil},
+		{"protected route forwards the token's expiry", "/identity/api/v1/me", true, []string{"1900000000"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got []string
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = r.Header.Values(authcontext.XTokenExpiresAtHeader)
+			}))
+			t.Cleanup(backend.Close)
+
+			proxy, err := NewReverseProxy(map[string]ServiceConfig{
+				"identity": {URL: backend.URL, Timeout: testServiceTimeout},
+			}, logger.New("error", "json"))
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodPost, tt.path, nil)
+			req.Header.Set(authcontext.XTokenExpiresAtHeader, "4102444800")
+			if tt.account {
+				ctx := authcontext.WithAccountID(req.Context(), testAccountID)
+				req = req.WithContext(authcontext.WithTokenExpiresAt(ctx, expiresAt))
+			}
+
+			NewRouter(proxy).ServeHTTP(httptest.NewRecorder(), req)
+
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
