@@ -404,3 +404,54 @@ func TestAttendee_LeaveTeam(t *testing.T) {
 	assert.Nil(t, a.TeamID())
 	assert.Equal(t, []string{EventActivitySessionAttendeeTeamUnassigned}, attendeeEventTypes(a))
 }
+
+func TestSession_ResetTeams(t *testing.T) {
+	config, err := NewTeamConfig(nil, intPtr(2), []string{"#FFFFFF", "#000000"})
+	require.NoError(t, err)
+	going := newUsers(3)
+	leaver := uuid.New()
+
+	t.Run("deletes the teams and the team setup, and says who to tell", func(t *testing.T) {
+		session := newTestTeamSession(t, &config)
+		require.True(t, session.HasTeams())
+		session.ClearEvents()
+
+		require.NoError(t, session.ResetTeams(leaver, TeamsResetReasonRosterChanged, going))
+
+		assert.False(t, session.HasTeams())
+		assert.Nil(t, session.TeamConfig())
+		require.Len(t, session.Events(), 1)
+		event, ok := session.Events()[0].(*SessionTeamsResetEvent)
+		require.True(t, ok)
+		assert.Equal(t, EventActivitySessionTeamsReset, event.EventType)
+		assert.Equal(t, TeamsResetReasonRosterChanged, event.Reason)
+		assert.Equal(t, leaver, event.ResetBy)
+		assert.Equal(t, going, event.ParticipantUserIDs)
+	})
+
+	t.Run("resetting a session without teams is allowed", func(t *testing.T) {
+		session := newTestSessionOfType(t, ActivityTypeBasketball)
+		session.ClearEvents()
+
+		require.NoError(t, session.ResetTeams(leaver, TeamsResetReasonOrganizer, going))
+
+		assert.Len(t, session.Events(), 1)
+	})
+
+	t.Run("not once the session is over", func(t *testing.T) {
+		session := newTestTeamSession(t, &config)
+		require.NoError(t, session.Cancel(session.CreatedByID(), "", "called off", nil))
+
+		assert.True(t, session.TeamsLocked())
+		assert.ErrorIs(t, session.ResetTeams(leaver, TeamsResetReasonOrganizer, going), ErrSessionCanceled)
+	})
+}
+
+func TestSession_AuthorizeTeamsReset(t *testing.T) {
+	session := newTestSessionOfType(t, ActivityTypeBasketball)
+
+	assert.NoError(t, session.AuthorizeTeamsReset(session.CreatedByID(), ""), "the creator")
+	assert.NoError(t, session.AuthorizeTeamsReset(uuid.New(), MemberRoleAdmin), "a group admin")
+	assert.ErrorIs(t, session.AuthorizeTeamsReset(uuid.New(), MemberRoleMember), ErrUnauthorized)
+	assert.ErrorIs(t, session.AuthorizeTeamsReset(uuid.New(), ""), ErrUnauthorized)
+}

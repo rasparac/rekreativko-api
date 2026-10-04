@@ -52,6 +52,7 @@ const (
 	EventActivitySessionExpired           = "activity.session.expired"
 	EventActivitySessionVisibilityChanged = "activity.session.visibility_changed"
 	EventActivitySessionTeamsCreated      = "activity.session.teams_created"
+	EventActivitySessionTeamsReset        = "activity.session.teams_reset"
 
 	// Team draft events
 	EventActivitySessionDraftStarted         = "activity.session.draft.started"
@@ -1543,6 +1544,35 @@ func NewVotingTiedEvent(r *TeamVotingRound, tie *TieError, closedBy uuid.UUID, m
 		KeepCurrentTied: tie.KeepCurrentTied,
 		ClosedBy:        closedBy,
 		ManagerUserIDs:  slices.Clone(managers),
+	}
+}
+
+// SessionTeamsResetEvent is raised when team formation was reset: the teams are
+// deleted (everyone unassigned) and any running draft or open voting round was
+// cancelled. ResetBy is the organizer, or the person who stopped going when
+// Reason is roster_changed. ParticipantUserIDs are the people going afterwards.
+type SessionTeamsResetEvent struct {
+	domainevent.BaseEvent
+	ActivityID         *uuid.UUID       `json:"activity_id"`
+	SessionID          uuid.UUID        `json:"session_id"`
+	Reason             TeamsResetReason `json:"reason"`
+	ResetBy            uuid.UUID        `json:"reset_by"`
+	ParticipantUserIDs []uuid.UUID      `json:"participant_user_ids"`
+}
+
+func NewSessionTeamsResetEvent(s *Session, resetBy uuid.UUID, reason TeamsResetReason, participants []uuid.UUID) *SessionTeamsResetEvent {
+	return &SessionTeamsResetEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventActivitySessionTeamsReset,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: s.ID(),
+		},
+		ActivityID:         s.ActivityGroupID(),
+		SessionID:          s.ID(),
+		Reason:             reason,
+		ResetBy:            resetBy,
+		ParticipantUserIDs: slices.Clone(participants),
 	}
 }
 

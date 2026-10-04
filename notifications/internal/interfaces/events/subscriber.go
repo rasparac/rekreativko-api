@@ -51,6 +51,7 @@ type Subscriber struct {
 	votingClosedHandler          *votingClosedHandler
 	votingCancelledHandler       *votingCancelledHandler
 	votingTiedHandler            *votingTiedHandler
+	teamsResetHandler            *teamsResetHandler
 	attendeeTeamChangedHandler   *attendeeTeamChangedHandler
 }
 
@@ -90,6 +91,7 @@ func NewSubscriber(
 		votingClosedHandler:          &votingClosedHandler{notifications: notifications, logger: logger},
 		votingCancelledHandler:       &votingCancelledHandler{notifications: notifications, logger: logger},
 		votingTiedHandler:            &votingTiedHandler{notifications: notifications, logger: logger},
+		teamsResetHandler:            &teamsResetHandler{notifications: notifications, logger: logger},
 		attendeeTeamChangedHandler:   &attendeeTeamChangedHandler{notifications: notifications, logger: logger},
 	}
 }
@@ -130,6 +132,7 @@ func (s *Subscriber) Subscribe(ctx context.Context) error {
 		{"activity.session.voting.closed", s.votingClosedHandler.Handle},
 		{"activity.session.voting.cancelled", s.votingCancelledHandler.Handle},
 		{"activity.session.voting.tied", s.votingTiedHandler.Handle},
+		{"activity.session.teams_reset", s.teamsResetHandler.Handle},
 		{"activity.session.attendee.team_changed", s.attendeeTeamChangedHandler.Handle},
 	}
 

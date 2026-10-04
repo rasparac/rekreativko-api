@@ -410,3 +410,31 @@ func TestTieError_KeyIgnoresOrderAndTellsTiesApart(t *testing.T) {
 		(&TieError{ProposalIDs: []uuid.UUID{a}}).Key(),
 		(&TieError{ProposalIDs: []uuid.UUID{a}, KeepCurrentTied: true}).Key())
 }
+
+func TestTeamVotingRound_Reset(t *testing.T) {
+	users := newUsers(4)
+
+	for _, reason := range []VotingCancelReason{VotingCancelReasonRosterChanged, VotingCancelReasonTeamsReset} {
+		t.Run("cancels an open round: "+string(reason), func(t *testing.T) {
+			session := newTestSessionOfType(t, ActivityTypeBasketball)
+			round, _ := openVoting(t, session, users)
+			round.ClearEvents()
+			version := round.Version()
+
+			round.Reset(reason)
+
+			assert.Equal(t, VotingStatusCancelled, round.Status())
+			assert.Equal(t, reason, round.CancelReason())
+			assert.Greater(t, round.Version(), version)
+			assert.Empty(t, round.Proposals(), "a reset round is cleared")
+			assert.Equal(t, []string{EventActivitySessionVotingCancelled}, votingEventTypes(round))
+			cancelled, ok := round.Events()[0].(*VotingCancelledEvent)
+			require.True(t, ok)
+			assert.Empty(t, cancelled.ParticipantUserIDs, "the reset event tells everyone going")
+
+			round.ClearEvents()
+			round.Reset(reason)
+			assert.Empty(t, round.Events(), "resetting an ended round is a no-op")
+		})
+	}
+}

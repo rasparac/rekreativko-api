@@ -14,7 +14,7 @@ import (
 // StartDraft handles POST /api/v1/sessions/{id}/draft
 //
 //	@Summary		Start a captain draft
-//	@Description	Starts a captain draft for a team-sport session: two people going become captains (the first leads Team A and picks first) and pick everyone else going in turn (snake A,B,B,A by default, or alternate A,B,A,B). Needs at least 2 x min_players_per_team people going (2 without a minimum). The session's current teams are untouched until the draft completes - when everyone going has been picked - and are then replaced by the two drafted teams. People joining mid-draft enter the pool; a captain leaving pauses it (see PUT /draft/captains); fewer people than needed cancels it. While a draft runs, POST /sessions/{id}/teams and direct team assignment return 409 draft_already_active. Session creator or group admin/creator only. No turn timeout.
+//	@Description	Starts a captain draft for a team-sport session: two people going become captains (the first leads Team A and picks first) and pick everyone else going in turn (snake A,B,B,A by default, or alternate A,B,A,B). Needs at least 2 x min_players_per_team people going (2 without a minimum). The session's current teams are untouched until the draft completes - when everyone going has been picked - and are then replaced by the two drafted teams. People joining mid-draft enter the pool; anyone who stops going (a captain or not) resets team formation, which cancels the draft (reason roster_changed); fewer people than needed cancels it. While a draft runs, POST /sessions/{id}/teams and direct team assignment return 409 draft_already_active. Session creator or group admin/creator only. No turn timeout.
 //	@Tags			Team draft
 //	@Accept			json
 //	@Produce		json

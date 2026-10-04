@@ -414,6 +414,71 @@ func (s *SessionService) CreateTeams(
 	return session, nil
 }
 
+// ResetTeams puts the session's team formation back to its initial state: the
+// teams are deleted (everyone unassigned), a running draft and an open voting
+// round are cancelled and the draft and voting history is cleared, so
+// proposals are allowed again. Manager only, while the session is scheduled or
+// started. Resetting nothing is fine - it just does nothing.
+func (s *SessionService) ResetTeams(ctx context.Context, params ResetTeamsParams) error {
+	ctx, span := s.tracer.Start(ctx, "activity.service.ResetTeams")
+	defer span.End()
+
+	log := s.logger.WithValues(
+		"method", "ResetTeams",
+		"session_id", params.SessionID,
+		"requester_id", params.RequesterID,
+	)
+
+	span.SetAttributes(
+		attribute.String("session_id", params.SessionID.String()),
+		attribute.String("requester_id", params.RequesterID.String()),
+	)
+
+	requesterRole, err := parseMemberRole(params.RequesterRole)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "invalid requester role", "error", err)
+		return MapErrToAppError(err)
+	}
+
+	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
+		if err != nil {
+			return fmt.Errorf("get session: %w", err)
+		}
+
+		if err := session.AuthorizeTeamsReset(params.RequesterID, requesterRole); err != nil {
+			return err
+		}
+
+		// Same lock as team assignment, drafts and RSVPs: nobody can be
+		// assigned, pick or leave while the formation is being wiped.
+		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
+			return err
+		}
+
+		events, err := s.formation.resetTeamFormation(tCtx, session, params.RequesterID, domain.TeamsResetReasonOrganizer)
+		if err != nil {
+			return err
+		}
+
+		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, events); err != nil {
+			return fmt.Errorf("insert domain events: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to reset teams", "error", err)
+		return mapToAppErr(err)
+	}
+
+	span.SetStatus(codes.Ok, "teams reset")
+
+	return nil
+}
+
 // ListTeamMembers returns the user IDs on each of a session's teams, keyed by
 // team ID. It does no visibility check of its own - callers fetch the session
 // through GetSession first.

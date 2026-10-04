@@ -13,10 +13,19 @@ import (
 	"github.com/rasparac/rekreativko-api/shared/logger"
 )
 
-// sessionEndedReason is the draft/voting cancel reason used when the session
-// itself was cancelled or completed. Those cancellations are not notified:
-// session_cancelled already reaches everyone going.
-const sessionEndedReason = "session_ended"
+// Draft/voting cancel reasons that are not notified by the cancel handlers:
+// session_ended is covered by session_cancelled, which reaches everyone going;
+// roster_changed and teams_reset are covered by the teams_reset event, which
+// tells everyone going once instead of once per thing that was cancelled.
+const (
+	sessionEndedReason  = "session_ended"
+	rosterChangedReason = "roster_changed"
+	teamsResetReason    = "teams_reset"
+)
+
+func cancelNotifiedElsewhere(reason string) bool {
+	return reason == sessionEndedReason || reason == rosterChangedReason || reason == teamsResetReason
+}
 
 // notifyEach creates one notification of type t per recipient, skipping
 // uuid.Nil, duplicates and actor (the person who triggered the event already
@@ -198,7 +207,7 @@ func (h *draftCancelledHandler) Handle(ctx context.Context, payload []byte) erro
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
-	if event.Reason == sessionEndedReason {
+	if cancelNotifiedElsewhere(event.Reason) {
 		return nil
 	}
 
@@ -285,7 +294,7 @@ func (h *votingCancelledHandler) Handle(ctx context.Context, payload []byte) err
 	}
 	ctx = api.WithEventID(ctx, event.EventID.String())
 
-	if event.Reason == sessionEndedReason {
+	if cancelNotifiedElsewhere(event.Reason) {
 		return nil
 	}
 
@@ -326,6 +335,33 @@ func (h *votingTiedHandler) Handle(ctx context.Context, payload []byte) error {
 				"keep_current_tied": event.KeepCurrentTied,
 				"closed_by":         event.ClosedBy,
 				"screen":            domain.ScreenTeamVoting,
+			}
+		})
+}
+
+// teamsResetHandler tells everyone still going that team formation was reset:
+// the teams are gone (everyone unassigned) and any draft or vote was
+// cancelled, so they can start again. Whoever caused it is skipped.
+type teamsResetHandler struct {
+	notifications notificationCreator
+	logger        *logger.Logger
+}
+
+func (h *teamsResetHandler) Handle(ctx context.Context, payload []byte) error {
+	var event teamsResetEvent
+	if err := decodeEvent(payload, &event); err != nil {
+		return err
+	}
+	ctx = api.WithEventID(ctx, event.EventID.String())
+
+	return notifyEach(ctx, h.notifications, h.logger, event.EventID, event.ParticipantUserIDs, event.ResetBy,
+		domain.NotificationTypeTeamFormationReset,
+		func(uuid.UUID) map[string]any {
+			return map[string]any{
+				"session_id": event.SessionID,
+				"reason":     event.Reason,
+				"reset_by":   event.ResetBy,
+				"screen":     domain.ScreenSessionTeams,
 			}
 		})
 }

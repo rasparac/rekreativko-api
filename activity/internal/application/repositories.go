@@ -84,6 +84,9 @@ type TeamDraftRepository interface {
 	UpdateDraft(ctx context.Context, draft *domain.TeamDraft) error
 	GetActiveDraft(ctx context.Context, sessionID uuid.UUID) (*domain.TeamDraft, error)
 	GetLatestDraft(ctx context.Context, sessionID uuid.UUID) (*domain.TeamDraft, error)
+	// DeleteSessionDrafts removes every draft of the session, picks included,
+	// so none is reported as its latest draft (a team formation reset).
+	DeleteSessionDrafts(ctx context.Context, sessionID uuid.UUID) error
 }
 
 // TeamVotingRepository defines the interface for team voting persistence
@@ -95,6 +98,10 @@ type TeamVotingRepository interface {
 	// MarkTieNotified records the tie (see domain.TieError.Key) the managers
 	// were told about. It reports false when the round already has that key.
 	MarkTieNotified(ctx context.Context, roundID uuid.UUID, tieKey string) (bool, error)
+	// DeleteSessionRounds removes every round of the session with whatever it
+	// still holds, so none is reported as its latest round (a team formation
+	// reset).
+	DeleteSessionRounds(ctx context.Context, sessionID uuid.UUID) error
 }
 
 // AttendeeRepository defines the interface for attendee persistence

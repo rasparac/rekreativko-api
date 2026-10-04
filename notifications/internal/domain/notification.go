@@ -46,6 +46,7 @@ const (
 	NotificationTypeTeamVotingCancelled      NotificationType = "team_voting_cancelled"
 	NotificationTypeTeamVotingTied           NotificationType = "team_voting_tied"
 	NotificationTypeTeamChanged              NotificationType = "team_changed"
+	NotificationTypeTeamFormationReset       NotificationType = "team_formation_reset"
 )
 
 // Screen is the deep-link target a team formation notification's Data

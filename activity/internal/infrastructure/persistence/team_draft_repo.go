@@ -20,6 +20,9 @@ type TeamDraftRepository interface {
 	UpdateDraft(ctx context.Context, draft *domain.TeamDraft) error
 	GetActiveDraft(ctx context.Context, sessionID uuid.UUID) (*domain.TeamDraft, error)
 	GetLatestDraft(ctx context.Context, sessionID uuid.UUID) (*domain.TeamDraft, error)
+	// DeleteSessionDrafts removes every draft of the session, picks included,
+	// so none is reported as its latest draft (a team formation reset).
+	DeleteSessionDrafts(ctx context.Context, sessionID uuid.UUID) error
 }
 
 type teamDraftManager struct {
@@ -134,6 +137,22 @@ func (m *teamDraftManager) insertPicks(ctx context.Context, draft *domain.TeamDr
 
 // GetActiveDraft returns the session's running (active or paused) draft, or
 // domain.ErrDraftNotFound when there is none.
+func (m *teamDraftManager) DeleteSessionDrafts(ctx context.Context, sessionID uuid.UUID) error {
+	q := m.tx.Querier(ctx)
+
+	for _, query := range []string{
+		`DELETE FROM activity.session_team_draft_pick
+		WHERE draft_id IN (SELECT id FROM activity.session_team_draft WHERE session_id = $1)`,
+		`DELETE FROM activity.session_team_draft WHERE session_id = $1`,
+	} {
+		if _, err := q.Exec(ctx, query, sessionID); err != nil {
+			return fmt.Errorf("failed to delete session team drafts: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func (m *teamDraftManager) GetActiveDraft(ctx context.Context, sessionID uuid.UUID) (*domain.TeamDraft, error) {
 	return m.getDraft(ctx, `WHERE d.session_id = $1 AND d.status IN ('active', 'paused')`, sessionID)
 }

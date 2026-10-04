@@ -226,6 +226,14 @@ type votingTiedEvent struct {
 	ManagerUserIDs  []uuid.UUID `json:"manager_user_ids"`
 }
 
+type teamsResetEvent struct {
+	EventID            uuid.UUID   `json:"event_id"`
+	SessionID          uuid.UUID   `json:"session_id"`
+	Reason             string      `json:"reason"`
+	ResetBy            uuid.UUID   `json:"reset_by"`
+	ParticipantUserIDs []uuid.UUID `json:"participant_user_ids"`
+}
+
 type attendeeTeamChangedEvent struct {
 	EventID        uuid.UUID `json:"event_id"`
 	SessionID      uuid.UUID `json:"session_id"`

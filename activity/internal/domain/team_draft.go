@@ -77,6 +77,8 @@ const (
 	DraftCancelReasonOrganizer        DraftCancelReason = "organizer"          // creator/admin cancelled it
 	DraftCancelReasonNotEnoughPlayers DraftCancelReason = "not_enough_players" // going count fell below TeamConfig.PlayersNeeded
 	DraftCancelReasonSessionEnded     DraftCancelReason = "session_ended"      // session was cancelled or completed mid-draft
+	DraftCancelReasonRosterChanged    DraftCancelReason = "roster_changed"     // someone stopped going: team formation was reset
+	DraftCancelReasonTeamsReset       DraftCancelReason = "teams_reset"        // an organizer reset team formation
 )
 
 // DraftPick is one player picked by a captain. PickNumber is the turn it was
@@ -405,6 +407,19 @@ func (d *TeamDraft) SessionEnded(endedBy uuid.UUID) {
 
 	d.version++
 	d.cancel(DraftCancelReasonSessionEnded, endedBy, nil, time.Now().UTC())
+}
+
+// Reset cancels a running draft because team formation was reset (see
+// Session.ResetTeams). reason is DraftCancelReasonRosterChanged or
+// DraftCancelReasonTeamsReset; by is who caused it. Nobody is listed as a
+// participant: the reset event tells everyone going.
+func (d *TeamDraft) Reset(reason DraftCancelReason, by uuid.UUID) {
+	if !d.IsRunning() {
+		return
+	}
+
+	d.version++
+	d.cancel(reason, by, nil, time.Now().UTC())
 }
 
 func (d *TeamDraft) cancel(reason DraftCancelReason, by uuid.UUID, participants []uuid.UUID, now time.Time) {

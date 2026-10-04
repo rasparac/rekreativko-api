@@ -187,7 +187,7 @@ func (h *Handler) GetRSVP(w http.ResponseWriter, r *http.Request) {
 // ListAttendees handles GET /api/v1/sessions/{sessionId}/attendees
 //
 //	@Summary		List attendees for a session
-//	@Description	Lists all attendees/RSVPs for a specific session with optional filters
+//	@Description	Lists the attendees/RSVPs of a session. Anyone who can see the session gets the people going (going, promoted); the session's managers (creator, group admin/creator) also get pending, maybe and not_going, and a caller asking for their own attendance (user_id = themselves) always gets it. A private session the caller cannot see is 404.
 //	@Tags			RSVPs
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
@@ -197,6 +197,7 @@ func (h *Handler) GetRSVP(w http.ResponseWriter, r *http.Request) {
 //	@Param			page_token	query		string									false	"Token from the previous response's next_page_token, to fetch the next page"
 //	@Success		200			{object}	api.Response[api.Page[dtos.AttendeeResponse]]	"Attendees retrieved successfully"
 //	@Failure		400			{object}	api.Response[any]						"Invalid request"
+//	@Failure		404			{object}	api.Response[any]						"Session not found or not visible"
 //	@Failure		500			{object}	api.Response[any]						"Internal server error"
 //	@Router			/api/v1/sessions/{sessionId}/attendees [get]
 func (h *Handler) ListAttendees(w http.ResponseWriter, r *http.Request) {
@@ -221,6 +222,13 @@ func (h *Handler) ListAttendees(w http.ResponseWriter, r *http.Request) {
 
 	// Set session ID from path
 	params.SessionID = &sessionID
+	params.RequesterID = authcontext.GetAccountID(ctx)
+
+	// A private session doesn't exist for someone unrelated to it.
+	if _, err := h.sessionService.GetSession(ctx, sessionID, params.RequesterID); err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
 
 	// List attendees
 	attendees, nextPageToken, err := h.attendeeService.ListRSVPs(ctx, *params)

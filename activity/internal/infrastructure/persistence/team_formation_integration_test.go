@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/mapper"
 	"github.com/stretchr/testify/assert"
@@ -114,4 +115,69 @@ func TestTeamFormationSnapshot_ListsOnlyThoseGoing(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.ElementsMatch(t, []uuid.UUID{going, promoted}, snapshot.GoingUserIDs)
+}
+
+// Who is going is public to whoever can see the session; everything else about
+// attendance is for managers and the person concerned.
+func TestAttendeeService_ListRSVPs_ShowsOnlyThoseGoingToNonManagers(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session := env.createSession(t, domain.ActivityTypeBasketball)
+
+	going := env.addGoingAttendee(t, session)
+	byStatus := map[domain.AttendeeStatus]uuid.UUID{
+		domain.AttendeeStatusPromoted: uuid.New(),
+		domain.AttendeeStatusPending:  uuid.New(),
+		domain.AttendeeStatusMaybe:    uuid.New(),
+		domain.AttendeeStatusNotGoing: uuid.New(),
+	}
+	for status, userID := range byStatus {
+		attendee, err := domain.NewRSVPManualAttendee(session, session.ActivityGroupID(), userID, status, 0)
+		require.NoError(t, err)
+		require.NoError(t, env.attendeeRepo.CreateAttendee(env.ctx, attendee))
+	}
+
+	list := func(requester uuid.UUID, status *string, userID *uuid.UUID) []uuid.UUID {
+		t.Helper()
+
+		sessionID := session.ID()
+		attendees, _, err := env.svc.ListRSVPs(env.ctx, application.ListRSVPsParams{
+			RequesterID: requester,
+			SessionID:   &sessionID,
+			Status:      status,
+			UserID:      userID,
+			Limit:       50,
+		})
+		require.NoError(t, err)
+
+		ids := make([]uuid.UUID, len(attendees))
+		for i, a := range attendees {
+			ids[i] = a.UserID()
+		}
+		return ids
+	}
+	pending := string(domain.AttendeeStatusPending)
+	stranger := uuid.New()
+
+	t.Run("a stranger sees only going and promoted", func(t *testing.T) {
+		assert.ElementsMatch(t, []uuid.UUID{going, byStatus[domain.AttendeeStatusPromoted]}, list(stranger, nil, nil))
+	})
+
+	t.Run("a stranger asking for the waitlist gets nothing", func(t *testing.T) {
+		assert.Empty(t, list(stranger, &pending, nil))
+	})
+
+	t.Run("the creator sees everyone", func(t *testing.T) {
+		assert.Len(t, list(session.CreatedByID(), nil, nil), 5)
+		assert.Equal(t, []uuid.UUID{byStatus[domain.AttendeeStatusPending]}, list(session.CreatedByID(), &pending, nil))
+	})
+
+	t.Run("anyone sees their own row, whatever its status", func(t *testing.T) {
+		own := byStatus[domain.AttendeeStatusPending]
+		assert.Equal(t, []uuid.UUID{own}, list(own, nil, &own))
+	})
+
+	t.Run("asking for someone else's row is still restricted", func(t *testing.T) {
+		other := byStatus[domain.AttendeeStatusPending]
+		assert.Empty(t, list(stranger, nil, &other))
+	})
 }

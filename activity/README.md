@@ -36,13 +36,17 @@ Routes, grouped by resource (all under `/api/v1`):
 
 **RSVP / attendees**: `POST/PUT/DELETE/GET /sessions/{sessionId}/rsvp`, `GET /sessions/{sessionId}/attendees`, `POST .../rsvp/{userId}/approve`, `POST .../rsvp/{userId}/reject`, `DELETE .../rsvp/{userId}` (remove a confirmed attendee — distinct from the no-`{userId}` self-cancel route).
 
-**Team formation** (team sports only - see [Team formation and live updates](#team-formation-and-live-updates)): `POST /sessions/{id}/teams`, `POST/GET/DELETE /sessions/{id}/draft`, `PUT /sessions/{id}/draft/captains`, `POST /sessions/{id}/draft/picks`, `POST/GET /sessions/{id}/proposals`, `PUT /sessions/{id}/proposals/vote`, `POST /sessions/{id}/proposals/close`, `GET /sessions/{id}/team-formation` (whole state as one document), `GET /sessions/{id}/events` (SSE stream of that document).
+**Team formation** (team sports only - see [Team formation and live updates](#team-formation-and-live-updates)): `POST/DELETE /sessions/{id}/teams` (DELETE = reset), `POST/GET/DELETE /sessions/{id}/draft`, `PUT /sessions/{id}/draft/captains`, `POST /sessions/{id}/draft/picks`, `POST/GET /sessions/{id}/proposals`, `PUT /sessions/{id}/proposals/vote`, `POST /sessions/{id}/proposals/close`, `GET /sessions/{id}/team-formation` (whole state as one document), `GET /sessions/{id}/events` (SSE stream of that document).
 
 Service methods that exist but have **no route** (incomplete/parked, not necessarily broken): `CancelActivityGroup`, invite-link create/revoke/use (the `InviteLink` domain aggregate is fully built), `PromoteMember`/`DemoteMember` (only the generic `PATCH .../role` is exposed).
 
 ## Team formation and live updates
 
-For team sports (basketball, football, volleyball) a session can be split into teams in three ways: a manager assigns people directly, a **captain draft** (a manager picks two captains who take turns picking from everyone going), or **proposals and voting** (anyone going proposes a full division, everyone going votes, a manager closes the round and the winner replaces the teams; a tie needs the manager to pick). Existing teams are never reset by merely suggesting a new division. Commands are plain REST; the stream below only tells clients that state changed.
+For team sports (basketball, football, volleyball) a session can be split into teams in three ways: a manager assigns people directly, a **captain draft** (a manager picks two captains who take turns picking from everyone going), or **proposals and voting** (anyone going proposes a full division, everyone going votes, a manager closes the round and the winner replaces the teams; a tie needs the manager to pick). Existing teams are never reset by merely suggesting a new division.
+
+**Reset:** team formation goes back to its initial state ("as if there had never been a draft") - teams and team setup deleted, a running draft and an open vote cancelled, draft and vote history cleared (`GET /draft` is 404, proposals are allowed). It happens automatically whenever a confirmed attendee stops going (cancels, switches to Maybe/Not going, or is removed - any leaver, not just a team member; a joiner does not reset anything) and by hand with `DELETE /sessions/{id}/teams` (managers only, idempotent). It raises `activity.session.teams_reset` and everyone still going gets one `team_formation_reset` notification.
+
+Commands are plain REST; the stream below only tells clients that state changed.
 
 ### The SSE stream
 
@@ -116,7 +120,7 @@ Grouped by aggregate (see `activity/internal/domain/events.go` for full payload 
 - **Session**: created, updated, started, cancelled, completed, expired, visibility_changed (`deleted` constant exists but nothing emits it)
 - **Attendee**: auto_confirmed, rsvp_going, rsvp_not_going, rsvp_maybe, rsvp_auto_pending, promoted, join_requested, join_approved, join_rejected, removed
 - **SessionTemplate**: created, activated, deactivated, deleted, updated
-- **Team formation** (`activity.session.draft.*`, `voting.*`, `team*`, `attendee.team_*`): draft started, turn_changed, player_picked, paused, completed, cancelled; voting opened, proposal_created, vote_cast, closed, cancelled, tied (`voting.tied` is written in its own transaction because a tie rolls the close back; deduped per round and tied set); teams created, team assigned/changed. All of them also feed the SSE stream.
+- **Team formation** (`activity.session.draft.*`, `voting.*`, `team*`, `attendee.team_*`): draft started, turn_changed, player_picked, paused, completed, cancelled; voting opened, proposal_created, vote_cast, closed, cancelled, tied; `teams_reset` (`voting.tied` is written in its own transaction because a tie rolls the close back; deduped per round and tied set); teams created, team assigned/changed. All of them also feed the SSE stream.
 
 ## Configuration & schema
 

@@ -23,6 +23,10 @@ type TeamVotingRepository interface {
 	// MarkTieNotified records the tie (see domain.TieError.Key) the managers
 	// were told about. It reports false when the round already has that key.
 	MarkTieNotified(ctx context.Context, roundID uuid.UUID, tieKey string) (bool, error)
+	// DeleteSessionRounds removes every round of the session with whatever it
+	// still holds, so none is reported as its latest round (a team formation
+	// reset).
+	DeleteSessionRounds(ctx context.Context, sessionID uuid.UUID) error
 }
 
 type teamVotingManager struct {
@@ -123,6 +127,29 @@ func (m *teamVotingManager) MarkTieNotified(ctx context.Context, roundID uuid.UU
 	}
 
 	return result.RowsAffected() > 0, nil
+}
+
+func (m *teamVotingManager) DeleteSessionRounds(ctx context.Context, sessionID uuid.UUID) error {
+	q := m.tx.Querier(ctx)
+
+	for _, query := range []string{
+		`DELETE FROM activity.session_team_vote
+		WHERE round_id IN (SELECT id FROM activity.session_team_voting_round WHERE session_id = $1)`,
+		`DELETE FROM activity.session_team_proposal_member
+		WHERE proposal_id IN (
+			SELECT p.id FROM activity.session_team_proposal p
+			JOIN activity.session_team_voting_round r ON r.id = p.round_id
+			WHERE r.session_id = $1)`,
+		`DELETE FROM activity.session_team_proposal
+		WHERE round_id IN (SELECT id FROM activity.session_team_voting_round WHERE session_id = $1)`,
+		`DELETE FROM activity.session_team_voting_round WHERE session_id = $1`,
+	} {
+		if _, err := q.Exec(ctx, query, sessionID); err != nil {
+			return fmt.Errorf("failed to delete session team voting rounds: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (m *teamVotingManager) insertContent(ctx context.Context, round *domain.TeamVotingRound) error {

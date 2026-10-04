@@ -24,6 +24,8 @@ const (
 	VotingCancelReasonNotEnoughPlayers VotingCancelReason = "not_enough_players" // going count fell below PlayersNeeded
 	VotingCancelReasonTeamsReplaced    VotingCancelReason = "teams_replaced"     // teams were recreated while voting
 	VotingCancelReasonSessionEnded     VotingCancelReason = "session_ended"      // session was cancelled or completed while voting
+	VotingCancelReasonRosterChanged    VotingCancelReason = "roster_changed"     // someone stopped going: team formation was reset
+	VotingCancelReasonTeamsReset       VotingCancelReason = "teams_reset"        // an organizer reset team formation
 )
 
 // KeepCurrentTeams is the vote choice "keep the current teams" - offered only
@@ -461,6 +463,18 @@ func (r *TeamVotingRound) TeamsReplaced() {
 
 	r.version++
 	r.cancel(VotingCancelReasonTeamsReplaced, nil)
+}
+
+// Reset cancels an open round because team formation was reset (see
+// Session.ResetTeams). The reset event tells everyone going, so the cancelled
+// event lists no participants.
+func (r *TeamVotingRound) Reset(reason VotingCancelReason) {
+	if r.status != VotingStatusOpen {
+		return
+	}
+
+	r.version++
+	r.cancel(reason, nil)
 }
 
 // SessionEnded cancels an open round because its session was cancelled or

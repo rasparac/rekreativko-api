@@ -46,9 +46,12 @@ type AttendeeFilter struct {
 	ActivityGroupID *uuid.UUID
 	UserID          *uuid.UUID
 	Status          *domain.AttendeeStatus
-	Source          *domain.AttendeeSource
-	Limit           int
-	PageToken       string
+	// Statuses limits the list to these statuses (any of them); combine with
+	// Status and nothing matches unless it is among them.
+	Statuses  []domain.AttendeeStatus
+	Source    *domain.AttendeeSource
+	Limit     int
+	PageToken string
 }
 
 type attendeeManager struct {
@@ -265,6 +268,16 @@ func (a *attendeeManager) ListAttendees(ctx context.Context, filter AttendeeFilt
 	if filter.Status != nil {
 		conditions = append(conditions, fmt.Sprintf("status = $%d", argIndex))
 		args = append(args, string(*filter.Status))
+		argIndex++
+	}
+
+	if filter.Statuses != nil {
+		statuses := make([]string, len(filter.Statuses))
+		for i, status := range filter.Statuses {
+			statuses[i] = string(status)
+		}
+		conditions = append(conditions, fmt.Sprintf("status = ANY($%d)", argIndex))
+		args = append(args, statuses)
 		argIndex++
 	}
 

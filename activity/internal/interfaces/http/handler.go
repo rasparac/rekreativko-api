@@ -50,6 +50,7 @@ type (
 		DiscoverSessions(ctx context.Context, params application.DiscoverSessionsParams, requesterID uuid.UUID) ([]persistence.SessionWithDistance, string, map[uuid.UUID]domain.AttendeeStatus, error)
 		ListTeamMembers(ctx context.Context, sessionID uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
 		CreateTeams(ctx context.Context, params application.CreateTeamsParams) (*domain.Session, error)
+		ResetTeams(ctx context.Context, params application.ResetTeamsParams) error
 	}
 
 	// memberService defines the interface for member operations
@@ -277,6 +278,10 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"POST /api/v1/sessions/{id}/teams",
 		middlewares.ThenFunc(h.CreateTeams),
+	)
+	mux.Handle(
+		"DELETE /api/v1/sessions/{id}/teams",
+		middlewares.ThenFunc(h.ResetTeams),
 	)
 	mux.Handle(
 		"POST /api/v1/sessions/{id}/draft/picks",

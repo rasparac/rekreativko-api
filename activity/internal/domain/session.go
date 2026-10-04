@@ -491,6 +491,48 @@ func (s *Session) CreateTeams(
 	return nil
 }
 
+// TeamsResetReason is why team formation was reset.
+type TeamsResetReason string
+
+const (
+	TeamsResetReasonRosterChanged TeamsResetReason = "roster_changed" // a confirmed attendee stopped going
+	TeamsResetReasonOrganizer     TeamsResetReason = "organizer"      // creator/admin deleted the teams
+)
+
+// TeamsLocked reports whether team formation can no longer change because the
+// session is over or called off.
+func (s *Session) TeamsLocked() bool {
+	return s.requireTeamsChangeable() != nil
+}
+
+// AuthorizeTeamsReset checks requester may reset the session's team formation
+// by hand: a manager, while the session is not over.
+func (s *Session) AuthorizeTeamsReset(requesterID uuid.UUID, requesterRole MemberRole) error {
+	if !s.canManageSession(requesterID, requesterRole) {
+		return ErrUnauthorized
+	}
+
+	return s.requireTeamsChangeable()
+}
+
+// ResetTeams puts team formation back to its initial state: the teams and the
+// team setup are gone, so everyone is unassigned. The caller authorizes (see
+// AuthorizeTeamsReset), cancels the draft and voting round and persists with
+// ReplaceTeams. participants are the people going, who are told.
+func (s *Session) ResetTeams(resetBy uuid.UUID, reason TeamsResetReason, participants []uuid.UUID) error {
+	if err := s.requireTeamsChangeable(); err != nil {
+		return err
+	}
+
+	s.teamConfig = nil
+	s.teams = nil
+	s.updatedAt = time.Now().UTC()
+
+	s.addEvent(NewSessionTeamsResetEvent(s, resetBy, reason, participants))
+
+	return nil
+}
+
 // ApplyDraftTeams replaces the session's teams with the two teams of a
 // completed draft (Team A = side A). Authorization was checked when the draft
 // was started - completion is triggered by a captain's pick or by someone

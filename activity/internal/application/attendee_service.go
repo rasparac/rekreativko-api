@@ -485,7 +485,7 @@ func (s *AttendeeService) RemoveAttendee(
 				// Don't fail the whole transaction
 			}
 
-			if err := s.syncDraftAfterLeaving(tCtx, params.SessionID, params.UserID); err != nil {
+			if err := s.resetTeamFormationAfterLeaving(tCtx, params.SessionID, params.UserID); err != nil {
 				return err
 			}
 		}
@@ -771,8 +771,8 @@ func (s *AttendeeService) UpdateRSVP(
 				// Don't fail the whole transaction, just log it
 			}
 
-			if err := s.syncDraftAfterLeaving(txCtx, params.SessionID, params.UserID); err != nil {
-				log.Error(txCtx, "failed to update team draft", "error", err)
+			if err := s.resetTeamFormationAfterLeaving(txCtx, params.SessionID, params.UserID); err != nil {
+				log.Error(txCtx, "failed to reset team formation", "error", err)
 				return err
 			}
 		}
@@ -863,8 +863,8 @@ func (s *AttendeeService) CancelRSVP(
 				// Don't fail the whole transaction
 			}
 
-			if err := s.syncDraftAfterLeaving(txCtx, sessionID, userID); err != nil {
-				log.Error(txCtx, "failed to update team draft", "error", err)
+			if err := s.resetTeamFormationAfterLeaving(txCtx, sessionID, userID); err != nil {
+				log.Error(txCtx, "failed to reset team formation", "error", err)
 				return err
 			}
 		}
@@ -950,6 +950,19 @@ func (s *AttendeeService) ListRSVPs(
 		filter.Status = &status
 	}
 
+	// Who is going is public to anyone who can see the session; join
+	// requests, the waitlist, maybes and decliners are for managers - and for
+	// the caller's own row.
+	restricted, err := s.listIsRestricted(ctx, params)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to check who may list all attendees", "error", err)
+		return nil, "", err
+	}
+	if restricted {
+		filter.Statuses = []domain.AttendeeStatus{domain.AttendeeStatusGoing, domain.AttendeeStatusPromoted}
+	}
+
 	attendees, nextPageToken, err := s.attendeeRepo.ListAttendees(ctx, filter)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
@@ -961,6 +974,53 @@ func (s *AttendeeService) ListRSVPs(
 	log.Debug(ctx, "RSVPs listed", "count", len(attendees))
 
 	return attendees, nextPageToken, nil
+}
+
+// listIsRestricted reports whether the list must be limited to people going:
+// always, unless the caller is a manager of the session or only asks for their
+// own attendance. Without a session there is no manager, so it is restricted.
+func (s *AttendeeService) listIsRestricted(ctx context.Context, params ListRSVPsParams) (bool, error) {
+	if params.UserID != nil && *params.UserID == params.RequesterID {
+		return false, nil
+	}
+
+	if params.SessionID == nil {
+		return true, nil
+	}
+
+	session, err := s.sessionRepo.GetSessionByID(ctx, *params.SessionID)
+	if err != nil {
+		return false, mapToAppErr(err)
+	}
+
+	manager, err := s.isSessionManager(ctx, session, params.RequesterID)
+	if err != nil {
+		return false, err
+	}
+
+	return !manager, nil
+}
+
+// isSessionManager reports whether userID is the session's creator or a
+// confirmed admin/creator of its group.
+func (s *AttendeeService) isSessionManager(ctx context.Context, session *domain.Session, userID uuid.UUID) (bool, error) {
+	if session.CreatedByID() == userID {
+		return true, nil
+	}
+
+	if session.ActivityGroupID() == nil {
+		return false, nil
+	}
+
+	member, err := s.memberRepo.GetMemberByGroupAndUser(ctx, *session.ActivityGroupID(), userID)
+	if errors.Is(err, domain.ErrMemberNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("get member: %w", err)
+	}
+
+	return member.Status() == domain.MemberStatusConfirmed && member.Role().CanManageMembers(), nil
 }
 
 // resolveSessionManagers resolves who should be notified of a join request:
@@ -994,17 +1054,28 @@ func (s *AttendeeService) resolveSessionManagers(
 	return managerUserIDs, nil
 }
 
-// syncDraftAfterLeaving updates a running captain draft once userID no longer
-// holds a spot - after any waitlist promotion, so a promoted attendee is
-// already in the pool before the draft decides whether anyone is left.
-func (s *AttendeeService) syncDraftAfterLeaving(ctx context.Context, sessionID, userID uuid.UUID) error {
-	events, err := s.formation.attendeeLeft(ctx, sessionID, userID)
+// resetTeamFormationAfterLeaving resets the session's team formation once
+// userID no longer holds a spot - after any waitlist promotion. Whoever leaves
+// restarts it: the teams, a running draft and an open voting round all go
+// (see teamFormation.resetTeamFormation). A finished or called-off session
+// keeps its teams.
+func (s *AttendeeService) resetTeamFormationAfterLeaving(ctx context.Context, sessionID, userID uuid.UUID) error {
+	session, err := s.sessionRepo.GetSessionByID(ctx, sessionID)
 	if err != nil {
-		return fmt.Errorf("update team draft: %w", err)
+		return fmt.Errorf("get session: %w", err)
+	}
+
+	if session.TeamsLocked() {
+		return nil
+	}
+
+	events, err := s.formation.resetTeamFormation(ctx, session, userID, domain.TeamsResetReasonRosterChanged)
+	if err != nil {
+		return fmt.Errorf("reset team formation: %w", err)
 	}
 
 	if err := s.eventWriter.InsertEvents(ctx, activitySchema, events); err != nil {
-		return fmt.Errorf("insert draft events: %w", err)
+		return fmt.Errorf("insert team formation events: %w", err)
 	}
 
 	return nil

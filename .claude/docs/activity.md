@@ -283,8 +283,8 @@ carry the config but not the teams.
 - No size check (the minimum is not a cap); runs under the session advisory lock so it can't race a team
   replacement or a draft. Rejected with `draft_already_active` while a captain draft runs
 - Allowed while the session is scheduled or started; not once canceled/completed
-- Slot is freed automatically when the attendee leaves: RSVP -> not_going/maybe, RSVP cancelled
-  (`LeaveTeam`, row soft-deleted with `team_id` cleared), or removed by a manager
+- A confirmed attendee leaving (RSVP -> not_going/maybe, RSVP cancelled, or removed by a manager) no longer just
+  frees their slot: it resets team formation for everyone (see "Team formation reset")
 - Promotion from the waitlist does not assign a team
 
 **Endpoints:**
@@ -320,14 +320,11 @@ mobile team's decisions D4-D9 (see the ticket design).
 - **Completes automatically** when everyone going has been picked. Completion replaces the session's teams with
   Team A (position 0) and Team B via `Session.ApplyDraftTeams` - old assignments get `team_unassigned`
   (teams_replaced), drafted players `team_assigned`.
-- **Attendance changes mid-draft** (`draftCoordinator.attendeeLeft`, called from `AttendeeService` after any
-  waitlist promotion; joiners need no hook - they are simply in the pool):
-  - going count below `PlayersNeeded` -> cancelled, `cancelled_reason: not_enough_players`
-  - a captain leaves -> **paused** (`paused_reason: captain_left`), that side's captain vacant (NULL). Picks are
-    rejected (`draft_paused`). The organizer calls `PUT /api/v1/sessions/{id}/draft/captains`
-    `{team_position, user_id}` with someone from that team (promoted out of the picks) or from the pool; when
-    both sides have a captain again it resumes where it stopped (and completes if nobody is left)
-  - a picked player leaves -> dropped from their side; the last available player leaving completes it
+- **Attendance changes mid-draft:** a joiner is simply in the pool. Anyone who stops holding a spot (captain
+  or not) **resets team formation**, cancelling the draft with `cancelled_reason: roster_changed` - see
+  "Team formation reset" below. The pause / `PUT /draft/captains` machinery (`paused_reason: captain_left`,
+  `draft.player_dropped`, `draft.captain_replaced`) is no longer reachable from attendance changes and is only
+  kept until it is removed (see its ticket).
 - **Cancel** `DELETE /api/v1/sessions/{id}/draft` - creator/admin, active or paused (`cancelled_reason:
   organizer`); teams stay exactly as before.
 - **GET** `/api/v1/sessions/{id}/draft` - latest draft (any status). Response (mobile-aligned): `status`
@@ -378,8 +375,8 @@ teams. Product rules are the mobile team's D10-D16 plus backend decisions on the
   `team_count`, `players_going`, `players_needed`, `my_vote`, `votes_cast`, `eligible_voters`,
   `keep_current_votes`, `items[{id, author_id, created_at, teams[{position, user_ids}], vote_count}]`, `result`,
   `version`.
-- **Attendance** (`teamFormation.attendeeLeft`): a leaver drops out of every proposal (a team may fall below the
-  minimum - it can still win, the organizer fixes it after) and loses their vote. Joiners can vote; they are in no
+- **Attendance:** anyone who stops holding a spot resets team formation, which cancels the round
+  (`roster_changed`) and clears its history - see "Team formation reset" below. Joiners can vote; they are in no
   proposal and stay unassigned when the winner is applied.
 - **Teams replaced** by `POST /teams` while open -> round cancelled (`teams_replaced`).
 - **Session ends** (cancelled, completed or auto-completed) while open -> round cancelled (`session_ended`).
@@ -389,6 +386,30 @@ teams. Product rules are the mobile team's D10-D16 plus backend decisions on the
   `player_removed`, `closed` (winner / kept_current), `cancelled` (reason); a winner also emits `teams_created`
   and `team_assigned`. `opened`, `closed` and `cancelled` carry `participant_user_ids` (people going; empty on
   `cancelled` for `teams_replaced` / `session_ended`).
+
+### Team formation reset (6gg.11)
+
+"As if there had never been a draft": the session goes back to its initial state.
+(`teamFormation.resetTeamFormation`, `Session.ResetTeams`)
+
+- **What it does** (one transaction, under the session advisory lock): deletes the teams and the team setup
+  (`team_count`, `min_players_per_team` back to NULL, every `team_id` cleared); cancels a running draft
+  (`cancelled_reason`) and an open voting round (`cancel_reason`); deletes **every** draft and voting round of the
+  session (`DeleteSessionDrafts` / `DeleteSessionRounds`), so `GET /draft` is 404 again, the snapshot has no draft
+  and proposals are allowed. Nothing happens - and no event is raised - when there is nothing to reset (no teams,
+  no running draft, no open round).
+- **Triggers:** (1) **automatically** whenever a confirmed (going/promoted) attendee stops holding a spot - RSVP
+  cancelled, switched to maybe/not_going, or removed by a manager - whoever they are (any leaver, not just a team
+  member), reason `roster_changed`, after any waitlist promotion. A finished or called-off session keeps its
+  teams. A **joiner does not reset** anything (decided 2026-10-04, for now): they stay unassigned. (2) **By
+  hand:** `DELETE /api/v1/sessions/{id}/teams`, session creator or group admin/creator (403 otherwise), 409 once
+  the session is canceled/completed, idempotent, reason `organizer`; responds with the resulting snapshot.
+- **Events:** `draft.cancelled` / `voting.cancelled` with reason `roster_changed` (automatic) or `teams_reset`
+  (by hand) and no participants, then `activity.session.teams_reset` `{session_id, reason, reset_by,
+  participant_user_ids}` (the people going afterwards). No per-attendee `team_unassigned` events - the reset
+  event and the snapshot carry it. The SSE stream pushes `teams_reset` like any session event.
+- **Notifications:** one `team_formation_reset` to everyone still going except `reset_by`; the draft/voting
+  cancel handlers skip `roster_changed` and `teams_reset` so nobody is told twice.
 
 ### Live updates (6gg.4)
 
@@ -456,6 +477,7 @@ deep-link `screen` (`team_draft`, `team_voting`, `session_teams`).
 | `voting.opened` | `team_voting_opened` | people going (`proposal_id`) |
 | `voting.closed` | `team_voting_closed` | people going (`winner_proposal_id` / `kept_current`) |
 | `voting.cancelled` | `team_voting_cancelled` | people going, only for `not_enough_players` |
+| `teams_reset` | `team_formation_reset` | everyone going afterwards, except who caused it (`reason`: `roster_changed` / `organizer`) |
 | `voting.tied` | `team_voting_tied` | session managers (group admins/creator + session creator) except the one who pressed Close |
 | `attendee.team_changed` | `team_changed` | the moved attendee (manual moves only) |
 

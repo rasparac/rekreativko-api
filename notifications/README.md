@@ -70,6 +70,7 @@ Each subscription creates its own durable JetStream consumer (`<service>+<subjec
 | `activity.session.voting.cancelled` | `team_voting_cancelled` | people going, only for `not_enough_players` |
 | `activity.session.voting.tied` | `team_voting_tied` | session managers except the one who pressed Close |
 | `activity.session.attendee.team_changed` | `team_changed` | the moved attendee (manual moves only) |
+| `activity.session.teams_reset` | `team_formation_reset` | everyone still going except who caused it (a leaver, or the organizer who deleted the teams). The draft/voting cancellations it causes (`roster_changed`, `teams_reset`) are not notified separately. |
 
 These are stored in the feed and read with `GET /notifications`. They are **not** pushed: there is no push delivery yet, so the app only sees them when it next fetches the feed. Live updates while a team screen is open come from activity's SSE stream, a separate channel (see [activity README](../activity/README.md#team-formation-and-live-updates)).
 

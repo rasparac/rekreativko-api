@@ -309,6 +309,48 @@ func TestVotingTiedHandler_NotifiesManagersButNotTheCloser(t *testing.T) {
 	assert.Equal(t, true, creator.calls[0].Data["keep_current_tied"])
 }
 
+func TestTeamsResetHandler_NotifiesEveryoneGoingExceptWhoCausedIt(t *testing.T) {
+	creator := &recordingCreator{}
+	h := &teamsResetHandler{notifications: creator, logger: logger.New("error", "json")}
+	eventID, sessionID, organizer := uuid.New(), uuid.New(), uuid.New()
+	going := []uuid.UUID{uuid.New(), uuid.New()}
+
+	handle(t, h, teamPayload(t, eventID, "activity.session.teams_reset", map[string]any{
+		"session_id":           sessionID,
+		"reason":               "organizer",
+		"reset_by":             organizer,
+		"participant_user_ids": append([]uuid.UUID{organizer}, going...),
+	}))
+
+	require.Equal(t, going, recipients(creator.calls))
+	requireTeamNotification(t, creator.calls[0], eventID, sessionID, domain.NotificationTypeTeamFormationReset, domain.ScreenSessionTeams)
+	assert.Equal(t, "organizer", creator.calls[0].Data["reason"])
+}
+
+// The reset tells everyone going once; the draft and vote it cancelled must not
+// each notify them again.
+func TestCancelHandlers_LeaveResetCancellationsToTheResetNotification(t *testing.T) {
+	for _, reason := range []string{"roster_changed", "teams_reset"} {
+		t.Run(reason, func(t *testing.T) {
+			creator := &recordingCreator{}
+			log := logger.New("error", "json")
+			going := []uuid.UUID{uuid.New(), uuid.New()}
+			fields := map[string]any{
+				"session_id":           uuid.New(),
+				"reason":               reason,
+				"participant_user_ids": going,
+			}
+
+			handle(t, &draftCancelledHandler{notifications: creator, logger: log},
+				teamPayload(t, uuid.New(), "activity.session.draft.cancelled", fields))
+			handle(t, &votingCancelledHandler{notifications: creator, logger: log},
+				teamPayload(t, uuid.New(), "activity.session.voting.cancelled", fields))
+
+			assert.Empty(t, creator.calls)
+		})
+	}
+}
+
 func TestAttendeeTeamChangedHandler_NotifiesMovedAttendee(t *testing.T) {
 	creator := &recordingCreator{}
 	h := &attendeeTeamChangedHandler{notifications: creator, logger: logger.New("error", "json")}
@@ -351,6 +393,7 @@ func TestTeamFormationHandlers_MalformedPayloadIsPermanent(t *testing.T) {
 		"voting_closed":      &votingClosedHandler{notifications: &recordingCreator{}, logger: log},
 		"voting_cancelled":   &votingCancelledHandler{notifications: &recordingCreator{}, logger: log},
 		"voting_tied":        &votingTiedHandler{notifications: &recordingCreator{}, logger: log},
+		"teams_reset":        &teamsResetHandler{notifications: &recordingCreator{}, logger: log},
 		"team_changed":       &attendeeTeamChangedHandler{notifications: &recordingCreator{}, logger: log},
 	}
 

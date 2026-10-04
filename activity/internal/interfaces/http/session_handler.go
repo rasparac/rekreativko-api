@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
@@ -474,6 +475,67 @@ func (h *Handler) DiscoverSessions(w http.ResponseWriter, r *http.Request) {
 			return mapper.SessionWithDistanceToResponse(r, attendeeStatuses)
 		}),
 		"")
+}
+
+// ResetTeams handles DELETE /api/v1/sessions/{id}/teams
+//
+//	@Summary		Reset team formation
+//	@Description	Puts the session's team formation back to its initial state, as if there had never been a draft: the teams and team setup are deleted (everyone unassigned), a running captain draft and an open voting round are cancelled (reason teams_reset), and the draft and voting history is cleared - GET /draft is 404 again and proposals are allowed. The same reset happens automatically when a confirmed attendee stops going. Idempotent: with nothing to reset it changes nothing. Returns the resulting team-formation snapshot. Session creator or group admin/creator only, while the session is scheduled or started.
+//	@Tags			Sessions
+//	@Produce		json
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			id	path		string										true	"Session ID"
+//	@Success		200	{object}	api.Response[dtos.TeamFormationResponse]	"Team formation reset; the resulting snapshot"
+//	@Failure		400	{object}	api.Response[any]							"Invalid request"
+//	@Failure		401	{object}	api.Response[any]							"Unauthorized"
+//	@Failure		403	{object}	api.Response[any]							"Not a manager of this session"
+//	@Failure		404	{object}	api.Response[any]							"Session not found"
+//	@Failure		409	{object}	api.Response[any]							"Session is canceled or completed"
+//	@Failure		500	{object}	api.Response[any]							"Internal server error"
+//	@Router			/api/v1/sessions/{id}/teams [delete]
+func (h *Handler) ResetTeams(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
+
+	sessionID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid session ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_session_id", "Invalid session ID")
+		return
+	}
+
+	existing, err := h.sessionService.GetSession(ctx, sessionID, accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	requesterRole, err := h.getUserRole(ctx, existing.ActivityGroupID(), accountID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	if err := h.sessionService.ResetTeams(ctx, application.ResetTeamsParams{
+		SessionID:     sessionID,
+		RequesterID:   accountID,
+		RequesterRole: requesterRole,
+	}); err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	snapshot, err := h.teamFormation.Snapshot(ctx, sessionID)
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	h.logger.Info(ctx, "team formation reset", "session_id", sessionID)
+
+	// Typed so this file imports dtos: see GetTeamFormation.
+	var response *dtos.TeamFormationResponse = mapper.TeamFormationSnapshotToResponse(snapshot, accountID)
+	api.WriteOkResponse(w, response, "Team formation reset")
 }
 
 // CreateTeams handles POST /api/v1/sessions/{id}/teams

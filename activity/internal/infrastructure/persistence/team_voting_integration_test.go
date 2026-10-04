@@ -196,44 +196,9 @@ func TestTeamVoting_TieNotifiesOtherManagersOnce(t *testing.T) {
 	assert.True(t, env.voting(t, session).Round.IsOpen(), "a tie changes nothing")
 }
 
+// Someone leaving resets team formation (see team_reset_integration_test.go),
+// so mid-vote only a new joiner changes an open round.
 func TestTeamVoting_AttendanceChanges(t *testing.T) {
-	t.Run("leaver drops out of proposals and loses their vote", func(t *testing.T) {
-		env := setupSessionTeamTest(t)
-		session, u := env.draftSession(t, 5)
-		state, err := env.propose(session, u[0], []uuid.UUID{u[0], u[1], u[4]}, []uuid.UUID{u[2], u[3]})
-		require.NoError(t, err)
-		proposal := state.Round.Proposals()[0].ID()
-		require.NoError(t, env.vote(session, u[4], proposal))
-
-		require.NoError(t, env.svc.CancelRSVP(env.ctx, session.ID(), u[4]))
-
-		got := env.voting(t, session)
-		require.True(t, got.Round.IsOpen())
-		assert.Equal(t, []uuid.UUID{u[0], u[1]}, got.Round.Proposals()[0].Teams()[0])
-		assert.Equal(t, 0, got.Round.VoteCount(proposal))
-	})
-
-	t.Run("below players needed cancels the round", func(t *testing.T) {
-		env := setupSessionTeamTest(t)
-		session, u := env.draftSession(t, 4)
-		_, err := env.createTeams(session, nil, ptr(2), nil) // needs 4
-		require.NoError(t, err)
-		_, err = env.propose(session, u[0], []uuid.UUID{u[0], u[1]}, []uuid.UUID{u[2], u[3]})
-		require.NoError(t, err)
-
-		_, err = env.svc.UpdateRSVP(env.ctx, application.UpdateRSVPParams{
-			SessionID: session.ID(),
-			UserID:    u[3],
-			NewStatus: string(domain.AttendeeStatusNotGoing),
-		})
-		require.NoError(t, err)
-
-		got := env.voting(t, session)
-		assert.Equal(t, domain.VotingStatusCancelled, got.Round.Status())
-		assert.Equal(t, domain.VotingCancelReasonNotEnoughPlayers, got.Round.CancelReason())
-		assert.Empty(t, got.Round.Proposals())
-	})
-
 	t.Run("joiner can vote and stays unassigned after the winner is applied", func(t *testing.T) {
 		env := setupSessionTeamTest(t)
 		session, u := env.draftSession(t, 4)

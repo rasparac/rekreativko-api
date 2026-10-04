@@ -177,6 +177,13 @@ type CreateTeamsParams struct {
 	Colors            []string // optional "#RRGGBB", one per team
 }
 
+// ResetTeamsParams contains parameters for resetting a session's team formation
+type ResetTeamsParams struct {
+	SessionID     uuid.UUID
+	RequesterID   uuid.UUID
+	RequesterRole string
+}
+
 // UpdateSessionParams contains parameters for updating a session
 type UpdateSessionParams struct {
 	RequesterID     uuid.UUID
@@ -395,6 +402,8 @@ type UpdateRSVPParams struct {
 
 // ListRSVPsParams contains parameters for listing RSVPs
 type ListRSVPsParams struct {
+	// RequesterID is who is asking. Non-managers only see people going.
+	RequesterID     uuid.UUID
 	SessionID       *uuid.UUID
 	ActivityGroupID *uuid.UUID
 	UserID          *uuid.UUID

@@ -506,3 +506,38 @@ func TestSession_ApplyDraftTeams(t *testing.T) {
 	created := session.Events()[0].(*SessionTeamsCreatedEvent)
 	assert.Equal(t, draft.StartedBy(), created.CreatedBy)
 }
+
+func TestTeamDraft_Reset(t *testing.T) {
+	users := newUsers(4)
+	organizer := uuid.New()
+
+	for _, reason := range []DraftCancelReason{DraftCancelReasonRosterChanged, DraftCancelReasonTeamsReset} {
+		t.Run("cancels an active draft: "+string(reason), func(t *testing.T) {
+			_, draft := newTestDraft(t, users, PickOrderSnake, nil)
+			draft.ClearEvents()
+			version := draft.Version()
+
+			draft.Reset(reason, organizer)
+
+			assert.Equal(t, DraftStatusCancelled, draft.Status())
+			assert.Equal(t, reason, draft.CancelReason())
+			assert.Greater(t, draft.Version(), version)
+			assert.Equal(t, []string{EventActivitySessionDraftCancelled}, draftEventTypes(draft))
+			cancelled, ok := draft.Events()[0].(*DraftCancelledEvent)
+			require.True(t, ok)
+			assert.Equal(t, organizer, cancelled.CancelledBy)
+			assert.Empty(t, cancelled.ParticipantUserIDs, "the reset event tells everyone going")
+		})
+	}
+
+	t.Run("leaves a finished draft alone", func(t *testing.T) {
+		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
+		require.NoError(t, draft.Cancel(session, session.CreatedByID(), "", nil))
+		draft.ClearEvents()
+
+		draft.Reset(DraftCancelReasonRosterChanged, organizer)
+
+		assert.Equal(t, DraftCancelReasonOrganizer, draft.CancelReason())
+		assert.Empty(t, draft.Events())
+	})
+}

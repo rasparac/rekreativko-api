@@ -282,82 +282,82 @@ func (c teamFormation) sessionEnded(ctx context.Context, sessionID, endedBy uuid
 	return events, nil
 }
 
-// attendeeLeft updates a running draft and an open voting round after userID
-// stopped going. Call it after the attendee change (and any waitlist
-// promotion) is persisted, so the confirmed list is final. Returns the events
-// to insert.
-func (c teamFormation) attendeeLeft(ctx context.Context, sessionID, userID uuid.UUID) ([]domainevent.Event, error) {
-	draftEvents, err := c.draftAttendeeLeft(ctx, sessionID, userID)
-	if err != nil {
-		return nil, err
-	}
+// resetTeamFormation puts the session back to its initial state, "as if there
+// had never been a draft": the teams and team setup are deleted (everyone
+// unassigned), a running draft and an open voting round are cancelled, and
+// every draft and voting round of the session is deleted so none is reported
+// as its latest (proposals are allowed again). Nothing happens - and nil is
+// returned - when there is nothing to reset. by is the organizer, or the
+// person who stopped going. Returns the events to insert: the cancellations,
+// then teams_reset.
+func (c teamFormation) resetTeamFormation(
+	ctx context.Context,
+	session *domain.Session,
+	by uuid.UUID,
+	reason domain.TeamsResetReason,
+) ([]domainevent.Event, error) {
+	sessionID := session.ID()
 
-	votingEvents, err := c.votingAttendeeLeft(ctx, sessionID, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	return append(draftEvents, votingEvents...), nil
-}
-
-func (c teamFormation) draftAttendeeLeft(ctx context.Context, sessionID, userID uuid.UUID) ([]domainevent.Event, error) {
 	draft, err := c.draftRepo.GetActiveDraft(ctx, sessionID)
-	if errors.Is(err, domain.ErrDraftNotFound) {
-		return nil, nil
-	}
-	if err != nil {
+	switch {
+	case errors.Is(err, domain.ErrDraftNotFound):
+		draft = nil
+	case err != nil:
 		return nil, fmt.Errorf("get active draft: %w", err)
 	}
 
-	confirmed, confirmedIDs, err := c.confirmedAttendees(ctx, sessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	draft.AttendeeLeft(userID, confirmedIDs)
-
-	events := slices.Clone(draft.Events())
-	draft.ClearEvents()
-
-	if draft.IsCompleted() {
-		session, err := c.sessionRepo.GetSessionByID(ctx, sessionID)
-		if err != nil {
-			return nil, fmt.Errorf("get session: %w", err)
-		}
-
-		teamEvents, err := c.applyCompletedDraft(ctx, session, draft, confirmed)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, teamEvents...)
-	}
-
-	if err := c.draftRepo.UpdateDraft(ctx, draft); err != nil {
-		return nil, fmt.Errorf("persist draft: %w", err)
-	}
-
-	return events, nil
-}
-
-func (c teamFormation) votingAttendeeLeft(ctx context.Context, sessionID, userID uuid.UUID) ([]domainevent.Event, error) {
 	round, err := c.openVoting(ctx, sessionID)
-	if err != nil || round == nil {
-		return nil, err
-	}
-
-	_, confirmedIDs, err := c.confirmedAttendees(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
 
-	round.AttendeeLeft(userID, confirmedIDs)
-
-	if err := c.votingRepo.UpdateRound(ctx, round); err != nil {
-		return nil, fmt.Errorf("persist voting round: %w", err)
+	if !session.HasTeams() && draft == nil && round == nil {
+		return nil, nil
 	}
 
-	events := slices.Clone(round.Events())
-	round.ClearEvents()
+	draftReason, votingReason := domain.DraftCancelReasonRosterChanged, domain.VotingCancelReasonRosterChanged
+	if reason == domain.TeamsResetReasonOrganizer {
+		draftReason, votingReason = domain.DraftCancelReasonTeamsReset, domain.VotingCancelReasonTeamsReset
+	}
+
+	var events []domainevent.Event
+
+	if draft != nil {
+		draft.Reset(draftReason, by)
+		events = append(events, draft.Events()...)
+		draft.ClearEvents()
+	}
+
+	if round != nil {
+		round.Reset(votingReason)
+		events = append(events, round.Events()...)
+		round.ClearEvents()
+	}
+
+	_, goingIDs, err := c.confirmedAttendees(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := session.ResetTeams(by, reason, goingIDs); err != nil {
+		return nil, fmt.Errorf("reset teams: %w", err)
+	}
+
+	// Clears every attendee's team_id, deletes the teams and the team setup.
+	if err := c.sessionRepo.ReplaceTeams(ctx, session); err != nil {
+		return nil, fmt.Errorf("persist reset teams: %w", err)
+	}
+
+	if err := c.draftRepo.DeleteSessionDrafts(ctx, sessionID); err != nil {
+		return nil, err
+	}
+
+	if err := c.votingRepo.DeleteSessionRounds(ctx, sessionID); err != nil {
+		return nil, err
+	}
+
+	events = append(events, session.Events()...)
+	session.ClearEvents()
 
 	return events, nil
 }
