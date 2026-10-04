@@ -2,6 +2,8 @@ package events
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -112,6 +114,8 @@ func (op *outboxPublisher) publishWoken(ctx context.Context, first string) {
 		}
 	}
 
+	op.logger.Debug(ctx, "outbox publisher woken", "schemas", slices.Sorted(maps.Keys(woken)))
+
 	for _, schema := range op.schemas {
 		_, all := woken[""]
 		if _, ok := woken[schema]; !ok && !all {
@@ -131,6 +135,7 @@ func (op *outboxPublisher) publishSchemaBacklog(ctx context.Context, schema stri
 			op.logger.Error(ctx, "failed to publish from schema", "schema", schema, "error", err)
 			return
 		}
+		op.logger.Debug(ctx, "outbox batch done", "schema", schema, "published", published, "failed", failed)
 		if failed > 0 || published < op.readLimit {
 			return
 		}
@@ -193,6 +198,7 @@ func (op *outboxPublisher) publishFromSchema(ctx context.Context, schema string)
 			}
 
 			publishedCount++
+			op.logger.Debug(ctx, "outbox event published", "schema", schema, "event_id", event.EventID, "event_type", event.EventType)
 			op.metrics.EventsPublishedTotal.WithLabelValues(event.EventType, schema).Inc()
 			op.metrics.EventProcessedTotal.WithLabelValues(event.EventType, schema, "success").Inc()
 		}

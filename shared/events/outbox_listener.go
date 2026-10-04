@@ -47,7 +47,7 @@ func ListenOutbox(ctx context.Context, connConfig *pgx.ConnConfig, log *logger.L
 			}
 		},
 	}
-	listener.Handle(OutboxChannel, &outboxWakeups{wakeups: wakeups})
+	listener.Handle(OutboxChannel, &outboxWakeups{wakeups: wakeups, logger: log})
 
 	go func() {
 		defer close(wakeups)
@@ -64,23 +64,27 @@ func ListenOutbox(ctx context.Context, connConfig *pgx.ConnConfig, log *logger.L
 // ever blocking the listener.
 type outboxWakeups struct {
 	wakeups chan<- string
+	logger  *logger.Logger
 }
 
-func (h *outboxWakeups) HandleNotification(_ context.Context, n *pgconn.Notification, _ *pgx.Conn) error {
-	h.wake(n.Payload)
+func (h *outboxWakeups) HandleNotification(ctx context.Context, n *pgconn.Notification, _ *pgx.Conn) error {
+	h.logger.Debug(ctx, "outbox notification received", "channel", n.Channel, "schema", n.Payload, "sender_pid", n.PID)
+	h.wake(ctx, n.Payload)
 	return nil
 }
 
 // HandleBacklog runs after every successful LISTEN: notifications sent while
 // the connection was down are gone, so ask for a full pass.
-func (h *outboxWakeups) HandleBacklog(context.Context, string, *pgx.Conn) error {
-	h.wake("")
+func (h *outboxWakeups) HandleBacklog(ctx context.Context, channel string, _ *pgx.Conn) error {
+	h.logger.Debug(ctx, "outbox listener connected; asking for a full pass", "channel", channel)
+	h.wake(ctx, "")
 	return nil
 }
 
-func (h *outboxWakeups) wake(schema string) {
+func (h *outboxWakeups) wake(ctx context.Context, schema string) {
 	select {
 	case h.wakeups <- schema:
 	default:
+		h.logger.Warn(ctx, "outbox wake-up dropped, publisher is behind; the poll will catch up", "schema", schema)
 	}
 }
