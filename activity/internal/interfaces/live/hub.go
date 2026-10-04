@@ -45,6 +45,12 @@ type (
 	sessionViewer interface {
 		GetSession(ctx context.Context, sessionID, requesterID uuid.UUID) (*domain.Session, error)
 	}
+
+	// sessionManagers returns who can manage the session; only they may see
+	// manager-only events (see visibility.go).
+	sessionManagers interface {
+		SessionManagers(ctx context.Context, sessionID uuid.UUID) ([]uuid.UUID, error)
+	}
 )
 
 // Update is one change pushed to a client.
@@ -128,6 +134,7 @@ func (c *Client) closeLocked(reason string) {
 type Hub struct {
 	snapshots snapshotBuilder
 	sessions  sessionViewer
+	managers  sessionManagers
 	logger    *logger.Logger
 
 	mu       sync.Mutex
@@ -135,10 +142,11 @@ type Hub struct {
 	shutdown bool
 }
 
-func NewHub(snapshots snapshotBuilder, sessions sessionViewer, logger *logger.Logger) *Hub {
+func NewHub(snapshots snapshotBuilder, sessions sessionViewer, managers sessionManagers, logger *logger.Logger) *Hub {
 	return &Hub{
 		snapshots: snapshots,
 		sessions:  sessions,
+		managers:  managers,
 		logger:    logger.WithName("activity.live.hub"),
 		clients:   map[uuid.UUID]map[*Client]struct{}{},
 	}
@@ -274,10 +282,7 @@ func (h *Hub) HandleEvent(ctx context.Context, topic string, payload []byte) {
 		return
 	}
 
-	update := Update{Event: event, Change: json.RawMessage(payload), Snapshot: snapshot}
-	for _, c := range clients {
-		c.offer(update)
-	}
+	h.deliver(ctx, clients, sessionID, event, ref.UserID, payload, snapshot)
 }
 
 // dropRemovedViewer disconnects userID's clients when the attendance change

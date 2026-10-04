@@ -239,6 +239,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	)
 	teamFormationQuery := application.NewTeamFormationQuery(
 		sessionRepo,
+		memberRepo,
 		attendeeRepo,
 		teamDraftService,
 		teamVotingService,
@@ -257,7 +258,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	}
 	defer messageBroker.Close(ctx)
 
-	liveHub := live.NewHub(teamFormationQuery, sessionService, log)
+	liveHub := live.NewHub(teamFormationQuery, sessionService, teamFormationQuery, log)
 	if err := messageBroker.SubscribeBroadcast(ctx, live.TopicPattern, liveHub.HandleEvent); err != nil {
 		return err
 	}

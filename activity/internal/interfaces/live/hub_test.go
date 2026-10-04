@@ -3,6 +3,7 @@ package live
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -42,9 +43,16 @@ func (f *fakeSnapshots) callCount() int {
 	return f.calls
 }
 
-// fakeViewer reports every user in hidden as unable to see the session.
+// fakeViewer reports every user in hidden as unable to see the session, and
+// lists managers as the session's managers (or fails with managersErr).
 type fakeViewer struct {
-	hidden map[uuid.UUID]struct{}
+	hidden      map[uuid.UUID]struct{}
+	managers    []uuid.UUID
+	managersErr error
+}
+
+func (f *fakeViewer) SessionManagers(context.Context, uuid.UUID) ([]uuid.UUID, error) {
+	return f.managers, f.managersErr
 }
 
 func (f *fakeViewer) GetSession(_ context.Context, _, requesterID uuid.UUID) (*domain.Session, error) {
@@ -60,7 +68,7 @@ func newTestHub(t *testing.T) (*Hub, *fakeSnapshots, *fakeViewer) {
 	snapshots := &fakeSnapshots{}
 	viewer := &fakeViewer{hidden: map[uuid.UUID]struct{}{}}
 
-	return NewHub(snapshots, viewer, logger.New("error", "json")), snapshots, viewer
+	return NewHub(snapshots, viewer, viewer, logger.New("error", "json")), snapshots, viewer
 }
 
 func connect(t *testing.T, h *Hub, sessionID, viewerID uuid.UUID) *Client {
@@ -275,4 +283,93 @@ func TestHub_ConnectAfterShutdownIsClosedAtOnce(t *testing.T) {
 
 	requireClosed(t, c, ReasonShutdown)
 	requireNoUpdate(t, c)
+}
+
+func TestHub_ManagerOnlyEventsStayWithManagersAndTheirSubject(t *testing.T) {
+	for _, event := range []string{
+		"attendee.join_requested", "attendee.join_rejected", "attendee.auto_pending", "attendee.rsvp_auto_pending",
+	} {
+		t.Run(event, func(t *testing.T) {
+			h, _, viewer := newTestHub(t)
+			sessionID, manager, requester, stranger := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+			viewer.managers = []uuid.UUID{manager}
+
+			m := connect(t, h, sessionID, manager)
+			r := connect(t, h, sessionID, requester)
+			s := connect(t, h, sessionID, stranger)
+
+			h.HandleEvent(context.Background(), "activity.session."+event, payload(t, map[string]any{
+				"session_id": sessionID, "user_id": requester, "manager_user_ids": []uuid.UUID{manager},
+			}))
+
+			full := next(t, m)
+			assert.Equal(t, event, full.Event)
+			assert.Contains(t, string(full.Change), "manager_user_ids", "managers get the whole event")
+
+			own := next(t, r)
+			assert.Equal(t, event, own.Event, "the person it is about is told")
+			assert.NotContains(t, string(own.Change), "manager_user_ids")
+
+			requireNoUpdate(t, s)
+		})
+	}
+}
+
+func TestHub_ManagerIDsAreStrippedForEveryoneButManagers(t *testing.T) {
+	h, _, viewer := newTestHub(t)
+	sessionID, manager, member := uuid.New(), uuid.New(), uuid.New()
+	viewer.managers = []uuid.UUID{manager}
+	tied := []uuid.UUID{uuid.New(), uuid.New()}
+
+	m := connect(t, h, sessionID, manager)
+	v := connect(t, h, sessionID, member)
+
+	h.HandleEvent(context.Background(), "activity.session.voting.tied", payload(t, map[string]any{
+		"session_id": sessionID, "tied_proposal_ids": tied, "manager_user_ids": []uuid.UUID{manager},
+	}))
+
+	assert.Contains(t, string(next(t, m).Change), "manager_user_ids")
+
+	update := next(t, v)
+	assert.Equal(t, "voting.tied", update.Event, "a tie is for everyone to see")
+	assert.NotContains(t, string(update.Change), "manager_user_ids")
+	var change struct {
+		TiedProposalIDs []uuid.UUID `json:"tied_proposal_ids"`
+	}
+	require.NoError(t, json.Unmarshal(update.Change, &change))
+	assert.Equal(t, tied, change.TiedProposalIDs, "the rest of the event is untouched")
+}
+
+func TestHub_FailsClosedWhenManagersCannotBeResolved(t *testing.T) {
+	h, _, viewer := newTestHub(t)
+	sessionID, manager, requester := uuid.New(), uuid.New(), uuid.New()
+	viewer.managers = []uuid.UUID{manager}
+	viewer.managersErr = errors.New("db down")
+
+	m := connect(t, h, sessionID, manager)
+	r := connect(t, h, sessionID, requester)
+
+	h.HandleEvent(context.Background(), "activity.session.attendee.join_requested", payload(t, map[string]any{
+		"session_id": sessionID, "user_id": requester, "manager_user_ids": []uuid.UUID{manager},
+	}))
+
+	requireNoUpdate(t, m) // nobody counts as a manager
+	assert.NotContains(t, string(next(t, r).Change), "manager_user_ids")
+}
+
+func TestHub_OrdinaryAttendanceEventsReachEveryone(t *testing.T) {
+	h, _, viewer := newTestHub(t)
+	sessionID, user := uuid.New(), uuid.New()
+	viewer.managers = []uuid.UUID{uuid.New()}
+	a := connect(t, h, sessionID, uuid.New())
+	b := connect(t, h, sessionID, uuid.New())
+
+	event := payload(t, map[string]any{"session_id": sessionID, "user_id": user})
+	h.HandleEvent(context.Background(), "activity.session.attendee.rsvp_going", event)
+
+	for _, c := range []*Client{a, b} {
+		u := next(t, c)
+		assert.Equal(t, "attendee.rsvp_going", u.Event)
+		assert.JSONEq(t, string(event), string(u.Change))
+	}
 }

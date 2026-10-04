@@ -406,6 +406,14 @@ teams. Product rules are the mobile team's D10-D16 plus backend decisions on the
   replay - a reconnect starts from a fresh snapshot. On shutdown `main.go` registers `Hub.Shutdown` via
   `srv.RegisterOnShutdown`: every client gets `server_shutdown` (and later connects are closed at once), so
   `http.Server.Shutdown` doesn't wait out its grace period and clients reconnect to another instance.
+- **Who sees what:** the snapshot carries `going_user_ids` (going/promoted attendees, join order; waitlisted,
+  pending, maybe and declined people are never in it), so a client renders teams plus the unassigned pool
+  (going minus everyone on a team) from one document. `change` is the raw domain event, filtered per viewer
+  (`interfaces/live/visibility.go`): `attendee.join_requested`, `join_rejected`, `auto_pending` and
+  `rsvp_auto_pending` go only to the session's managers (creator + group admins/creator) and to the person the
+  event is about; the `manager_user_ids` field is stripped for everyone who is not a manager (it is on
+  `join_requested` and `voting.tied`). If the managers cannot be resolved, nobody counts as one. Joining,
+  switching to Maybe and leaving already push an `attendee.rsvp_*` event to everyone.
 - **Token expiry:** the gateway checks the JWT once, on connect. It forwards the token's `exp` as
   `X-Token-Expires-At` (unix seconds; a client-sent value is always dropped, like `X-User-ID`) and the handler ends
   the stream with `disconnected` / `token_expired` when it passes. The client refreshes its token and reconnects;

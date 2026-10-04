@@ -90,3 +90,28 @@ func TestTeamFormationQuery_UnknownSession(t *testing.T) {
 	_, err := env.formation.Snapshot(env.ctx, uuid.New())
 	requireAppErrorCode(t, err, "session_not_found")
 }
+
+// Only people going are in the snapshot; the waitlist, maybes and decliners
+// are not.
+func TestTeamFormationSnapshot_ListsOnlyThoseGoing(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session := env.createSession(t, domain.ActivityTypeBasketball)
+
+	going := env.addGoingAttendee(t, session)
+	promoted := uuid.New()
+	for status, userID := range map[domain.AttendeeStatus]uuid.UUID{
+		domain.AttendeeStatusPromoted: promoted,
+		domain.AttendeeStatusPending:  uuid.New(),
+		domain.AttendeeStatusMaybe:    uuid.New(),
+		domain.AttendeeStatusNotGoing: uuid.New(),
+	} {
+		attendee, err := domain.NewRSVPManualAttendee(session, session.ActivityGroupID(), userID, status, 0)
+		require.NoError(t, err)
+		require.NoError(t, env.attendeeRepo.CreateAttendee(env.ctx, attendee))
+	}
+
+	snapshot, err := env.formation.Snapshot(env.ctx, session.ID())
+	require.NoError(t, err)
+
+	assert.ElementsMatch(t, []uuid.UUID{going, promoted}, snapshot.GoingUserIDs)
+}

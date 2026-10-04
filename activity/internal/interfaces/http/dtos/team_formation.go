@@ -20,6 +20,10 @@ type TeamFormationResponse struct {
 	TeamConfig *TeamConfigResponse `json:"team_config"`
 	// Teams with their current members, in position order; empty without teams.
 	Teams []TeamResponse `json:"teams"`
+	// GoingUserIDs are the people going (going/promoted), in join order. With
+	// Teams it gives the unassigned pool: going minus everyone on a team.
+	// Waitlisted and pending people are never included.
+	GoingUserIDs []uuid.UUID `json:"going_user_ids"`
 	// Draft is the latest captain draft (any status), null if there never was one.
 	Draft *DraftResponse `json:"draft"`
 	// Voting is the latest voting round; voting_status "none" when there never was one.

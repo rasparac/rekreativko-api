@@ -12,14 +12,18 @@ func TeamFormationSnapshotToResponse(snapshot *application.TeamFormationSnapshot
 	session := SessionWithTeamsToResponse(snapshot.Session, snapshot.TeamMembers)
 
 	resp := &dtos.TeamFormationResponse{
-		SessionID:  snapshot.Session.ID(),
-		Version:    snapshot.Version,
-		TeamConfig: session.TeamConfig,
-		Teams:      session.Teams,
-		Voting:     TeamVotingStateToResponse(snapshot.Voting, viewerID),
+		SessionID:    snapshot.Session.ID(),
+		Version:      snapshot.Version,
+		TeamConfig:   session.TeamConfig,
+		Teams:        session.Teams,
+		GoingUserIDs: snapshot.GoingUserIDs,
+		Voting:       TeamVotingStateToResponse(snapshot.Voting, viewerID),
 	}
 	if resp.Teams == nil {
 		resp.Teams = []dtos.TeamResponse{}
+	}
+	if resp.GoingUserIDs == nil {
+		resp.GoingUserIDs = []uuid.UUID{}
 	}
 
 	if snapshot.Draft != nil {

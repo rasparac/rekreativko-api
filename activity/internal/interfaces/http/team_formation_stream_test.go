@@ -44,6 +44,10 @@ func (s *streamSessions) GetSession(_ context.Context, sessionID, requesterID uu
 	return s.session, nil
 }
 
+func (s *streamSessions) SessionManagers(context.Context, uuid.UUID) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
 func (s *streamSessions) hide(userID uuid.UUID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -114,7 +118,7 @@ func newStreamEnv(t *testing.T) *streamEnv {
 	log := logger.New("error", "json")
 	session := newStreamTestSession(t)
 	sessions := &streamSessions{session: session, hidden: map[uuid.UUID]struct{}{}}
-	hub := live.NewHub(&streamSnapshots{session: session}, sessions, log)
+	hub := live.NewHub(&streamSnapshots{session: session}, sessions, sessions, log)
 
 	h := &Handler{sessionService: sessions, live: hub, logger: log}
 

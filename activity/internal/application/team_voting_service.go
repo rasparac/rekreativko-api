@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/logger"
@@ -369,41 +368,15 @@ func (s *TeamVotingService) notifyTie(ctx context.Context, params CloseVotingPar
 	}
 }
 
-// sessionManagers returns who can pick a tie's winner: the group's confirmed
-// admins/creator and the session creator, without except.
+// sessionManagers returns who can pick a tie's winner (see sessionManagerIDs),
+// without except.
 func (s *TeamVotingService) sessionManagers(ctx context.Context, session *domain.Session, except uuid.UUID) ([]uuid.UUID, error) {
-	managers := []uuid.UUID{session.CreatedByID()}
-
-	if groupID := session.ActivityGroupID(); groupID != nil {
-		confirmed := domain.MemberStatusConfirmed
-		members, _, err := s.memberRepo.ListMembers(ctx, persistence.MemberFilter{
-			ActivityGroupID: groupID,
-			Status:          &confirmed,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("list confirmed members: %w", err)
-		}
-		for _, m := range members {
-			if m.Role().CanManageMembers() {
-				managers = append(managers, m.UserID())
-			}
-		}
+	managers, err := sessionManagerIDs(ctx, s.memberRepo, session)
+	if err != nil {
+		return nil, err
 	}
 
-	seen := make(map[uuid.UUID]struct{}, len(managers))
-	unique := managers[:0]
-	for _, id := range managers {
-		if id == except || id == uuid.Nil {
-			continue
-		}
-		if _, dup := seen[id]; dup {
-			continue
-		}
-		seen[id] = struct{}{}
-		unique = append(unique, id)
-	}
-
-	return unique, nil
+	return slices.DeleteFunc(managers, func(id uuid.UUID) bool { return id == except }), nil
 }
 
 // GetVoting returns the session's latest round (any status, or none) with the
