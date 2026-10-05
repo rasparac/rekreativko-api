@@ -11,34 +11,15 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/rasparac/rekreativko-api/shared/logger"
+	testutil "github.com/rasparac/rekreativko-api/shared/testing"
 )
 
 func startNATS(t *testing.T) string {
 	t.Helper()
 
-	ctx := context.Background()
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "nats:2-alpine",
-			Cmd:          []string{"-js"},
-			ExposedPorts: []string{"4222/tcp"},
-			WaitingFor:   wait.ForLog("Server is ready").WithStartupTimeout(60 * time.Second),
-		},
-		Started: true,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
-	port, err := container.MappedPort(ctx, "4222/tcp")
-	require.NoError(t, err)
-
-	return "nats://" + host + ":" + port.Port()
+	return testutil.StartNATS(t)
 }
 
 // readDLQ waits for one message on the DLQ stream for the given subject.

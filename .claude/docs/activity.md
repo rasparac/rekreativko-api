@@ -454,6 +454,11 @@ infer it from `GET /draft`.
   reconnecting with the expired one is a 401.
 - **Metrics:** `middleware.Metrics` still counts a `text/event-stream` response but leaves it out of the duration
   and response-size histograms (a stream lasts minutes and would skew p95/p99).
+- **Multiple instances** are exercised by `TestStream_ChangesReachClientsOnEveryInstance`
+  (`activity/internal/infrastructure/persistence/stream_multi_instance_integration_test.go`): two hubs, each with
+  its own NATS connection, a stream client on each; a change reaches both, snapshots only move forward, one hub
+  shutting down (`server_shutdown`) leaves the other's client alone, and a reconnect resyncs from a fresh
+  snapshot. Real processes, the gateway and failure/latency checks are manual (ticket gl5).
 - **Guarantees:** a client never gets an older snapshot than its last (version check); a client more than 16
   updates behind is disconnected (`slow_consumer`) instead of blocking others; a viewer removed from the session
   (or no longer able to see it) is disconnected.
