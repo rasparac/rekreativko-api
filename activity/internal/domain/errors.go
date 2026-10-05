@@ -101,6 +101,7 @@ var (
 	ErrInvalidDraftCaptains     = errors.New("a draft needs two different captains, each from their own team or the pool")
 	ErrDraftCaptainNotConfirmed = errors.New("draft captains must be going")
 	ErrDraftAlreadyActive       = errors.New("a team draft is running for this session")
+	ErrNotProposalAuthor        = errors.New("only the author can withdraw a proposal")
 	ErrTeamsDrafted             = errors.New("the current teams were picked in a captain draft; reset the teams to propose new ones")
 	ErrDraftNotActive           = errors.New("no team draft is running for this session")
 	ErrDraftPaused              = errors.New("the team draft is paused until a captain is replaced")

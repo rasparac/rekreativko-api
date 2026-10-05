@@ -364,6 +364,15 @@ teams. Product rules are the mobile team's D10-D16 plus backend decisions on the
   missing_players, team_below_minimum) and `details.user_ids`. Proposing never changes the current teams.
 - **Vote** `PUT /api/v1/sessions/{id}/proposals/vote` `{proposal_id}` | `{keep_current: true}` - anyone going,
   one vote, changeable.
+- **Retract** `DELETE /api/v1/sessions/{id}/proposals/vote` - the caller's own vote, while the round is open
+  (6gg.9). Idempotent: with no vote it returns 200 with the state and raises nothing. 409 `voting_closed`
+  (no open round), 409 `attendee_not_going`. Returns the voting state (`my_vote` null).
+- **Withdraw** `DELETE /api/v1/sessions/{id}/proposals/{proposalId}` - the author only, while open (6gg.10): 403
+  `not_proposal_author`, 404 `proposal_not_found`, 409 `voting_closed`. The votes for it are dropped (those voters
+  are "not voted" again; keep-current votes stay). **Withdrawing the last proposal cancels the round** (reason
+  `no_proposals`) so the session is not left in an empty vote; people can then propose again, opening a new
+  round. Returns the voting state. Nobody is notified of the dropped votes - the stream's
+  `proposal_withdrawn` (with `dropped_voter_ids`) updates open screens.
 - **Close** `POST /api/v1/sessions/{id}/proposals/close` `{winner_proposal_id? | keep_current?}` - organizer. Most
   votes wins; a tie (no votes at all ties every option) -> 409 `tie_requires_winner` with
   `details.tied_proposal_ids` / `details.keep_current_tied` until a tied option is passed (`invalid_winner`
@@ -383,7 +392,8 @@ teams. Product rules are the mobile team's D10-D16 plus backend decisions on the
 - **Concurrency:** every voting command takes the session advisory lock - saving a round rewrites its votes, so
   this is what keeps concurrent votes from being lost.
 - **Events** `activity.session.voting.*`: `opened` (first proposal), `proposal_created`, `vote_cast` (`changed`),
-  `player_removed`, `closed` (winner / kept_current), `cancelled` (reason); a winner also emits `teams_created`
+  `vote_retracted` (`voter_id`, previous `proposal_id` / `keep_current`), `proposal_withdrawn` (`proposal_id`,
+  `author_id`, `dropped_voter_ids`; followed by `cancelled` / `no_proposals` when it was the last), `player_removed`, `closed` (winner / kept_current), `cancelled` (reason); a winner also emits `teams_created`
   and `team_assigned`. `opened`, `closed` and `cancelled` carry `participant_user_ids` (people going; empty on
   `cancelled` for `teams_replaced` / `session_ended`).
 
@@ -433,7 +443,8 @@ infer it from `GET /draft`.
   at-most-once, every instance gets every event) - a phone's stream lives on one instance. On each event the hub
   rebuilds the session's snapshot once and pushes it to that session's clients. Latency = outbox
   publish time: the publisher is woken by Postgres `LISTEN/NOTIFY` (see below), the poll is only the fallback.
-- **Wire format:** first event `snapshot`, then one event per change named without the `activity.session.` prefix
+- **Wire format:** first event `snapshot` (if a change committed just before connecting is still in flight it can
+  arrive first, carrying a newer snapshot - the first event always holds the current state), then one event per change named without the `activity.session.` prefix
   (e.g. `draft.player_picked`); `data` = `{change, snapshot}` (raw domain event + full state, same document as
   `GET /team-formation`, `my_vote` personalised); `id` = snapshot version. `: ping` every 20s. Before closing on
   its own the server sends `disconnected` with `reason` (`removed`, `not_found`, `slow_consumer`, `server_shutdown`, `token_expired`). No

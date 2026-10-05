@@ -223,6 +223,96 @@ func (s *TeamVotingService) Vote(ctx context.Context, params CastVoteParams) (*T
 	return state, nil
 }
 
+// RetractVote takes the voter's vote back while the round is open. Retracting
+// when they have not voted is fine and changes nothing.
+func (s *TeamVotingService) RetractVote(ctx context.Context, params RetractVoteParams) (*TeamVotingState, error) {
+	return s.changeOpenRound(ctx, "RetractVote", params.SessionID, params.VoterID,
+		func(round *domain.TeamVotingRound, confirmedIDs []uuid.UUID) error {
+			return round.RetractVote(params.VoterID, confirmedIDs)
+		})
+}
+
+// WithdrawProposal removes the requester's own proposal from the open round,
+// dropping the votes for it. Withdrawing the last proposal cancels the round
+// (no_proposals) instead of leaving the session in an empty vote.
+func (s *TeamVotingService) WithdrawProposal(ctx context.Context, params WithdrawProposalParams) (*TeamVotingState, error) {
+	return s.changeOpenRound(ctx, "WithdrawProposal", params.SessionID, params.RequesterID,
+		func(round *domain.TeamVotingRound, _ []uuid.UUID) error {
+			return round.WithdrawProposal(params.RequesterID, params.ProposalID)
+		})
+}
+
+// changeOpenRound runs change on the session's open round under the session
+// lock (so it can't land in a round being closed), saves it, writes the events
+// it raised and returns the voting state.
+func (s *TeamVotingService) changeOpenRound(
+	ctx context.Context,
+	method string,
+	sessionID, userID uuid.UUID,
+	change func(round *domain.TeamVotingRound, confirmedIDs []uuid.UUID) error,
+) (*TeamVotingState, error) {
+	ctx, span := s.tracer.Start(ctx, "activity.service."+method)
+	defer span.End()
+
+	log := s.logger.WithValues("method", method, "session_id", sessionID, "user_id", userID)
+	span.SetAttributes(
+		attribute.String("session_id", sessionID.String()),
+		attribute.String("user_id", userID.String()),
+	)
+
+	var state *TeamVotingState
+
+	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		session, err := s.sessionRepo.GetSessionByID(tCtx, sessionID)
+		if err != nil {
+			return fmt.Errorf("get session: %w", err)
+		}
+
+		if err := lockSessionCapacity(tCtx, s.txManager, sessionID); err != nil {
+			return err
+		}
+
+		round, err := s.formation.openVoting(tCtx, sessionID)
+		if err != nil {
+			return err
+		}
+		if round == nil {
+			return domain.ErrVotingNotOpen
+		}
+
+		_, confirmedIDs, err := s.formation.confirmedAttendees(tCtx, sessionID)
+		if err != nil {
+			return err
+		}
+
+		if err := change(round, confirmedIDs); err != nil {
+			return err
+		}
+
+		if err := s.votingRepo.UpdateRound(tCtx, round); err != nil {
+			return fmt.Errorf("persist voting round: %w", err)
+		}
+
+		if err := s.insertEvents(tCtx, round.Events()); err != nil {
+			return err
+		}
+		round.ClearEvents()
+
+		state = votingState(round, len(confirmedIDs), session)
+
+		return nil
+	})
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to change the voting round", "error", err)
+		return nil, mapToAppErr(err)
+	}
+
+	span.SetStatus(codes.Ok, "voting round changed")
+
+	return state, nil
+}
+
 // Close ends the open round: the winner replaces the teams (nothing changes
 // when "keep current teams" wins). On a tie it fails with a *domain.TieError
 // until the organizer passes a winner.

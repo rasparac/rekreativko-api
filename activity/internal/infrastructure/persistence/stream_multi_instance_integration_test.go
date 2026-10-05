@@ -176,7 +176,16 @@ func TestStream_ChangesReachClientsOnEveryInstance(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { instanceA.hub.Disconnect(client) })
 
-		first := nextUpdate(t, client, "snapshot")
+		// Usually a "snapshot" event. An event still in flight from the last
+		// publish can beat it - the hub never sends a client an older snapshot
+		// than one it already has - so what matters is that the first update,
+		// whatever its name, already holds everything that happened.
+		var first live.Update
+		select {
+		case first = <-client.Updates():
+		case <-time.After(10 * time.Second):
+			t.Fatal("the reconnected client got no update")
+		}
 		require.NotNil(t, first.Snapshot.Draft)
 		assert.True(t, first.Snapshot.Draft.Draft.IsCompleted(), "everything that happened is in it, no replay needed")
 	})

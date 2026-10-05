@@ -121,6 +121,102 @@ func (h *Handler) VoteTeams(w http.ResponseWriter, r *http.Request) {
 	api.WriteOkResponse(w, mapper.TeamVotingStateToResponse(state, accountID), "")
 }
 
+// RetractVote handles DELETE /api/v1/sessions/{id}/proposals/vote
+//
+//	@Summary		Take your vote back
+//	@Description	Removes the caller's own vote while voting is open, so they are "not voted" again. Idempotent: with no vote it changes nothing and still returns the voting state. Tallies and votes_cast drop, and the stream gets a voting.vote_retracted update.
+//	@Tags			Team voting
+//	@Produce		json
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			id	path		string								true	"Session ID"
+//	@Success		200	{object}	api.Response[dtos.VotingResponse]	"Vote removed; the voting state (my_vote null)"
+//	@Failure		400	{object}	api.Response[any]					"Invalid request"
+//	@Failure		401	{object}	api.Response[any]					"Unauthorized"
+//	@Failure		404	{object}	api.Response[any]					"Session not found"
+//	@Failure		409	{object}	api.Response[any]					"Voting not open (voting_closed), or caller not going (attendee_not_going)"
+//	@Failure		500	{object}	api.Response[any]					"Internal server error"
+//	@Router			/api/v1/sessions/{id}/proposals/vote [delete]
+func (h *Handler) RetractVote(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
+
+	sessionID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid session ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_session_id", "Invalid session ID")
+		return
+	}
+
+	if _, err := h.sessionService.GetSession(ctx, sessionID, accountID); err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	state, err := h.teamVotingService.RetractVote(ctx, application.RetractVoteParams{
+		SessionID: sessionID,
+		VoterID:   accountID,
+	})
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	api.WriteOkResponse(w, mapper.TeamVotingStateToResponse(state, accountID), "")
+}
+
+// WithdrawProposal handles DELETE /api/v1/sessions/{id}/proposals/{proposalId}
+//
+//	@Summary		Withdraw your own proposal
+//	@Description	The author removes their proposal while voting is open. The votes for it are dropped (those voters are "not voted" again). If it was the last proposal the round is cancelled (cancel reason no_proposals) rather than left empty. The stream gets a voting.proposal_withdrawn update (with dropped_voter_ids), then voting.cancelled when the round ended.
+//	@Tags			Team voting
+//	@Produce		json
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			id			path		string								true	"Session ID"
+//	@Param			proposalId	path		string								true	"Proposal ID"
+//	@Success		200			{object}	api.Response[dtos.VotingResponse]	"Proposal withdrawn; the voting state"
+//	@Failure		400			{object}	api.Response[any]					"Invalid request"
+//	@Failure		401			{object}	api.Response[any]					"Unauthorized"
+//	@Failure		403			{object}	api.Response[any]					"Not the proposal's author (not_proposal_author)"
+//	@Failure		404			{object}	api.Response[any]					"Session or proposal not found (proposal_not_found)"
+//	@Failure		409			{object}	api.Response[any]					"Voting not open (voting_closed)"
+//	@Failure		500			{object}	api.Response[any]					"Internal server error"
+//	@Router			/api/v1/sessions/{id}/proposals/{proposalId} [delete]
+func (h *Handler) WithdrawProposal(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	accountID := authcontext.GetAccountID(ctx)
+
+	sessionID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid session ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_session_id", "Invalid session ID")
+		return
+	}
+
+	proposalID, err := uuid.Parse(r.PathValue("proposalId"))
+	if err != nil {
+		h.logger.Error(ctx, "invalid proposal ID", "error", err)
+		api.WriteBadRequestResponse(w, "invalid_proposal_id", "Invalid proposal ID")
+		return
+	}
+
+	if _, err := h.sessionService.GetSession(ctx, sessionID, accountID); err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	state, err := h.teamVotingService.WithdrawProposal(ctx, application.WithdrawProposalParams{
+		SessionID:   sessionID,
+		ProposalID:  proposalID,
+		RequesterID: accountID,
+	})
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	api.WriteOkResponse(w, mapper.TeamVotingStateToResponse(state, accountID), "")
+}
+
 // CloseTeamVoting handles POST /api/v1/sessions/{id}/proposals/close
 //
 //	@Summary		Close team voting

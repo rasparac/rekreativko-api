@@ -434,6 +434,19 @@ type CastVoteParams struct {
 	KeepCurrent bool
 }
 
+// RetractVoteParams contains parameters for taking a vote back
+type RetractVoteParams struct {
+	SessionID uuid.UUID
+	VoterID   uuid.UUID
+}
+
+// WithdrawProposalParams contains parameters for withdrawing one's own proposal
+type WithdrawProposalParams struct {
+	SessionID   uuid.UUID
+	ProposalID  uuid.UUID
+	RequesterID uuid.UUID
+}
+
 // CloseVotingParams contains parameters for closing a voting round. The winner
 // is only needed on a tie: a proposal, or WinnerKeepCurrent.
 type CloseVotingParams struct {

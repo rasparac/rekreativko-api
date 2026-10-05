@@ -110,6 +110,8 @@ type (
 	teamVotingService interface {
 		Propose(ctx context.Context, params application.ProposeTeamsParams) (*application.TeamVotingState, error)
 		Vote(ctx context.Context, params application.CastVoteParams) (*application.TeamVotingState, error)
+		RetractVote(ctx context.Context, params application.RetractVoteParams) (*application.TeamVotingState, error)
+		WithdrawProposal(ctx context.Context, params application.WithdrawProposalParams) (*application.TeamVotingState, error)
 		Close(ctx context.Context, params application.CloseVotingParams) (*application.TeamVotingState, error)
 		GetVoting(ctx context.Context, sessionID uuid.UUID) (*application.TeamVotingState, error)
 	}
@@ -306,6 +308,14 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"PUT /api/v1/sessions/{id}/proposals/vote",
 		middlewares.ThenFunc(h.VoteTeams),
+	)
+	mux.Handle(
+		"DELETE /api/v1/sessions/{id}/proposals/vote",
+		middlewares.ThenFunc(h.RetractVote),
+	)
+	mux.Handle(
+		"DELETE /api/v1/sessions/{id}/proposals/{proposalId}",
+		middlewares.ThenFunc(h.WithdrawProposal),
 	)
 	mux.Handle(
 		"POST /api/v1/sessions/{id}/proposals/close",

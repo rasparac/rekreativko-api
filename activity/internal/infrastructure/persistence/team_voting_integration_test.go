@@ -310,3 +310,118 @@ func TestTeamVoting_SessionCancelledCancelsTheRound(t *testing.T) {
 func ptr(v int) *int {
 	return &v
 }
+
+func (e *sessionTeamTestEnv) retractVote(session *domain.Session, voter uuid.UUID) (*application.TeamVotingState, error) {
+	return e.votingSvc.RetractVote(e.ctx, application.RetractVoteParams{SessionID: session.ID(), VoterID: voter})
+}
+
+func (e *sessionTeamTestEnv) withdraw(session *domain.Session, requester, proposalID uuid.UUID) (*application.TeamVotingState, error) {
+	return e.votingSvc.WithdrawProposal(e.ctx, application.WithdrawProposalParams{
+		SessionID: session.ID(), ProposalID: proposalID, RequesterID: requester,
+	})
+}
+
+func TestTeamVoting_RetractVote(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session, u := env.draftSession(t, 4)
+	state, err := env.propose(session, u[0], []uuid.UUID{u[0], u[1]}, []uuid.UUID{u[2], u[3]})
+	require.NoError(t, err)
+	proposal := state.Round.Proposals()[0].ID()
+	require.NoError(t, env.vote(session, u[0], proposal))
+	require.NoError(t, env.vote(session, u[1], proposal))
+
+	state, err = env.retractVote(session, u[0])
+	require.NoError(t, err)
+	assert.Equal(t, 1, state.Round.VoteCount(proposal))
+
+	read := env.voting(t, session)
+	assert.Equal(t, 1, read.Round.VoteCount(proposal), "read back from the database")
+	assert.NotContains(t, read.Round.Votes(), u[0])
+	assert.Equal(t, 1, env.outboxCount(t, "activity.session.voting.vote_retracted"))
+
+	t.Run("retracting again is a no-op", func(t *testing.T) {
+		_, err := env.retractVote(session, u[0])
+		require.NoError(t, err)
+		assert.Equal(t, 1, env.outboxCount(t, "activity.session.voting.vote_retracted"), "no second event")
+	})
+
+	t.Run("they can vote again afterwards", func(t *testing.T) {
+		require.NoError(t, env.vote(session, u[0], proposal))
+		assert.Equal(t, 2, env.voting(t, session).Round.VoteCount(proposal))
+	})
+
+	t.Run("not for someone who is not going", func(t *testing.T) {
+		_, err := env.retractVote(session, uuid.New())
+		assert.ErrorIs(t, err, domain.ErrAttendeeNotGoing)
+	})
+
+	t.Run("not once voting is closed", func(t *testing.T) {
+		_, err := env.closeVoting(session, nil)
+		require.NoError(t, err)
+
+		_, err = env.retractVote(session, u[0])
+		assert.ErrorIs(t, err, domain.ErrVotingNotOpen)
+	})
+}
+
+func TestTeamVoting_WithdrawProposal(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session, u := env.draftSession(t, 4)
+	state, err := env.propose(session, u[0], []uuid.UUID{u[0], u[1]}, []uuid.UUID{u[2], u[3]})
+	require.NoError(t, err)
+	first := state.Round.Proposals()[0].ID()
+	state, err = env.propose(session, u[1], []uuid.UUID{u[0], u[2]}, []uuid.UUID{u[1], u[3]})
+	require.NoError(t, err)
+	second := state.Round.Proposals()[1].ID()
+	require.NoError(t, env.vote(session, u[0], first))
+	require.NoError(t, env.vote(session, u[2], first))
+	require.NoError(t, env.vote(session, u[3], second))
+
+	t.Run("only the author may", func(t *testing.T) {
+		_, err := env.withdraw(session, u[1], first)
+		assert.ErrorIs(t, err, domain.ErrNotProposalAuthor)
+		assert.Len(t, env.voting(t, session).Round.Proposals(), 2)
+	})
+
+	t.Run("an unknown proposal", func(t *testing.T) {
+		_, err := env.withdraw(session, u[0], uuid.New())
+		assert.ErrorIs(t, err, domain.ErrProposalNotFound)
+	})
+
+	t.Run("the author withdraws; its votes go with it", func(t *testing.T) {
+		state, err := env.withdraw(session, u[0], first)
+		require.NoError(t, err)
+		assert.True(t, state.Round.IsOpen())
+
+		read := env.voting(t, session) // from the database
+		require.Len(t, read.Round.Proposals(), 1)
+		assert.Equal(t, second, read.Round.Proposals()[0].ID())
+		assert.NotContains(t, read.Round.Votes(), u[0])
+		assert.NotContains(t, read.Round.Votes(), u[2])
+		assert.Equal(t, second, read.Round.Votes()[u[3]], "other votes stay")
+		assert.Equal(t, 1, env.outboxCount(t, "activity.session.voting.proposal_withdrawn"))
+		assert.Zero(t, env.outboxCount(t, "activity.session.voting.cancelled"))
+	})
+
+	t.Run("withdrawing the last proposal cancels the round", func(t *testing.T) {
+		state, err := env.withdraw(session, u[1], second)
+		require.NoError(t, err)
+		assert.Equal(t, domain.VotingStatusCancelled, state.Round.Status())
+
+		read := env.voting(t, session)
+		assert.Equal(t, domain.VotingStatusCancelled, read.Round.Status())
+		assert.Equal(t, domain.VotingCancelReasonNoProposals, read.Round.CancelReason())
+		assert.Empty(t, read.Round.Proposals())
+		assert.Equal(t, 2, env.outboxCount(t, "activity.session.voting.proposal_withdrawn"))
+		assert.Equal(t, 1, env.outboxCount(t, "activity.session.voting.cancelled"))
+	})
+
+	t.Run("nothing to withdraw once the round is over; a new proposal starts a fresh round", func(t *testing.T) {
+		_, err := env.withdraw(session, u[1], second)
+		assert.ErrorIs(t, err, domain.ErrVotingNotOpen)
+
+		state, err := env.propose(session, u[2], []uuid.UUID{u[0], u[1]}, []uuid.UUID{u[2], u[3]})
+		require.NoError(t, err)
+		assert.True(t, state.Round.IsOpen())
+	})
+}

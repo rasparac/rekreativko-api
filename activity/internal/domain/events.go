@@ -64,15 +64,17 @@ const (
 	EventActivitySessionDraftCaptainReplaced = "activity.session.draft.captain_replaced"
 
 	// Team voting events
-	EventActivitySessionVotingOpened        = "activity.session.voting.opened"
-	EventActivitySessionVotingProposalAdded = "activity.session.voting.proposal_created"
-	EventActivitySessionVotingVoteCast      = "activity.session.voting.vote_cast"
-	EventActivitySessionVotingPlayerRemoved = "activity.session.voting.player_removed"
-	EventActivitySessionVotingClosed        = "activity.session.voting.closed"
-	EventActivitySessionVotingCancelled     = "activity.session.voting.cancelled"
-	EventActivitySessionVotingTied          = "activity.session.voting.tied"
-	EventActivitySessionDraftCancelled      = "activity.session.draft.cancelled"
-	EventActivitySessionAttendeeAutoPending = "activity.session.attendee.auto_pending"
+	EventActivitySessionVotingOpened            = "activity.session.voting.opened"
+	EventActivitySessionVotingProposalAdded     = "activity.session.voting.proposal_created"
+	EventActivitySessionVotingVoteCast          = "activity.session.voting.vote_cast"
+	EventActivitySessionVotingPlayerRemoved     = "activity.session.voting.player_removed"
+	EventActivitySessionVotingVoteRetracted     = "activity.session.voting.vote_retracted"
+	EventActivitySessionVotingProposalWithdrawn = "activity.session.voting.proposal_withdrawn"
+	EventActivitySessionVotingClosed            = "activity.session.voting.closed"
+	EventActivitySessionVotingCancelled         = "activity.session.voting.cancelled"
+	EventActivitySessionVotingTied              = "activity.session.voting.tied"
+	EventActivitySessionDraftCancelled          = "activity.session.draft.cancelled"
+	EventActivitySessionAttendeeAutoPending     = "activity.session.attendee.auto_pending"
 
 	// Session attendee events
 	EventActivitySessionAttendeeAutoConfirmed   = "activity.session.attendee.auto_confirmed"
@@ -1467,6 +1469,47 @@ func NewVoteCastEvent(r *TeamVotingRound, voterID, choice uuid.UUID, changed boo
 		e.ProposalID = &choice
 	}
 	return e
+}
+
+// VoteRetractedEvent is raised when someone takes their vote back. ProposalID
+// is the proposal they had voted for, null when it was keep-current.
+type VoteRetractedEvent struct {
+	votingEventBase
+	VoterID     uuid.UUID  `json:"voter_id"`
+	ProposalID  *uuid.UUID `json:"proposal_id"`
+	KeepCurrent bool       `json:"keep_current"`
+}
+
+func NewVoteRetractedEvent(r *TeamVotingRound, voterID, previousChoice uuid.UUID) *VoteRetractedEvent {
+	e := &VoteRetractedEvent{
+		votingEventBase: newVotingEventBase(r, EventActivitySessionVotingVoteRetracted),
+		VoterID:         voterID,
+		KeepCurrent:     previousChoice == KeepCurrentTeams,
+	}
+	if previousChoice != KeepCurrentTeams {
+		e.ProposalID = &previousChoice
+	}
+	return e
+}
+
+// ProposalWithdrawnEvent is raised when the author withdraws their proposal.
+// DroppedVoterIDs are the people whose vote for it was dropped; they are back
+// to "not voted". When it was the last proposal a voting.cancelled
+// (no_proposals) follows.
+type ProposalWithdrawnEvent struct {
+	votingEventBase
+	ProposalID      uuid.UUID   `json:"proposal_id"`
+	AuthorID        uuid.UUID   `json:"author_id"`
+	DroppedVoterIDs []uuid.UUID `json:"dropped_voter_ids"`
+}
+
+func NewProposalWithdrawnEvent(r *TeamVotingRound, p *TeamProposal, droppedVoters []uuid.UUID) *ProposalWithdrawnEvent {
+	return &ProposalWithdrawnEvent{
+		votingEventBase: newVotingEventBase(r, EventActivitySessionVotingProposalWithdrawn),
+		ProposalID:      p.id,
+		AuthorID:        p.authorID,
+		DroppedVoterIDs: slices.Clone(droppedVoters),
+	}
 }
 
 // VotingPlayerRemovedEvent is raised when someone stops going mid-vote: they

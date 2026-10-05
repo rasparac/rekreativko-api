@@ -24,6 +24,7 @@ const (
 	VotingCancelReasonNotEnoughPlayers VotingCancelReason = "not_enough_players" // going count fell below PlayersNeeded
 	VotingCancelReasonTeamsReplaced    VotingCancelReason = "teams_replaced"     // teams were recreated while voting
 	VotingCancelReasonSessionEnded     VotingCancelReason = "session_ended"      // session was cancelled or completed while voting
+	VotingCancelReasonNoProposals      VotingCancelReason = "no_proposals"       // the last proposal was withdrawn
 	VotingCancelReasonRosterChanged    VotingCancelReason = "roster_changed"     // someone stopped going: team formation was reset
 	VotingCancelReasonTeamsReset       VotingCancelReason = "teams_reset"        // an organizer reset team formation
 )
@@ -369,6 +370,68 @@ func (r *TeamVotingRound) Vote(voterID, choice uuid.UUID, confirmed []uuid.UUID)
 	r.votes[voterID] = choice
 	r.version++
 	r.addEvent(NewVoteCastEvent(r, voterID, choice, voted))
+
+	return nil
+}
+
+// RetractVote takes the voter's vote back, leaving them "not voted". Retracting
+// when there is no vote is fine and changes nothing (no event, no version bump).
+func (r *TeamVotingRound) RetractVote(voterID uuid.UUID, confirmed []uuid.UUID) error {
+	if r.status != VotingStatusOpen {
+		return ErrVotingNotOpen
+	}
+
+	if !slices.Contains(confirmed, voterID) {
+		return ErrAttendeeNotGoing
+	}
+
+	previous, voted := r.votes[voterID]
+	if !voted {
+		return nil
+	}
+
+	delete(r.votes, voterID)
+	r.version++
+	r.addEvent(NewVoteRetractedEvent(r, voterID, previous))
+
+	return nil
+}
+
+// WithdrawProposal removes the author's own proposal from an open round. The
+// votes for it are dropped (those voters are back to "not voted"). Withdrawing
+// the last proposal ends the round - cancelled with VotingCancelReasonNoProposals
+// - so the session is not left in an empty vote.
+func (r *TeamVotingRound) WithdrawProposal(requesterID, proposalID uuid.UUID) error {
+	if r.status != VotingStatusOpen {
+		return ErrVotingNotOpen
+	}
+
+	proposal := r.proposal(proposalID)
+	if proposal == nil {
+		return ErrProposalNotFound
+	}
+
+	if proposal.authorID != requesterID {
+		return ErrNotProposalAuthor
+	}
+
+	var dropped []uuid.UUID
+	for voterID, choice := range r.votes {
+		if choice == proposalID {
+			dropped = append(dropped, voterID)
+			delete(r.votes, voterID)
+		}
+	}
+	slices.SortFunc(dropped, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+
+	r.proposals = slices.DeleteFunc(r.proposals, func(p *TeamProposal) bool { return p.id == proposalID })
+	r.version++
+	r.addEvent(NewProposalWithdrawnEvent(r, proposal, dropped))
+
+	if len(r.proposals) == 0 {
+		r.version++
+		r.cancel(VotingCancelReasonNoProposals, nil)
+	}
 
 	return nil
 }

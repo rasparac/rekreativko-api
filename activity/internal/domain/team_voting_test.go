@@ -532,3 +532,144 @@ func TestSession_TeamsSourceDecidesWhetherProposalsAreAllowed(t *testing.T) {
 		assert.NoError(t, propose(session))
 	})
 }
+
+func TestTeamVotingRound_RetractVote(t *testing.T) {
+	setup := func(t *testing.T) (*TeamVotingRound, *TeamProposal, []uuid.UUID) {
+		t.Helper()
+		users := newUsers(4)
+		session := newTestTeamSession(t, newTestTeamConfig(t, nil)) // keep-current is allowed
+		round, proposal := openVoting(t, session, users)
+		return round, proposal, users
+	}
+
+	t.Run("takes the vote back; the tally drops and an event says so", func(t *testing.T) {
+		round, proposal, users := setup(t)
+		require.NoError(t, round.Vote(users[0], proposal.ID(), users))
+		require.NoError(t, round.Vote(users[1], proposal.ID(), users))
+		round.ClearEvents()
+		version := round.Version()
+
+		require.NoError(t, round.RetractVote(users[0], users))
+
+		assert.Equal(t, 1, round.VoteCount(proposal.ID()))
+		assert.NotContains(t, round.Votes(), users[0], "they are 'not voted' again")
+		assert.Greater(t, round.Version(), version)
+		require.Equal(t, []string{EventActivitySessionVotingVoteRetracted}, votingEventTypes(round))
+		event := round.Events()[0].(*VoteRetractedEvent)
+		assert.Equal(t, users[0], event.VoterID)
+		assert.Equal(t, proposal.ID(), *event.ProposalID)
+		assert.False(t, event.KeepCurrent)
+	})
+
+	t.Run("a keep-current vote can be retracted too", func(t *testing.T) {
+		round, _, users := setup(t)
+		require.NoError(t, round.Vote(users[0], KeepCurrentTeams, users))
+		round.ClearEvents()
+
+		require.NoError(t, round.RetractVote(users[0], users))
+
+		event := round.Events()[0].(*VoteRetractedEvent)
+		assert.True(t, event.KeepCurrent)
+		assert.Nil(t, event.ProposalID)
+	})
+
+	t.Run("retracting without a vote changes nothing", func(t *testing.T) {
+		round, _, users := setup(t)
+		round.ClearEvents()
+		version := round.Version()
+
+		require.NoError(t, round.RetractVote(users[2], users))
+
+		assert.Equal(t, version, round.Version())
+		assert.Empty(t, round.Events())
+	})
+
+	t.Run("not once the round is over, and not for someone who is not going", func(t *testing.T) {
+		round, proposal, users := setup(t)
+		require.NoError(t, round.Vote(users[0], proposal.ID(), users))
+		assert.ErrorIs(t, round.RetractVote(uuid.New(), users), ErrAttendeeNotGoing)
+
+		round.TeamsReplaced()
+		assert.ErrorIs(t, round.RetractVote(users[0], users), ErrVotingNotOpen)
+	})
+}
+
+func TestTeamVotingRound_WithdrawProposal(t *testing.T) {
+	setup := func(t *testing.T) (*TeamVotingRound, *TeamProposal, *TeamProposal, []uuid.UUID) {
+		t.Helper()
+		users := newUsers(4)
+		session := newTestTeamSession(t, newTestTeamConfig(t, nil))
+		round, first := openVoting(t, session, users) // authored by users[0]
+		second, err := round.Propose(session, users[1], [][]uuid.UUID{{users[0], users[3]}, {users[1], users[2]}}, users)
+		require.NoError(t, err)
+		return round, first, second, users
+	}
+
+	t.Run("removes the proposal and drops the votes for it", func(t *testing.T) {
+		round, first, second, users := setup(t)
+		require.NoError(t, round.Vote(users[0], first.ID(), users))
+		require.NoError(t, round.Vote(users[2], first.ID(), users))
+		require.NoError(t, round.Vote(users[3], second.ID(), users))
+		round.ClearEvents()
+
+		require.NoError(t, round.WithdrawProposal(users[0], first.ID()))
+
+		require.Len(t, round.Proposals(), 1)
+		assert.Equal(t, second.ID(), round.Proposals()[0].ID())
+		assert.NotContains(t, round.Votes(), users[0], "back to 'not voted'")
+		assert.NotContains(t, round.Votes(), users[2])
+		assert.Equal(t, second.ID(), round.Votes()[users[3]], "other votes stay")
+		assert.True(t, round.IsOpen(), "another proposal is still up")
+
+		require.Equal(t, []string{EventActivitySessionVotingProposalWithdrawn}, votingEventTypes(round))
+		event := round.Events()[0].(*ProposalWithdrawnEvent)
+		assert.Equal(t, first.ID(), event.ProposalID)
+		assert.Equal(t, users[0], event.AuthorID)
+		assert.ElementsMatch(t, []uuid.UUID{users[0], users[2]}, event.DroppedVoterIDs)
+	})
+
+	t.Run("keep-current votes are not touched", func(t *testing.T) {
+		round, first, _, users := setup(t)
+		require.NoError(t, round.Vote(users[2], KeepCurrentTeams, users))
+
+		require.NoError(t, round.WithdrawProposal(users[0], first.ID()))
+
+		assert.Equal(t, KeepCurrentTeams, round.Votes()[users[2]])
+	})
+
+	t.Run("only the author may", func(t *testing.T) {
+		round, first, _, users := setup(t)
+
+		assert.ErrorIs(t, round.WithdrawProposal(users[1], first.ID()), ErrNotProposalAuthor)
+		assert.Len(t, round.Proposals(), 2, "nothing changed")
+	})
+
+	t.Run("an unknown proposal", func(t *testing.T) {
+		round, _, _, users := setup(t)
+
+		assert.ErrorIs(t, round.WithdrawProposal(users[0], uuid.New()), ErrProposalNotFound)
+	})
+
+	t.Run("withdrawing the last proposal cancels the round", func(t *testing.T) {
+		round, first, second, users := setup(t)
+		require.NoError(t, round.WithdrawProposal(users[0], first.ID()))
+		round.ClearEvents()
+
+		require.NoError(t, round.WithdrawProposal(users[1], second.ID()))
+
+		assert.Equal(t, VotingStatusCancelled, round.Status())
+		assert.Equal(t, VotingCancelReasonNoProposals, round.CancelReason())
+		assert.Equal(t,
+			[]string{EventActivitySessionVotingProposalWithdrawn, EventActivitySessionVotingCancelled},
+			votingEventTypes(round), "the withdrawal, then the end of the round")
+		cancelled := round.Events()[1].(*VotingCancelledEvent)
+		assert.Empty(t, cancelled.ParticipantUserIDs)
+	})
+
+	t.Run("not once the round is over", func(t *testing.T) {
+		round, first, _, users := setup(t)
+		round.TeamsReplaced()
+
+		assert.ErrorIs(t, round.WithdrawProposal(users[0], first.ID()), ErrVotingNotOpen)
+	})
+}
