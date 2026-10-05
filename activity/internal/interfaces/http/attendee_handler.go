@@ -187,7 +187,7 @@ func (h *Handler) GetRSVP(w http.ResponseWriter, r *http.Request) {
 // ListAttendees handles GET /api/v1/sessions/{sessionId}/attendees
 //
 //	@Summary		List attendees for a session
-//	@Description	Lists the attendees/RSVPs of a session. Anyone who can see the session gets the people going (going, promoted); the session's managers (creator, group admin/creator) also get pending, maybe and not_going, and a caller asking for their own attendance (user_id = themselves) always gets it. A private session the caller cannot see is 404.
+//	@Description	Lists the attendees/RSVPs of a session. Anyone who can see the session gets the people going (going, promoted) and the maybes; the session's managers (creator, group admin/creator) also get pending (waitlist, join requests) and not_going - for anyone else a status of pending or not_going returns nothing - and a caller asking for their own attendance (user_id = themselves) always gets it. A private session the caller cannot see is 404.
 //	@Tags			RSVPs
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth

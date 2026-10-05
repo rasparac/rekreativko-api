@@ -158,12 +158,28 @@ func TestAttendeeService_ListRSVPs_ShowsOnlyThoseGoingToNonManagers(t *testing.T
 	pending := string(domain.AttendeeStatusPending)
 	stranger := uuid.New()
 
-	t.Run("a stranger sees only going and promoted", func(t *testing.T) {
-		assert.ElementsMatch(t, []uuid.UUID{going, byStatus[domain.AttendeeStatusPromoted]}, list(stranger, nil, nil))
+	maybe := string(domain.AttendeeStatusMaybe)
+	notGoing := string(domain.AttendeeStatusNotGoing)
+
+	t.Run("a stranger sees those going and the maybes, not the waitlist or decliners", func(t *testing.T) {
+		assert.ElementsMatch(t, []uuid.UUID{
+			going, byStatus[domain.AttendeeStatusPromoted], byStatus[domain.AttendeeStatusMaybe],
+		}, list(stranger, nil, nil))
 	})
 
-	t.Run("a stranger asking for the waitlist gets nothing", func(t *testing.T) {
+	t.Run("a stranger asking for the maybes gets exactly the maybes", func(t *testing.T) {
+		assert.Equal(t, []uuid.UUID{byStatus[domain.AttendeeStatusMaybe]}, list(stranger, &maybe, nil),
+			"not the people going again")
+	})
+
+	t.Run("a stranger asking for the going gets the going", func(t *testing.T) {
+		status := string(domain.AttendeeStatusGoing)
+		assert.Equal(t, []uuid.UUID{going}, list(stranger, &status, nil))
+	})
+
+	t.Run("a stranger asking for the waitlist or decliners gets nothing", func(t *testing.T) {
 		assert.Empty(t, list(stranger, &pending, nil))
+		assert.Empty(t, list(stranger, &notGoing, nil))
 	})
 
 	t.Run("the creator sees everyone", func(t *testing.T) {

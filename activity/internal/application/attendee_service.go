@@ -950,9 +950,9 @@ func (s *AttendeeService) ListRSVPs(
 		filter.Status = &status
 	}
 
-	// Who is going is public to anyone who can see the session; join
-	// requests, the waitlist, maybes and decliners are for managers - and for
-	// the caller's own row.
+	// Who is going or maybe going is public to anyone who can see the session
+	// (the app shows both lists to everyone); join requests, the waitlist and
+	// decliners are for managers - and for the caller's own row.
 	restricted, err := s.listIsRestricted(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
@@ -960,7 +960,11 @@ func (s *AttendeeService) ListRSVPs(
 		return nil, "", err
 	}
 	if restricted {
-		filter.Statuses = []domain.AttendeeStatus{domain.AttendeeStatusGoing, domain.AttendeeStatusPromoted}
+		filter.Statuses = []domain.AttendeeStatus{
+			domain.AttendeeStatusGoing,
+			domain.AttendeeStatusPromoted,
+			domain.AttendeeStatusMaybe,
+		}
 	}
 
 	attendees, nextPageToken, err := s.attendeeRepo.ListAttendees(ctx, filter)
@@ -976,7 +980,8 @@ func (s *AttendeeService) ListRSVPs(
 	return attendees, nextPageToken, nil
 }
 
-// listIsRestricted reports whether the list must be limited to people going:
+// listIsRestricted reports whether the list must be limited to people going or
+// maybe going:
 // always, unless the caller is a manager of the session or only asks for their
 // own attendance. Without a session there is no manager, so it is restricted.
 func (s *AttendeeService) listIsRestricted(ctx context.Context, params ListRSVPsParams) (bool, error) {
