@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -20,6 +21,12 @@ type (
 )
 
 func New(level, format string) *Logger {
+	return NewWithWriter(level, format, os.Stdout)
+}
+
+// NewWithWriter is New writing to w instead of stdout (tests read what was
+// logged this way).
+func NewWithWriter(level, format string, w io.Writer) *Logger {
 	var logLevel slog.Level
 	switch level {
 	case "debug":
@@ -59,9 +66,9 @@ func New(level, format string) *Logger {
 	var handler slog.Handler
 	switch format {
 	case "json":
-		handler = slog.NewJSONHandler(os.Stdout, opts)
+		handler = slog.NewJSONHandler(w, opts)
 	default:
-		handler = slog.NewTextHandler(os.Stdout, opts)
+		handler = slog.NewTextHandler(w, opts)
 	}
 
 	return &Logger{

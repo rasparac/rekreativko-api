@@ -58,7 +58,7 @@ func Logging(log *logger.Logger) func(http.Handler) http.Handler {
 			fields := []any{
 				"http_method", r.Method,
 				"path", r.URL.Path,
-				"query_params", r.URL.RawQuery,
+				"query_params", RedactQuery(r.URL.RawQuery),
 				"status", rw.statusCode,
 				"duration_ms", duration.Milliseconds(),
 				"written", rw.written,

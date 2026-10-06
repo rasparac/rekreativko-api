@@ -63,7 +63,7 @@ func enrichSpan(ctx context.Context, r *http.Request) trace.Span {
 		semconv.HTTPMethod(r.Method),
 		semconv.HTTPRoute(r.URL.Path),
 		semconv.HTTPScheme(r.URL.Scheme),
-		semconv.HTTPTarget(r.URL.RequestURI()),
+		semconv.HTTPTarget(redactedTarget(r.URL)),
 		semconv.UserAgentOriginal(api.UserAgentFromContext(ctx)),
 	)
 

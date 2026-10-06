@@ -231,6 +231,12 @@ The gateway uses custom routing logic in `internal/gateway/router.go`:
 
 **Dashboards:** Grafana dashboards at http://localhost:3000
 
+**Query strings in logs and traces:** the access log (`query_params`) and the span's `http.target` show a
+parameter's value only if its name is in `loggedQueryKeys` (`shared/middleware/query_redact.go`); every other
+parameter keeps its name and shows `[redacted]`. A new endpoint's parameters are therefore redacted by default
+(tokens, codes, coordinates, street, date of birth, free-text search...) - add a key there only if its value is
+safe to store in Loki/Jaeger.
+
 **Service metrics include:**
 - HTTP request duration and counts
 - Database query performance
