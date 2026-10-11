@@ -278,7 +278,8 @@ func (s *SessionService) GetSession(
 	// A private session doesn't exist as far as an unrelated requester is
 	// concerned - not just access-denied, actually not found, mirroring
 	// GetActivityGroup's ErrActivityGroupNotFound pattern.
-	if !session.IsVisibleTo(requesterID, s.isSessionRelated(ctx, session, requesterID)) {
+	isRelated := func() bool { return s.isSessionRelated(ctx, session, requesterID) }
+	if !session.IsVisibleTo(requesterID, isRelated) {
 		span.SetStatus(codes.Error, "not visible to requester")
 		log.Debug(ctx, "private session not visible to requester", "requester_id", requesterID)
 		return nil, MapErrToAppError(domain.ErrSessionNotFound)
@@ -288,6 +289,46 @@ func (s *SessionService) GetSession(
 	log.Debug(ctx, "session found")
 
 	return session, nil
+}
+
+// EnsureSessionVisible returns ErrSessionNotFound unless requesterID may see
+// the session - the same rule as GetSession, checked in a single query
+// without loading the session. Use it where the session itself isn't needed.
+func (s *SessionService) EnsureSessionVisible(
+	ctx context.Context,
+	sessionID uuid.UUID,
+	requesterID uuid.UUID,
+) error {
+	ctx, span := s.tracer.Start(
+		ctx,
+		"activity.service.EnsureSessionVisible",
+	)
+	defer span.End()
+
+	log := s.logger.WithValues(
+		"method", "EnsureSessionVisible",
+		"session_id", sessionID,
+	)
+
+	span.SetAttributes(attribute.String("session_id", sessionID.String()))
+
+	visible, err := s.sessionRepo.IsSessionVisibleTo(ctx, sessionID, requesterID)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to check session visibility", "error", err)
+		return mapToAppErr(err)
+	}
+
+	if !visible {
+		span.SetStatus(codes.Error, "not visible to requester")
+		log.Debug(ctx, "session not found or not visible to requester", "requester_id", requesterID)
+		return MapErrToAppError(domain.ErrSessionNotFound)
+	}
+
+	span.SetStatus(codes.Ok, "session visible")
+	log.Debug(ctx, "session visible")
+
+	return nil
 }
 
 // CreateTeams splits a session into teams - normally once people have joined.

@@ -80,3 +80,22 @@ func TestSession_Complete(t *testing.T) {
 		assert.ErrorIs(t, session.Complete(session.CreatedByID(), ""), ErrSessionNotStarted)
 	})
 }
+
+func TestSession_IsVisibleTo(t *testing.T) {
+	stranger := uuid.New()
+	related := func(isRelated bool) func() bool { return func() bool { return isRelated } }
+	mustNotAsk := func() bool {
+		t.Error("relation looked up although the answer was already known")
+		return false
+	}
+
+	public := newTestSessionWithCapacity(t, 10)
+	assert.True(t, public.IsVisibleTo(stranger, mustNotAsk), "everyone sees a public session")
+
+	private := newTestSessionWithCapacity(t, 10)
+	creator := private.CreatedByID()
+	require.NoError(t, private.SetVisibility(creator, "", SessionVisibilityPrivate))
+	assert.True(t, private.IsVisibleTo(creator, mustNotAsk), "its creator")
+	assert.True(t, private.IsVisibleTo(stranger, related(true)), "an attendee, invitee or confirmed member")
+	assert.False(t, private.IsVisibleTo(stranger, related(false)), "nobody else")
+}

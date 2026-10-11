@@ -34,14 +34,14 @@ type streamSessions struct {
 	hidden  map[uuid.UUID]struct{}
 }
 
-func (s *streamSessions) GetSession(_ context.Context, sessionID, requesterID uuid.UUID) (*domain.Session, error) {
+func (s *streamSessions) EnsureSessionVisible(_ context.Context, sessionID, requesterID uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, ok := s.hidden[requesterID]; ok || sessionID != s.session.ID() {
-		return nil, domainerror.NotFound("session_not_found", "Session not found", domain.ErrSessionNotFound)
+		return domainerror.NotFound("session_not_found", "Session not found", domain.ErrSessionNotFound)
 	}
-	return s.session, nil
+	return nil
 }
 
 func (s *streamSessions) SessionManagers(context.Context, uuid.UUID) ([]uuid.UUID, error) {

@@ -35,7 +35,7 @@ func (h *Handler) GetTeamFormation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.sessionService.GetSession(ctx, sessionID, accountID); err != nil {
+	if err := h.sessionService.EnsureSessionVisible(ctx, sessionID, accountID); err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}

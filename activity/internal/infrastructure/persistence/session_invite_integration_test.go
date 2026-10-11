@@ -318,8 +318,9 @@ func TestSessionInviteService_ExpireStaleInvites(t *testing.T) {
 	assert.Equal(t, domain.InviteStatusExpired, stored.Status())
 }
 
-// canSee reports whether userID can see the session both on direct fetch
-// and in an unfiltered listing - the two must always agree.
+// canSee reports whether userID can see the session on direct fetch, by the
+// single-query EnsureSessionVisible and in an unfiltered listing - the three
+// must always agree.
 func (e *sessionInviteTestEnv) canSee(t *testing.T, session *domain.Session, userID uuid.UUID) bool {
 	t.Helper()
 
@@ -327,6 +328,12 @@ func (e *sessionInviteTestEnv) canSee(t *testing.T, session *domain.Session, use
 	if getErr != nil {
 		requireAppErrorCode(t, getErr, "session_not_found")
 	}
+
+	ensureErr := e.sessionSvc.EnsureSessionVisible(e.ctx, session.ID(), userID)
+	if ensureErr != nil {
+		requireAppErrorCode(t, ensureErr, "session_not_found")
+	}
+	require.Equal(t, getErr == nil, ensureErr == nil, "GetSession and EnsureSessionVisible disagree on visibility")
 
 	listed, _, _, err := e.sessionSvc.ListSessions(e.ctx, application.ListSessionsParams{Limit: 100}, userID)
 	require.NoError(t, err)

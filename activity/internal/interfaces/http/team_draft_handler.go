@@ -110,7 +110,7 @@ func (h *Handler) PickDraftPlayer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Private sessions are only visible to related users - 404 for anyone else
-	if _, err := h.sessionService.GetSession(ctx, sessionID, accountID); err != nil {
+	if err := h.sessionService.EnsureSessionVisible(ctx, sessionID, accountID); err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
@@ -214,7 +214,7 @@ func (h *Handler) GetDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.sessionService.GetSession(ctx, sessionID, accountID); err != nil {
+	if err := h.sessionService.EnsureSessionVisible(ctx, sessionID, accountID); err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}

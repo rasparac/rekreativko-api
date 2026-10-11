@@ -47,7 +47,7 @@ func (h *Handler) ProposeTeams(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.sessionService.GetSession(ctx, sessionID, accountID); err != nil {
+	if err := h.sessionService.EnsureSessionVisible(ctx, sessionID, accountID); err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
@@ -102,7 +102,7 @@ func (h *Handler) VoteTeams(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.sessionService.GetSession(ctx, sessionID, accountID); err != nil {
+	if err := h.sessionService.EnsureSessionVisible(ctx, sessionID, accountID); err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
@@ -147,7 +147,7 @@ func (h *Handler) RetractVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.sessionService.GetSession(ctx, sessionID, accountID); err != nil {
+	if err := h.sessionService.EnsureSessionVisible(ctx, sessionID, accountID); err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
@@ -199,7 +199,7 @@ func (h *Handler) WithdrawProposal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.sessionService.GetSession(ctx, sessionID, accountID); err != nil {
+	if err := h.sessionService.EnsureSessionVisible(ctx, sessionID, accountID); err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
@@ -314,7 +314,7 @@ func (h *Handler) GetTeamVoting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.sessionService.GetSession(ctx, sessionID, accountID); err != nil {
+	if err := h.sessionService.EnsureSessionVisible(ctx, sessionID, accountID); err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}

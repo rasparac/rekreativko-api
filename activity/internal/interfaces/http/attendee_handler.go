@@ -225,7 +225,7 @@ func (h *Handler) ListAttendees(w http.ResponseWriter, r *http.Request) {
 	params.RequesterID = authcontext.GetAccountID(ctx)
 
 	// A private session doesn't exist for someone unrelated to it.
-	if _, err := h.sessionService.GetSession(ctx, sessionID, params.RequesterID); err != nil {
+	if err := h.sessionService.EnsureSessionVisible(ctx, sessionID, params.RequesterID); err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}

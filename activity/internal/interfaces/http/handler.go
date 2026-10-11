@@ -41,6 +41,7 @@ type (
 	sessionService interface {
 		CreateSession(ctx context.Context, params application.CreateSessionParams) (*domain.Session, error)
 		GetSession(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID) (*domain.Session, error)
+		EnsureSessionVisible(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID) error
 		UpdateSession(ctx context.Context, sessionID uuid.UUID, params application.UpdateSessionParams) error
 		StartSession(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID, requesterRole string) error
 		CompleteSession(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID, requesterRole string) error

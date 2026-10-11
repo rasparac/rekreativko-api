@@ -368,12 +368,15 @@ func (s *Session) IsPublic() bool {
 }
 
 // IsVisibleTo reports whether this session should be shown to userID -
-// mirrors ActivityGroup.IsVisibleTo. isRelated is computed by the caller:
+// mirrors ActivityGroup.IsVisibleTo. isRelated is supplied by the caller:
 // true if userID is a confirmed member of the owning group (creator/admin
 // included, since a group-scoped session's creator must already be one) or
 // an attendee of this session - a standalone session has no group, so only
-// the attendee check ever contributes to isRelated for it.
-func (s *Session) IsVisibleTo(userID uuid.UUID, isRelated bool) bool {
+// the attendee check ever contributes to isRelated for it. It is called only
+// for a private session the user didn't create, so its DB lookups are
+// skipped otherwise. SessionRepository.IsSessionVisibleTo is the SQL twin of
+// this rule - keep the two in step.
+func (s *Session) IsVisibleTo(userID uuid.UUID, isRelated func() bool) bool {
 	if s.visibility == SessionVisibilityPublic {
 		return true
 	}
@@ -382,7 +385,7 @@ func (s *Session) IsVisibleTo(userID uuid.UUID, isRelated bool) bool {
 		return true
 	}
 
-	return isRelated
+	return isRelated()
 }
 
 func (s *Session) IsRecurring() bool {

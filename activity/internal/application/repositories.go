@@ -58,6 +58,7 @@ type SessionRepository interface {
 	CreateSession(ctx context.Context, session *domain.Session) error
 	UpdateSession(ctx context.Context, session *domain.Session) error
 	GetSessionByID(ctx context.Context, id uuid.UUID) (*domain.Session, error)
+	IsSessionVisibleTo(ctx context.Context, sessionID, userID uuid.UUID) (bool, error)
 	ListSessions(ctx context.Context, filter persistence.SessionFilter) ([]*domain.Session, string, error)
 	DiscoverSessions(ctx context.Context, filter persistence.DiscoverSessionsFilter) ([]persistence.SessionWithDistance, string, error)
 	DeleteSession(ctx context.Context, id uuid.UUID) error

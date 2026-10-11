@@ -43,7 +43,7 @@ type (
 
 	// sessionViewer reports whether userID may still see the session.
 	sessionViewer interface {
-		GetSession(ctx context.Context, sessionID, requesterID uuid.UUID) (*domain.Session, error)
+		EnsureSessionVisible(ctx context.Context, sessionID, requesterID uuid.UUID) error
 	}
 
 	// sessionManagers returns who can manage the session; only they may see
@@ -303,7 +303,7 @@ func (h *Hub) dropRemovedViewer(ctx context.Context, clients []*Client, event st
 
 		if !checked && !removed {
 			// Only "you can't see it" counts; a failed lookup keeps the viewer.
-			_, err := h.sessions.GetSession(ctx, sessionID, userID)
+			err := h.sessions.EnsureSessionVisible(ctx, sessionID, userID)
 			removed = errors.Is(err, domain.ErrSessionNotFound)
 			checked = true
 		}

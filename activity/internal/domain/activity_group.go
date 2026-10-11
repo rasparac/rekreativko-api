@@ -400,9 +400,10 @@ func (ag *ActivityGroup) CanRequestToJoin() bool {
 
 // IsVisibleTo reports whether userID may see this group at all. Public
 // groups are visible to everyone; private groups only to their creator or a
-// confirmed member - isMember must be resolved by the caller (a DB lookup,
-// not something this aggregate can answer on its own).
-func (ag *ActivityGroup) IsVisibleTo(userID uuid.UUID, isMember bool) bool {
+// confirmed member - isMember is supplied by the caller (a DB lookup, not
+// something this aggregate can answer on its own) and called only for a
+// private group the user didn't create.
+func (ag *ActivityGroup) IsVisibleTo(userID uuid.UUID, isMember func() bool) bool {
 	if ag.visibility == ActivityGroupVisibilityPublic {
 		return true
 	}
@@ -411,7 +412,7 @@ func (ag *ActivityGroup) IsVisibleTo(userID uuid.UUID, isMember bool) bool {
 		return true
 	}
 
-	return isMember
+	return isMember()
 }
 
 func (ag *ActivityGroup) Update(

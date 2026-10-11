@@ -55,11 +55,11 @@ func (f *fakeViewer) SessionManagers(context.Context, uuid.UUID) ([]uuid.UUID, e
 	return f.managers, f.managersErr
 }
 
-func (f *fakeViewer) GetSession(_ context.Context, _, requesterID uuid.UUID) (*domain.Session, error) {
+func (f *fakeViewer) EnsureSessionVisible(_ context.Context, _, requesterID uuid.UUID) error {
 	if _, ok := f.hidden[requesterID]; ok {
-		return nil, domainerror.NotFound("session_not_found", "Session not found", domain.ErrSessionNotFound)
+		return domainerror.NotFound("session_not_found", "Session not found", domain.ErrSessionNotFound)
 	}
-	return nil, nil
+	return nil
 }
 
 func newTestHub(t *testing.T) (*Hub, *fakeSnapshots, *fakeViewer) {

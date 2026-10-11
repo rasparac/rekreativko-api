@@ -53,6 +53,7 @@ type SessionRepository interface {
 	CreateSession(ctx context.Context, session *domain.Session) error
 	UpdateSession(ctx context.Context, session *domain.Session) error
 	GetSessionByID(ctx context.Context, id uuid.UUID) (*domain.Session, error)
+	IsSessionVisibleTo(ctx context.Context, sessionID, userID uuid.UUID) (bool, error)
 	ListSessions(ctx context.Context, filter SessionFilter) ([]*domain.Session, string, error)
 	DiscoverSessions(ctx context.Context, filter DiscoverSessionsFilter) ([]SessionWithDistance, string, error)
 	DeleteSession(ctx context.Context, id uuid.UUID) error
@@ -398,6 +399,52 @@ func (m *sessionManager) GetSessionByID(ctx context.Context, id uuid.UUID) (*dom
 	}
 
 	return sessionModelToDomain(&model, teams)
+}
+
+// IsSessionVisibleTo reports in one query whether userID may see the session.
+// It is the SQL twin of Session.IsVisibleTo + SessionService.isSessionRelated
+// (public, creator, attendee, pending unexpired invite, confirmed group
+// member) - keep the two in step. A missing or deleted session is not visible.
+func (m *sessionManager) IsSessionVisibleTo(ctx context.Context, sessionID, userID uuid.UUID) (bool, error) {
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM activity.session s
+			WHERE s.id = $1
+			  AND s.deleted_at IS NULL
+			  AND (
+				s.visibility = 'public'
+				OR s.created_by_id = $2
+				OR EXISTS (
+					SELECT 1 FROM activity.session_attendee a
+					WHERE a.session_id = s.id
+					  AND a.account_id = $2
+					  AND a.deleted_at IS NULL
+				)
+				OR EXISTS (
+					SELECT 1 FROM activity.session_invites i
+					WHERE i.session_id = s.id
+					  AND i.invited_user_id = $2
+					  AND i.status = 'pending'
+					  AND i.expires_at > NOW()
+				)
+				OR EXISTS (
+					SELECT 1 FROM activity.member mb
+					WHERE mb.activity_group_id = s.activity_group_id
+					  AND mb.account_id = $2
+					  AND mb.deleted_at IS NULL
+					  AND mb.status = 'confirmed'
+				)
+			  )
+		)
+	`
+
+	var visible bool
+	if err := m.tx.Querier(ctx).QueryRow(ctx, query, sessionID, userID).Scan(&visible); err != nil {
+		return false, fmt.Errorf("failed to check session visibility: %w", err)
+	}
+
+	return visible, nil
 }
 
 // FindSessionsPastEndTime returns every non-terminal session whose end time has

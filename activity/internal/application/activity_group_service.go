@@ -218,7 +218,8 @@ func (s *ActivityGroupService) GetActivityGroup(
 	// Private groups don't exist as far as a non-member is concerned - not
 	// just access-denied, actually not found, so a stranger can't even
 	// confirm a private group's existence by ID.
-	if !group.IsVisibleTo(requesterID, s.isConfirmedMember(ctx, groupID, requesterID)) {
+	isMember := func() bool { return s.isConfirmedMember(ctx, groupID, requesterID) }
+	if !group.IsVisibleTo(requesterID, isMember) {
 		span.SetStatus(codes.Error, "not visible to requester")
 		log.Debug(ctx, "private group not visible to requester", "requester_id", requesterID)
 		return nil, MapErrToAppError(domain.ErrActivityGroupNotFound)
