@@ -70,7 +70,7 @@ func validateFields(title string, defaultCapacity *int, defaultLocation *Locatio
 		return ErrSessionTemplateLocationRequired
 	}
 
-	if defaultCapacity != nil && *defaultCapacity < 0 {
+	if defaultCapacity != nil && *defaultCapacity <= 0 {
 		return ErrInvalidDefaultCapacity
 	}
 
