@@ -143,7 +143,11 @@ func (r RecurrenceRule) NextOccurrenceAfter(after time.Time) *time.Time {
 	case RecurrenceFrequencyWeekly:
 		next = r.nextWeekly(afterUTC)
 	case RecurrenceFrequencyMonthly:
-		next = r.nextMonthly(afterUTC)
+		var found bool
+		next, found = r.nextMonthly(afterUTC)
+		if !found {
+			return nil
+		}
 	}
 
 	if r.endsAt != nil && next.After(*r.endsAt) {
@@ -177,11 +181,8 @@ func (r RecurrenceRule) nextDaily(after time.Time) time.Time {
 func (r RecurrenceRule) nextWeekly(after time.Time) time.Time {
 	targetDay := *r.dayOfWeek
 
-	// find days until the next target day of week
-	daysUntil := int(targetDay - after.Weekday())
-	if daysUntil <= 0 {
-		daysUntil += 7
-	}
+	// days until the target weekday, today included: 0 when after is on it
+	daysUntil := (int(targetDay) - int(after.Weekday()) + 7) % 7
 
 	candidate := time.Date(
 		after.Year(),
@@ -194,7 +195,8 @@ func (r RecurrenceRule) nextWeekly(after time.Time) time.Time {
 		time.UTC,
 	).AddDate(0, 0, daysUntil)
 
-	// if the candidate is in the past, move to the next week
+	// if the candidate is not after `after` (today's time has passed, or after
+	// is exactly an occurrence), move on by the interval
 	if !candidate.After(after) {
 		candidate = candidate.AddDate(0, 0, 7*r.interval)
 	}
@@ -202,7 +204,9 @@ func (r RecurrenceRule) nextWeekly(after time.Time) time.Time {
 	return candidate
 }
 
-func (r RecurrenceRule) nextMonthly(after time.Time) time.Time {
+// nextMonthly reports false when the rule has no valid date at all (e.g. the
+// 31st every 12 months, starting from February).
+func (r RecurrenceRule) nextMonthly(after time.Time) (time.Time, bool) {
 	targetDay := *r.dayOfMonth
 
 	candidate := time.Date(
@@ -217,18 +221,23 @@ func (r RecurrenceRule) nextMonthly(after time.Time) time.Time {
 	)
 
 	if !candidate.After(after) || candidate.Day() != targetDay {
-		candidate = r.nextValidMonth(after.Year(), int(after.Month())*r.interval, targetDay)
+		return r.nextValidMonth(after.Year(), int(after.Month())+r.interval, targetDay)
 	}
 
-	return candidate
+	return candidate, true
 }
+
+// maxMonthSearches bounds the search for a month that has the target day. A
+// day that exists in some month is found within a year at interval 1; with a
+// larger interval it may never be (the 31st every 12 months from February).
+const maxMonthSearches = 100
 
 func (r RecurrenceRule) nextValidMonth(
 	year,
 	month,
 	targetDay int,
-) time.Time {
-	for {
+) (time.Time, bool) {
+	for range maxMonthSearches {
 		candidate := time.Date(
 			year,
 			time.Month(month),
@@ -243,11 +252,13 @@ func (r RecurrenceRule) nextValidMonth(
 		// If the candidate date is valid and matches the target day, return it.
 		// Go normalize invalid dates (e.g., Feb 30 becomes March 2), so we check if the day is correct.
 		if candidate.Day() == targetDay {
-			return candidate
+			return candidate, true
 		}
 
 		month += r.interval
 	}
+
+	return time.Time{}, false
 }
 
 func (r RecurrenceRule) HasEnded(t time.Time) bool {
