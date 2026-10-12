@@ -394,6 +394,9 @@ func (a *attendeeManager) GetFirstPendingAttendee(ctx context.Context, sessionID
 		FROM activity.session_attendee
 		WHERE session_id = $1
 		  AND status = 'pending'
+		  -- a join request is decided by a manager (Approve/Reject), never by a
+		  -- spot freeing up - only the waitlist is promoted
+		  AND source <> 'requested'
 		  AND deleted_at IS NULL
 		ORDER BY created_at ASC
 		LIMIT 1
