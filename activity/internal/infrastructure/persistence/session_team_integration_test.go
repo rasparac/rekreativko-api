@@ -28,6 +28,7 @@ type sessionTeamTestEnv struct {
 	votingSvc    *application.TeamVotingService
 	sessionRepo  application.SessionRepository
 	attendeeRepo application.AttendeeRepository
+	memberRepo   application.MemberRepository
 	txManager    *postgres.TransactionManager
 }
 
@@ -60,6 +61,7 @@ func setupSessionTeamTest(t *testing.T) *sessionTeamTestEnv {
 		formation:    application.NewTeamFormationQuery(sessionRepo, memberRepo, attendeeRepo, draftSvc, votingSvc),
 		sessionRepo:  sessionRepo,
 		attendeeRepo: attendeeRepo,
+		memberRepo:   memberRepo,
 		txManager:    txManager,
 	}
 }
