@@ -446,6 +446,7 @@ func (ag *ActivityGroup) Update(
 
 	ag.title = title
 	ag.activityType = activityType
+	ag.difficultyLevel = difficultyLevel
 	ag.location = location
 	ag.description = description
 	ag.timezone = timezone
