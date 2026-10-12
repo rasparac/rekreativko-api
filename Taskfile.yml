@@ -431,9 +431,9 @@ tasks:
   # ============================================================================
 
   seed:users:
-    desc: "Register + verify 3 dev users via the real API (requires gateway, identity, account-profile, outbox-publisher, nats, db running)"
+    desc: "Create the users from a YAML file via the real API (requires gateway, identity, account-profile, outbox-publisher, nats, db running). Usage: task seed:users [-- -file my-users.yaml]"
     cmds:
-      - ./dev/scripts/seed_users.sh
+      - go run ./scripts/seed-users -db "{{.DB_URL}}" {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}-file scripts/seed-users/users.example.yaml{{end}}
 
   # ============================================================================
   # Dependencies & tools

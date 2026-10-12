@@ -24,6 +24,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.39.0
 	go.opentelemetry.io/otel/trace v1.41.0
 	golang.org/x/crypto v0.55.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -122,5 +123,4 @@ require (
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -1,0 +1,54 @@
+# Users for `task seed:users` (go run ./scripts/seed-users -file <this file>).
+# One entry per account; every field except email is optional.
+#
+# activity_interests.name:  running, walking, jogging, basketball, football,
+#   tennis, volleyball, gym, dancing, skiing, climbing, cycling, swimming,
+#   hiking, yoga, weightlifting, other
+# activity_interests.level: beginner, intermediate, advanced
+# settings: notification.{email,sms,push}.enabled, privacy.location.enabled,
+#   privacy.profile.public, privacy.activity.public, preference.language,
+#   preference.timezone
+
+defaults:
+  password: Test1234! # for every user without their own password
+
+users:
+  - email: igor.borovica@gmail.com
+    profile:
+      full_name: Igor Borovica
+      nickname: igorb
+      bio: Weekend footballer, always up for a game
+      date_of_birth: "1990-05-15"
+      location:
+        city: Zagreb
+        country: Croatia
+        latitude: 45.8150
+        longitude: 15.9819
+      activity_interests:
+        - { name: football, level: intermediate }
+        - { name: running, level: beginner }
+    settings:
+      preference.language: hr
+      privacy.profile.public: true
+
+  - email: tester@gmail.com
+    profile:
+      full_name: Marko Kovač
+      nickname: markok
+      location:
+        city: Split
+        country: Croatia
+      activity_interests:
+        - { name: basketball, level: advanced }
+
+  - email: tester1@gmail.com
+    password: Another1234!
+    profile:
+      full_name: Ivana Novak
+      nickname: ivanan
+      location:
+        city: Rijeka
+        country: Croatia
+      activity_interests:
+        - { name: volleyball, level: intermediate }
+        - { name: yoga, level: beginner }
