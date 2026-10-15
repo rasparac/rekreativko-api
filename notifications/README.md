@@ -3,7 +3,45 @@
 Two responsibilities bundled into one service (name is a bit narrow for what it does — see [Known issues](#known-issues)):
 
 1. **In-app notification feed** — list/mark-read for notifications generated from activity-domain events (member joins, invites, attendee approvals/removals).
-2. **Identity account-lifecycle delivery** — sends the actual email/SMS for verification codes, account-locked alerts, and password-changed alerts. Moved here from `gateway` this session, since gateway had no business owning delivery-channel concerns.
+2. **Identity account-lifecycle delivery** — sends the actual email/SMS for verification codes, account-locked alerts, and password-changed alerts. Moved here from `gateway`, since gateway had no business owning delivery-channel concerns.
+
+## How it works today
+
+The two jobs share a container and nothing else:
+
+```
+                          NATS
+identity events ──────────────────────┐
+ (code created, verified,             ▼
+  locked, password changed)   ┌───────────────────────────────┐
+                              │ notifications container       │
+                              │                               │
+                              │ ① Message delivery            │──► email / SMS
+                              │    shared/notification/*      │    (dev mode: only logged,
+                              │    no DB, no API              │     no real sender yet)
+                              │                               │
+activity events ─────────────►│ ② In-app feed                 │
+ (invites, join requests,     │    notifications/internal/*   │──► notifications.notification
+  draft, voting…)             │    1 table, 2 endpoints       │    table
+                              └───────────────────────────────┘
+                                          ▲
+           mobile app ── GET /notifications, POST /notifications/{id}/read
+```
+
+| | ① Message delivery | ② In-app feed |
+|---|---|---|
+| Purpose | Reach the user **outside** the app | A list the app shows **inside** the app |
+| Triggered by | identity events | activity events |
+| Code | `shared/notification` (only imported here, despite the `shared/` path) | `notifications/internal` (DDD layers) |
+| State | none | `notifications.notification` table |
+| Text | written here, hardcoded English (`shared/notification/service.go`) | **not** written here: a row stores `type` + `data`, the app turns it into a sentence |
+| API | none | `GET /notifications`, `POST /notifications/{id}/read` |
+
+- **Isolation:** every topic has its own durable JetStream consumer, so a failing email send is retried with a delay on its own consumer (and dead-lettered after the max deliveries) and never blocks the feed.
+- **No push yet:** a feed item reaches the app only when the app next fetches `GET /notifications`. Live updates on an open team screen come from activity's SSE stream, not from here.
+- **User settings aren't consulted:** nothing reads account-profile's `notification.email.enabled` or `preference.language`; every message goes out, in English.
+
+**Planned direction** (decided 2026-10-14, ticket `rekreativko-api-me3`): no split into separate services — one bounded context with a *feed* layer and a *delivery* layer (channels: email, SMS, later push), with `shared/notification` moved into `notifications/internal` and message text moved into per-language templates. Push (`rekreativko-api-79p`), localized emails (`rekreativko-api-nvr.4`) and the email setting (`rekreativko-api-22a`) build on it.
 
 ## Running it
 
@@ -30,10 +68,12 @@ Each subscription creates its own durable JetStream consumer (`<service>+<subjec
 
 | Topic | Action |
 |---|---|
-| `identity.account.verified` | send confirmation (email/SMS depending on delivery type) |
-| `identity.account.locked` | send lockout alert |
+| `identity.verification_code.created` | send the actual code (email, or SMS for `phone`) |
+| `identity.account.verified` | send welcome email — email accounts only; a phone account sends nothing |
+| `identity.account.locked` | send lockout alert — **never delivered today**: identity's event has no contact fields or delivery type, so the handler drops it (`rekreativko-api-yn0`) |
 | `identity.account.password.changed` | send alert — **dead today**, identity has no route that changes passwords yet |
-| `identity.verification_code.created` | send the actual code |
+
+Each handler picks the channel from the event's `code_type` (`email` / `phone`); an unknown or missing value is dropped without an error (see [Known issues](#known-issues)).
 
 **Activity-domain** (create an in-app `Notification` row via `CreateNotification`):
 
@@ -137,7 +177,11 @@ Two indexes: `(recipient_account_id, created_at DESC, id DESC)` for the paginate
 
 - **This service cannot start outside dev mode, regardless of `PHONE_REGISTRATION_ENABLED`.** The sender-construction `if`/`else if` never assigns `emailSender` in the non-dev branch at all — only `smsSender` gets a fallback there. So in any non-dev environment, `emailSender` stays `nil` and startup fails on "no email sender configured," whether or not phone registration is on. This is intentional (no real SMTP sender exists yet) but means **a real `EmailSender` implementation is a hard prerequisite for any non-dev deployment**, not just an eventual nice-to-have.
 - When both senders end up `nil` (non-dev + `PHONE_REGISTRATION_ENABLED=true`), only the email error is ever surfaced (checked first) — the SMS error is equally true but never shown, which could confuse debugging.
-- `identity.account.password.changed` is subscribed and handled correctly here, but nothing publishes it — identity has no route wired to `Account.ChangePassword()` yet (see `identity/README.md`).
-- The 4 identity-event handlers (`HandleAccountVerified` et al., in `shared/notification/event_handlers.go`) silently no-op on an unrecognized `DeliveryType` instead of erroring — a future third delivery channel (e.g. push) would need this updated or it'll fail silently.
+- **Verification codes and contact details end up in traces** (`rekreativko-api-7r1`, P1): the identity-event handlers set `event.code`, `event.email` and `event.phone` as span attributes, so Jaeger stores a working verification code next to the user's email/phone.
+- **Account-locked alerts are never sent** (`rekreativko-api-yn0`): identity's `AccountLockedEvent` carries only `Reason` and `LockedUntil` — no `code_type`, email, phone or account id — so `HandleAccountLocked` always takes the unknown-delivery-type branch.
+- **SMS alerts can't be sent** (`rekreativko-api-yn0`): the locked and password-changed handlers match the delivery type `"sms"`, but identity's values are `"email"` and `"phone"`.
+- The 4 identity-event handlers (`HandleAccountVerified` et al., in `shared/notification/event_handlers.go`) silently no-op on an unrecognized `DeliveryType` instead of erroring — which is why the two bugs above went unnoticed, and a future channel (e.g. push) would fail the same way.
+- `identity.account.password.changed` is subscribed, but nothing publishes it — identity has no route wired to `Account.ChangePassword()` yet (see `identity/README.md`).
+- `notification.email.enabled` (account-profile setting) is ignored (`rekreativko-api-22a`).
 - Cosmetic: `Notification`'s private field is misspelled `recipientAccontID` (missing a `u`) — the exported getter `RecipientAccountID()` is correct, so this doesn't affect callers.
 - The service name doesn't really describe its identity-delivery responsibility anymore; renaming has been discussed (e.g. "feed" service) but deliberately deferred — see project history if picking this up.
