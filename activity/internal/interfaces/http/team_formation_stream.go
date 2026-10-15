@@ -121,6 +121,15 @@ func (h *Handler) StreamTeamFormation(w http.ResponseWriter, r *http.Request) {
 					Snapshot: mapper.TeamFormationSnapshotToResponse(update.Snapshot, accountID),
 				},
 			)
+			if err == nil {
+				// the last hop of an event's trail: on this viewer's stream (the
+				// line's account_id), under the domain event's id
+				logCtx := ctx
+				if update.EventID != "" {
+					logCtx = api.WithEventID(ctx, update.EventID)
+				}
+				h.logger.Debug(logCtx, "team-formation stream update sent", "session_id", sessionID, "event", update.Event, "version", update.Snapshot.Version)
+			}
 
 		case <-heartbeat.C:
 			_, err = io.WriteString(w, ": ping\n\n")

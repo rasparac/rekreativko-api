@@ -52,7 +52,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	defer pg.Close()
 
 	txManager := postgres.NewTransactionManager(pg.Pool)
-	domainEventMgr := domainevent.NewDomainEventManager(txManager)
+	domainEventMgr := domainevent.NewDomainEventManager(txManager, log)
 
 	// Initialize telemetry
 	telemetryConfig := telemetry.Config{

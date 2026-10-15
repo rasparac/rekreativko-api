@@ -49,7 +49,7 @@ func setupAccountVerifiedTest(t *testing.T) *accountVerifiedTestEnv {
 
 	txManager := db.CreateTransactionManager()
 	logger := testutil.CreateLogger()
-	eventWriter := domainevent.NewDomainEventManager(txManager)
+	eventWriter := domainevent.NewDomainEventManager(txManager, logger)
 
 	profileSvc := application.NewService(logger, txManager, persistence.NewAccountProfileManager(txManager, logger), eventWriter, testMetrics())
 	settingsSvc := application.NewAccountSettingsService(persistence.NewAccountProfileSettingsManager(txManager), txManager, eventWriter, logger, testMetrics())

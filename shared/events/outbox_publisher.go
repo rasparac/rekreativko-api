@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 )
@@ -169,13 +170,16 @@ func (op *outboxPublisher) publishFromSchema(ctx context.Context, schema string)
 		}
 
 		for _, event := range events {
+			// every line about this event, the broker's included, carries its id
+			ctx := api.WithEventID(ctx, event.EventID.String())
+
 			start := time.Now()
 			err := op.broker.Publish(ctx, event.EventType, event.Payload)
 			op.metrics.EventPublishDuration.WithLabelValues(event.EventType, schema).Observe(time.Since(start).Seconds())
 			if err != nil {
 				failedCount++
 				op.metrics.EventProcessedTotal.WithLabelValues(event.EventType, schema, "failed").Inc()
-				op.logger.Error(ctx, "failed to publish outbox event", "schema", schema, "event_id", event.EventID, "error", err)
+				op.logger.Error(ctx, "failed to publish outbox event", "schema", schema, "event_type", event.EventType, "error", err)
 
 				deadLettered, markErr := op.eventReader.MarkEventAsFailed(ctx, schema, event.EventID, err, op.maxRetries)
 				if markErr != nil {
@@ -184,7 +188,7 @@ func (op *outboxPublisher) publishFromSchema(ctx context.Context, schema string)
 				}
 				if deadLettered {
 					op.metrics.EventProcessedTotal.WithLabelValues(event.EventType, schema, "dead_lettered").Inc()
-					op.logger.Error(ctx, "outbox event dead-lettered after max retries", "schema", schema, "event_id", event.EventID, "max_retries", op.maxRetries)
+					op.logger.Error(ctx, "outbox event dead-lettered after max retries", "schema", schema, "event_type", event.EventType, "max_retries", op.maxRetries)
 				}
 				continue
 			}
@@ -198,7 +202,7 @@ func (op *outboxPublisher) publishFromSchema(ctx context.Context, schema string)
 			}
 
 			publishedCount++
-			op.logger.Debug(ctx, "outbox event published", "schema", schema, "event_id", event.EventID, "event_type", event.EventType)
+			op.logger.Debug(ctx, "outbox event published", "schema", schema, "event_type", event.EventType)
 			op.metrics.EventsPublishedTotal.WithLabelValues(event.EventType, schema).Inc()
 			op.metrics.EventProcessedTotal.WithLabelValues(event.EventType, schema, "success").Inc()
 		}

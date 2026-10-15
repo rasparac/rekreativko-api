@@ -72,7 +72,7 @@ func main() {
 
 	txManager := postgres.NewTransactionManager(pg.Pool)
 
-	domainEventMgr := domainevent.NewDomainEventManager(txManager)
+	domainEventMgr := domainevent.NewDomainEventManager(txManager, log)
 
 	schemas := cfg.Outbox.GetSchemas()
 	if len(schemas) == 0 {

@@ -45,7 +45,7 @@ func setupSessionTeamTest(t *testing.T) *sessionTeamTestEnv {
 	groupRepo := persistence.NewActivityGroupRepository(txManager, logger)
 	draftRepo := persistence.NewTeamDraftRepository(txManager, logger)
 	votingRepo := persistence.NewTeamVotingRepository(txManager, logger)
-	eventWriter := domainevent.NewDomainEventManager(txManager)
+	eventWriter := domainevent.NewDomainEventManager(txManager, logger)
 
 	draftSvc := application.NewTeamDraftService(logger, txManager, sessionRepo, attendeeRepo, draftRepo, votingRepo, eventWriter, testMetrics())
 	votingSvc := application.NewTeamVotingService(logger, txManager, sessionRepo, memberRepo, attendeeRepo, draftRepo, votingRepo, eventWriter, testMetrics())

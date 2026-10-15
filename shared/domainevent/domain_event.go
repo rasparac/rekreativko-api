@@ -7,12 +7,15 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/rasparac/rekreativko-api/shared/api"
+	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
 )
 
 type (
 	domainEventManager struct {
 		txManager *postgres.TransactionManager
+		logger    *logger.Logger
 	}
 
 	// EventWriter represents an interface for writing domain events to a persistent store.
@@ -31,9 +34,11 @@ type (
 
 func NewDomainEventManager(
 	txManager *postgres.TransactionManager,
+	logger *logger.Logger,
 ) *domainEventManager {
 	return &domainEventManager{
 		txManager: txManager,
+		logger:    logger.WithName("domainevent"),
 	}
 }
 
@@ -89,7 +94,19 @@ func (tm *domainEventManager) InsertEvents(
 	)
 
 	_, err := tm.txManager.Querier(ctx).Exec(ctx, insertEventQuery, eventValues...)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// The first hop of an event's trail: the request_id in ctx ties the
+	// event_id to the request that raised it. The transaction may still roll
+	// back - the event exists only if "outbox event published" follows.
+	for _, event := range events {
+		tm.logger.Debug(api.WithEventID(ctx, event.GetEventID().String()), "event stored in outbox",
+			"schema", schema, "event_type", event.GetEventType(), "aggregate_id", event.GetAggregateID())
+	}
+
+	return nil
 }
 
 type BrokerEvent struct {

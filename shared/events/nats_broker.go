@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 )
 
@@ -234,7 +236,11 @@ func (b *natsBroker) SubscribeBroadcast(
 	subject := "events." + topic
 
 	sub, err := b.conn.Subscribe(subject, func(msg *nats.Msg) {
-		handler(ctx, strings.TrimPrefix(msg.Subject, "events."), msg.Data)
+		topic := strings.TrimPrefix(msg.Subject, "events.")
+		ctx := withEventID(ctx, msg.Data)
+		b.logger.Debug(ctx, "broadcast event received", "topic", topic)
+
+		handler(ctx, topic, msg.Data)
 	})
 	if err != nil {
 		return fmt.Errorf("subscribe to %s: %w", subject, err)
@@ -370,6 +376,10 @@ func (b *natsBroker) processMessage(
 		"topic", topic,
 	)
 
+	// every line the handler logs about this event carries its id
+	ctx = withEventID(ctx, msg.Data())
+	log.Debug(ctx, "event received", "num_delivered", metadata.NumDelivered)
+
 	err = handler(ctx, msg.Data())
 	if err != nil {
 		log.Error(ctx, "failed to handle message", "error", err)
@@ -480,4 +490,17 @@ func sanitizeDurableName(topic string) string {
 	name = strings.ReplaceAll(name, "*", "all")
 	name = strings.ReplaceAll(name, ">", "any")
 	return name
+}
+
+// withEventID puts the event_id of a domain event payload into ctx, so every
+// line logged while handling it can be found by that id. A payload without
+// one leaves ctx as it is.
+func withEventID(ctx context.Context, payload []byte) context.Context {
+	var event struct {
+		EventID string `json:"event_id"`
+	}
+	if err := json.Unmarshal(payload, &event); err != nil || event.EventID == "" {
+		return ctx
+	}
+	return api.WithEventID(ctx, event.EventID)
 }

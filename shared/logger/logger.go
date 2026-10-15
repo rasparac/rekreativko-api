@@ -131,11 +131,20 @@ func (l *Logger) log(
 		accountID = id.String()
 	}
 
-	keysAndValues = append(keysAndValues, "ip_address", ipAddress)
-	keysAndValues = append(keysAndValues, "user_agent", userAgent)
-	keysAndValues = append(keysAndValues, "request_id", requestID)
-	keysAndValues = append(keysAndValues, "event_id", eventID)
-	keysAndValues = append(keysAndValues, "account_id", accountID)
+	// A key the caller passed wins over the context's value: the JSON
+	// handler doesn't dedupe, and a second, empty "event_id" would hide the
+	// real one from anything that reads the line as JSON (jq, Loki).
+	for _, field := range [...]struct{ key, value string }{
+		{"ip_address", ipAddress},
+		{"user_agent", userAgent},
+		{"request_id", requestID},
+		{"event_id", eventID},
+		{"account_id", accountID},
+	} {
+		if !hasKey(keysAndValues, field.key) {
+			keysAndValues = append(keysAndValues, field.key, field.value)
+		}
+	}
 
 	var pcs [1]uintptr
 	runtime.Callers(3, pcs[:]) // skip callers, log, and the public method
@@ -145,4 +154,26 @@ func (l *Logger) log(
 	r.Add(keysAndValues...)
 
 	_ = l.logger.Handler().Handle(ctx, r)
+}
+
+// hasKey reports whether the key-value list sets key. It walks the list the
+// way slog.Record.Add does: an slog.Attr takes one slot, a key and its value two.
+func hasKey(keysAndValues []any, key string) bool {
+	for i := 0; i < len(keysAndValues); {
+		switch k := keysAndValues[i].(type) {
+		case slog.Attr:
+			if k.Key == key {
+				return true
+			}
+			i++
+		case string:
+			if k == key {
+				return true
+			}
+			i += 2
+		default:
+			i++
+		}
+	}
+	return false
 }

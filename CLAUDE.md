@@ -237,6 +237,23 @@ parameter keeps its name and shows `[redacted]`. A new endpoint's parameters are
 (tokens, codes, coordinates, street, date of birth, free-text search...) - add a key there only if its value is
 safe to store in Loki/Jaeger.
 
+**Tracing a domain event:** with `LOG_LEVEL=debug`, every hop logs a line carrying the event's `event_id`, so
+one query shows its whole path - in Grafana's Loki: `{service=~".+"} | json | event_id="<id>"` (promtail only sees
+containers; for a service run from the IDE, grep its console). In order:
+
+| Line (`msg`) | Where | What it adds |
+|---|---|---|
+| `event stored in outbox` | producing service (`shared/domainevent`) | `request_id` of the request that raised it; may still roll back |
+| `outbox event published` / `published message` | outbox-publisher | NATS stream sequence |
+| `event received` → `message acked` | each JetStream consumer (`shared/events`) | `consumer`, `num_delivered` (>1 = redelivery) |
+| `notification created` / `duplicate event…` | notifications | `type`, `recipient_account_id` |
+| `broadcast event received` | every activity instance | |
+| `session event delivered` / `…no viewers on this instance` | activity live hub | `viewers`, `queued`, `skipped` (client already had that version), `withheld` (manager-only), `slow_consumer` |
+| `team-formation stream update sent` | activity SSE stream | one per viewer: `account_id`, `version` |
+
+Set the id with `api.WithEventID(ctx, …)` rather than passing `"event_id"` as a key, so lines logged further down
+the call chain carry it too.
+
 **Service metrics include:**
 - HTTP request duration and counts
 - Database query performance

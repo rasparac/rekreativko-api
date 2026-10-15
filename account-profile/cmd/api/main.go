@@ -91,7 +91,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	txManager := postgres.NewTransactionManager(pg.Pool)
 
-	domainEventMgr := domainevent.NewDomainEventManager(txManager)
+	domainEventMgr := domainevent.NewDomainEventManager(txManager, log)
 
 	accountProfileRepo := persistence.NewAccountProfileManager(txManager, log)
 

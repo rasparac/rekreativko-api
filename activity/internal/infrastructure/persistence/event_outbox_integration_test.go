@@ -38,7 +38,7 @@ func TestEventOutbox_ReadEventsSkipsLockedRows(t *testing.T) {
 	second := insertOutboxEvent(t, db, 1)
 
 	txManager := db.CreateTransactionManager()
-	mgr := domainevent.NewDomainEventManager(txManager)
+	mgr := domainevent.NewDomainEventManager(txManager, testutil.CreateLogger())
 	ctx := context.Background()
 
 	// Publisher A locks the whole pending batch and holds its transaction open.
@@ -83,7 +83,7 @@ func TestEventOutbox_DeadLettersAfterMaxRetries(t *testing.T) {
 	healthy := insertOutboxEvent(t, db, 1)
 
 	txManager := db.CreateTransactionManager()
-	mgr := domainevent.NewDomainEventManager(txManager)
+	mgr := domainevent.NewDomainEventManager(txManager, testutil.CreateLogger())
 	ctx := context.Background()
 	const maxRetries = 3
 

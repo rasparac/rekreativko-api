@@ -66,6 +66,9 @@ type Update struct {
 	// my_vote depends on the viewer, so it is shared by all of a session's
 	// clients and personalised when written.
 	Snapshot *application.TeamFormationSnapshot
+	// EventID is the domain event's id, for tracing it to the client's
+	// stream in the logs; empty for the initial snapshot.
+	EventID string
 }
 
 // Client is one connected viewer of one session.
@@ -95,21 +98,32 @@ func (c *Client) Reason() string {
 	return c.reason
 }
 
+// offerResult is what offer did with an update.
+type offerResult int
+
+const (
+	offerQueued       offerResult = iota
+	offerSkipped                  // the client is closed or already has this version or a newer one
+	offerSlowConsumer             // the buffer was full: the client was disconnected
+)
+
 // offer queues u unless it is not newer than what the client already has.
 // A full buffer disconnects the client.
-func (c *Client) offer(u Update) {
+func (c *Client) offer(u Update) offerResult {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.closed || u.Snapshot.Version <= c.lastVersion {
-		return
+		return offerSkipped
 	}
 
 	select {
 	case c.updates <- u:
 		c.lastVersion = u.Snapshot.Version
+		return offerQueued
 	default:
 		c.closeLocked(ReasonSlowConsumer)
+		return offerSlowConsumer
 	}
 }
 
@@ -260,18 +274,20 @@ func (h *Hub) HandleEvent(ctx context.Context, topic string, payload []byte) {
 		sessionID = ref.AggregateID
 	}
 
+	event := strings.TrimPrefix(topic, topicPrefix)
+
 	clients := h.clientsOf(sessionID)
 	if len(clients) == 0 {
+		h.logger.Debug(ctx, "session event: no viewers on this instance", "session_id", sessionID, "event", event)
 		return
 	}
-
-	event := strings.TrimPrefix(topic, topicPrefix)
 	if strings.HasPrefix(event, "attendee.") && ref.UserID != uuid.Nil {
 		clients = h.dropRemovedViewer(ctx, clients, event, sessionID, ref.UserID)
 	}
 
 	snapshot, err := h.snapshots.Snapshot(ctx, sessionID)
 	if errors.Is(err, domain.ErrSessionNotFound) {
+		h.logger.Debug(ctx, "session event: session is gone, closing its streams", "session_id", sessionID, "event", event, "viewers", len(clients))
 		for _, c := range clients {
 			c.close(ReasonNotFound)
 		}
@@ -309,6 +325,7 @@ func (h *Hub) dropRemovedViewer(ctx context.Context, clients []*Client, event st
 		}
 
 		if removed {
+			h.logger.Debug(ctx, "session event: viewer removed, closing their stream", "session_id", sessionID, "event", event, "viewer_id", userID)
 			c.close(ReasonRemoved)
 			continue
 		}

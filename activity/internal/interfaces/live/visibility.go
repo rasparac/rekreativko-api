@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
+	"github.com/rasparac/rekreativko-api/shared/api"
 )
 
 // managerOnlyEvents are attendee events about people who are not (yet) going:
@@ -41,28 +42,47 @@ func (h *Hub) deliver(
 ) {
 	_, managerOnly := managerOnlyEvents[event]
 
-	full := Update{Event: event, Change: json.RawMessage(payload), Snapshot: snapshot}
+	eventID := api.EventIDFromContext(ctx)
+	full := Update{Event: event, Change: json.RawMessage(payload), Snapshot: snapshot, EventID: eventID}
+
+	var queued, skipped, slow, withheld int
+	count := func(r offerResult) {
+		switch r {
+		case offerQueued:
+			queued++
+		case offerSkipped:
+			skipped++
+		case offerSlowConsumer:
+			slow++
+		}
+	}
+	defer func() {
+		h.logger.Debug(ctx, "session event delivered", "session_id", sessionID, "event", event,
+			"version", snapshot.Version, "viewers", len(clients),
+			"queued", queued, "skipped", skipped, "withheld", withheld, "slow_consumer", slow)
+	}()
 
 	if !managerOnly && !bytes.Contains(payload, managerIDsKey) {
 		for _, c := range clients {
-			c.offer(full)
+			count(c.offer(full))
 		}
 		return
 	}
 
 	managers := h.managerSet(ctx, sessionID)
-	redacted := Update{Event: event, Change: h.withoutManagerIDs(ctx, payload), Snapshot: snapshot}
+	redacted := Update{Event: event, Change: h.withoutManagerIDs(ctx, payload), Snapshot: snapshot, EventID: eventID}
 
 	for _, c := range clients {
 		_, isManager := managers[c.ViewerID]
 
 		switch {
 		case isManager:
-			c.offer(full)
+			count(c.offer(full))
 		case managerOnly && c.ViewerID != subjectID:
 			// not theirs to know
+			withheld++
 		default:
-			c.offer(redacted)
+			count(c.offer(redacted))
 		}
 	}
 }

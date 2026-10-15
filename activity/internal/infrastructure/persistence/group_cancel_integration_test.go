@@ -185,7 +185,7 @@ func TestSessionGenerator_SkipsCancelledAndDeletedGroups(t *testing.T) {
 	generator := application.NewSessionGeneratorService(
 		logger, env.txManager, templateRepo, env.sessionRepo,
 		persistence.NewActivityGroupRepository(env.txManager, logger),
-		domainevent.NewDomainEventManager(env.txManager), testMetrics(), 14*24*time.Hour,
+		domainevent.NewDomainEventManager(env.txManager, logger), testMetrics(), 14*24*time.Hour,
 	)
 
 	weeklyTemplate := func(groupID, creatorID uuid.UUID) *domain.SessionTemplate {
