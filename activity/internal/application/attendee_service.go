@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
@@ -923,11 +924,27 @@ func (s *AttendeeService) GetRSVP(
 	return attendee, nil
 }
 
-// ListRSVPs lists RSVPs with filtering
+// MaxListedAttendees caps how many attendees ListRSVPs returns. The list is not
+// paginated - a session has a few dozen people at most - so the cap only
+// guards against a pathological session. It is not the session's capacity:
+// that bounds only those going, while the waitlist, maybes and decliners come
+// on top of it.
+const MaxListedAttendees = 200
+
+// publicAttendeeStatuses are the statuses anyone who can see the session may
+// list: the people going and the maybes.
+var publicAttendeeStatuses = []domain.AttendeeStatus{
+	domain.AttendeeStatusGoing,
+	domain.AttendeeStatusPromoted,
+	domain.AttendeeStatusMaybe,
+}
+
+// ListRSVPs lists RSVPs with filtering, oldest first, at most
+// MaxListedAttendees of them.
 func (s *AttendeeService) ListRSVPs(
 	ctx context.Context,
 	params ListRSVPsParams,
-) ([]*domain.Attendee, string, error) {
+) ([]*domain.Attendee, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
 		"activity.service.ListRSVPs",
@@ -936,18 +953,14 @@ func (s *AttendeeService) ListRSVPs(
 
 	log := s.logger.WithValues("method", "ListRSVPs")
 
-	// Build filter
-	filter := persistence.AttendeeFilter{
-		SessionID:       params.SessionID,
-		ActivityGroupID: params.ActivityGroupID,
-		UserID:          params.UserID,
-		Limit:           params.Limit,
-		PageToken:       params.PageToken,
-	}
-
-	if params.Status != nil {
-		status := domain.AttendeeStatus(*params.Status)
-		filter.Status = &status
+	statuses := make([]domain.AttendeeStatus, 0, len(params.Statuses))
+	for _, raw := range params.Statuses {
+		status := domain.AttendeeStatus(raw)
+		if !status.IsValid() {
+			span.SetStatus(codes.Error, "invalid status")
+			return nil, mapToAppErr(fmt.Errorf("%w: %q", domain.ErrInvalidAttendeeStatus, raw))
+		}
+		statuses = append(statuses, status)
 	}
 
 	// Who is going or maybe going is public to anyone who can see the session
@@ -957,27 +970,59 @@ func (s *AttendeeService) ListRSVPs(
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to check who may list all attendees", "error", err)
-		return nil, "", err
+		return nil, err
 	}
 	if restricted {
-		filter.Statuses = []domain.AttendeeStatus{
-			domain.AttendeeStatusGoing,
-			domain.AttendeeStatusPromoted,
-			domain.AttendeeStatusMaybe,
+		// A status the caller may not see is dropped, not an error: the rest
+		// of the request is still answered.
+		statuses = visibleStatuses(statuses)
+		if len(statuses) == 0 {
+			span.SetStatus(codes.Ok, "")
+			return []*domain.Attendee{}, nil
 		}
 	}
 
-	attendees, nextPageToken, err := s.attendeeRepo.ListAttendees(ctx, filter)
+	filter := persistence.AttendeeFilter{
+		SessionID:       params.SessionID,
+		ActivityGroupID: params.ActivityGroupID,
+		UserID:          params.UserID,
+		Limit:           MaxListedAttendees,
+	}
+	if len(statuses) > 0 {
+		filter.Statuses = statuses
+	}
+
+	attendees, more, err := s.attendeeRepo.ListAttendees(ctx, filter)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to list attendees", "error", err)
-		return nil, "", fmt.Errorf("failed to list attendees: %w", err)
+		return nil, fmt.Errorf("failed to list attendees: %w", err)
+	}
+	if more != "" {
+		// The rows past the cap are left out; nobody should get here.
+		log.Warn(ctx, "attendee list hit the cap, rows left out", "session_id", params.SessionID, "cap", MaxListedAttendees)
 	}
 
 	span.SetStatus(codes.Ok, "")
 	log.Debug(ctx, "RSVPs listed", "count", len(attendees))
 
-	return attendees, nextPageToken, nil
+	return attendees, nil
+}
+
+// visibleStatuses narrows the requested statuses to the public ones; asking for
+// none means all of them.
+func visibleStatuses(requested []domain.AttendeeStatus) []domain.AttendeeStatus {
+	if len(requested) == 0 {
+		return publicAttendeeStatuses
+	}
+
+	visible := make([]domain.AttendeeStatus, 0, len(requested))
+	for _, status := range requested {
+		if slices.Contains(publicAttendeeStatuses, status) {
+			visible = append(visible, status)
+		}
+	}
+	return visible
 }
 
 // listIsRestricted reports whether the list must be limited to people going or

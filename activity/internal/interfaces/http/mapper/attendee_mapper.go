@@ -7,7 +7,6 @@ import (
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
-	"github.com/rasparac/rekreativko-api/shared/api"
 )
 
 // CreateRSVPRequestToParams converts CreateRSVPRequest to application params
@@ -130,9 +129,7 @@ func AttendeeToResponse(attendee *domain.Attendee) *dtos.AttendeeResponse {
 
 // QueryToListRSVPsParams parses query parameters for listing RSVPs
 func QueryToListRSVPsParams(query url.Values) (*application.ListRSVPsParams, error) {
-	params := &application.ListRSVPsParams{
-		Limit: 20, // default
-	}
+	params := &application.ListRSVPsParams{}
 
 	// Parse session_id filter
 	if sessionIDStr := query.Get("session_id"); sessionIDStr != "" {
@@ -161,17 +158,13 @@ func QueryToListRSVPsParams(query url.Values) (*application.ListRSVPsParams, err
 		params.UserID = &userID
 	}
 
-	// Parse status filter
-	if status := query.Get("status"); status != "" {
-		params.Status = &status
+	// Parse status filter - repeatable, e.g. ?status=going&status=pending;
+	// the service validates the values
+	for _, status := range query["status"] {
+		if status != "" {
+			params.Statuses = append(params.Statuses, status)
+		}
 	}
-
-	limit, pageToken, err := api.ParsePageParams(query, params.Limit)
-	if err != nil {
-		return nil, err
-	}
-	params.Limit = limit
-	params.PageToken = pageToken
 
 	return params, nil
 }

@@ -26,6 +26,22 @@ func NewPage[TIn, TOut any](items []TIn, limit int, nextPageToken string, mapOne
 	}
 }
 
+// List is the envelope of a list that is returned whole, without pagination
+// (small, naturally bounded lists). It has the same items field as Page, so a
+// client reading only items works with either.
+type List[T any] struct {
+	Items []T `json:"items"`
+}
+
+// NewList builds a List, mapping each domain item to its response type via mapOne.
+func NewList[TIn, TOut any](items []TIn, mapOne func(TIn) TOut) List[TOut] {
+	responses := make([]TOut, len(items))
+	for i, item := range items {
+		responses[i] = mapOne(item)
+	}
+	return List[TOut]{Items: responses}
+}
+
 // ParsePageParams parses the standard "limit"/"page_token" pagination query params.
 func ParsePageParams(q url.Values, defaultLimit int) (limit int, pageToken string, err error) {
 	limit = defaultLimit

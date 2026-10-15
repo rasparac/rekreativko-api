@@ -187,17 +187,17 @@ func (h *Handler) GetRSVP(w http.ResponseWriter, r *http.Request) {
 // ListAttendees handles GET /api/v1/sessions/{sessionId}/attendees
 //
 //	@Summary		List attendees for a session
-//	@Description	Lists the attendees/RSVPs of a session. Anyone who can see the session gets the people going (going, promoted) and the maybes; the session's managers (creator, group admin/creator) also get pending (waitlist, join requests) and not_going - for anyone else a status of pending or not_going returns nothing - and a caller asking for their own attendance (user_id = themselves) always gets it. A private session the caller cannot see is 404.
+//	@Description	Lists the attendees/RSVPs of a session, oldest first, in one response: not paginated, at most 200 rows. Ask for several statuses at once by repeating status (?status=going&status=promoted&status=pending); without status you get every status you may see. Anyone who can see the session gets the people going (going, promoted) and the maybes; the session's managers (creator, group admin/creator) also get pending (waitlist, join requests) and not_going - for anyone else those statuses are dropped from the request, the rest is still returned - and a caller asking for their own attendance (user_id = themselves) always gets it. An unknown status is 422 invalid_attendee_status. A private session the caller cannot see is 404.
 //	@Tags			RSVPs
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
 //	@Param			sessionId	path		string									true	"Session ID"
-//	@Param			status		query		string									false	"Filter by status (going, pending, not_going, maybe, promoted)"
-//	@Param			limit		query		int										false	"Limit number of results (default 20)"
-//	@Param			page_token	query		string									false	"Token from the previous response's next_page_token, to fetch the next page"
-//	@Success		200			{object}	api.Response[api.Page[dtos.AttendeeResponse]]	"Attendees retrieved successfully"
+//	@Param			status		query		[]string								false	"Filter by status, repeatable (going, pending, not_going, maybe, promoted)"	collectionFormat(multi)
+//	@Param			user_id		query		string									false	"Only this person's attendance"
+//	@Success		200			{object}	api.Response[api.List[dtos.AttendeeResponse]]	"Attendees retrieved successfully"
 //	@Failure		400			{object}	api.Response[any]						"Invalid request"
 //	@Failure		404			{object}	api.Response[any]						"Session not found or not visible"
+//	@Failure		422			{object}	api.Response[any]						"Unknown status (invalid_attendee_status)"
 //	@Failure		500			{object}	api.Response[any]						"Internal server error"
 //	@Router			/api/v1/sessions/{sessionId}/attendees [get]
 func (h *Handler) ListAttendees(w http.ResponseWriter, r *http.Request) {
@@ -231,17 +231,13 @@ func (h *Handler) ListAttendees(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// List attendees
-	attendees, nextPageToken, err := h.attendeeService.ListRSVPs(ctx, *params)
+	attendees, err := h.attendeeService.ListRSVPs(ctx, *params)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
 
-	api.WriteOkResponse(
-		w,
-		api.NewPage(attendees, params.Limit, nextPageToken, mapper.AttendeeToResponse),
-		"",
-	)
+	api.WriteOkResponse(w, api.NewList(attendees, mapper.AttendeeToResponse), "")
 }
 
 // ApproveAttendee handles POST /api/v1/sessions/{sessionId}/rsvp/{userId}/approve

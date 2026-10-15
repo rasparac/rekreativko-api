@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/authcontext"
+	"github.com/rasparac/rekreativko-api/shared/domainerror"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,15 +24,23 @@ type listingAttendees struct {
 
 	got   *application.ListRSVPsParams
 	calls int
+
+	result []*domain.Attendee
+	err    error
 }
 
-func (l *listingAttendees) ListRSVPs(_ context.Context, params application.ListRSVPsParams) ([]*domain.Attendee, string, error) {
+func (l *listingAttendees) ListRSVPs(_ context.Context, params application.ListRSVPsParams) ([]*domain.Attendee, error) {
 	l.calls++
 	l.got = &params
-	return nil, "", nil
+	return l.result, l.err
 }
 
 func listAttendeesRequest(t *testing.T, sessions *streamSessions, attendees *listingAttendees, sessionID, viewer uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+	return listAttendeesRequestWithQuery(t, sessions, attendees, sessionID, viewer, "")
+}
+
+func listAttendeesRequestWithQuery(t *testing.T, sessions *streamSessions, attendees *listingAttendees, sessionID, viewer uuid.UUID, query string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	h := &Handler{sessionService: sessions, attendeeService: attendees, logger: logger.New("error", "json")}
@@ -41,7 +51,7 @@ func listAttendeesRequest(t *testing.T, sessions *streamSessions, attendees *lis
 	})
 
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sessionID.String()+"/attendees", nil))
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/sessions/"+sessionID.String()+"/attendees"+query, nil))
 	return rec
 }
 
@@ -70,4 +80,47 @@ func TestListAttendees_InvisibleSessionIsNotFoundAndNeverListed(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 	assert.Zero(t, attendees.calls, "nothing is read for someone who cannot see the session")
+}
+
+func TestListAttendees_SeveralStatusesInOneRequest(t *testing.T) {
+	session := newStreamTestSession(t)
+	sessions := &streamSessions{session: session, hidden: map[uuid.UUID]struct{}{}}
+	attendees := &listingAttendees{}
+
+	rec := listAttendeesRequestWithQuery(t, sessions, attendees, session.ID(), uuid.New(), "?status=going&status=promoted&status=pending")
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, []string{"going", "promoted", "pending"}, attendees.got.Statuses)
+}
+
+func TestListAttendees_IsOneListWithoutPagination(t *testing.T) {
+	session := newStreamTestSession(t)
+	sessions := &streamSessions{session: session, hidden: map[uuid.UUID]struct{}{}}
+	attendee, err := domain.NewRSVPManualAttendee(session, session.ActivityGroupID(), uuid.New(), domain.AttendeeStatusGoing, 0)
+	require.NoError(t, err)
+	attendees := &listingAttendees{result: []*domain.Attendee{attendee}}
+
+	// limit and page_token from an old client are ignored, not an error
+	rec := listAttendeesRequestWithQuery(t, sessions, attendees, session.ID(), uuid.New(), "?limit=1&page_token=abc")
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Contains(t, body.Data, "items")
+	assert.NotContains(t, body.Data, "next_page_token")
+	assert.NotContains(t, body.Data, "limit")
+}
+
+func TestListAttendees_UnknownStatusIsUnprocessable(t *testing.T) {
+	session := newStreamTestSession(t)
+	sessions := &streamSessions{session: session, hidden: map[uuid.UUID]struct{}{}}
+	attendees := &listingAttendees{err: domainerror.ValidationError("invalid_attendee_status", "Invalid attendee status", domain.ErrInvalidAttendeeStatus)}
+
+	rec := listAttendeesRequestWithQuery(t, sessions, attendees, session.ID(), uuid.New(), "?status=attending")
+
+	assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	assert.Contains(t, rec.Body.String(), "invalid_attendee_status")
 }

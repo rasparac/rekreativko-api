@@ -9,6 +9,7 @@ import (
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/mapper"
+	"github.com/rasparac/rekreativko-api/shared/domainerror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -136,16 +137,15 @@ func TestAttendeeService_ListRSVPs_ShowsOnlyThoseGoingToNonManagers(t *testing.T
 		require.NoError(t, env.attendeeRepo.CreateAttendee(env.ctx, attendee))
 	}
 
-	list := func(requester uuid.UUID, status *string, userID *uuid.UUID) []uuid.UUID {
+	list := func(requester uuid.UUID, userID *uuid.UUID, statuses ...string) []uuid.UUID {
 		t.Helper()
 
 		sessionID := session.ID()
-		attendees, _, err := env.svc.ListRSVPs(env.ctx, application.ListRSVPsParams{
+		attendees, err := env.svc.ListRSVPs(env.ctx, application.ListRSVPsParams{
 			RequesterID: requester,
 			SessionID:   &sessionID,
-			Status:      status,
+			Statuses:    statuses,
 			UserID:      userID,
-			Limit:       50,
 		})
 		require.NoError(t, err)
 
@@ -155,45 +155,99 @@ func TestAttendeeService_ListRSVPs_ShowsOnlyThoseGoingToNonManagers(t *testing.T
 		}
 		return ids
 	}
-	pending := string(domain.AttendeeStatusPending)
 	stranger := uuid.New()
+	creator := session.CreatedByID()
 
-	maybe := string(domain.AttendeeStatusMaybe)
-	notGoing := string(domain.AttendeeStatusNotGoing)
+	const (
+		goingStatus = string(domain.AttendeeStatusGoing)
+		pending     = string(domain.AttendeeStatusPending)
+		maybe       = string(domain.AttendeeStatusMaybe)
+		notGoing    = string(domain.AttendeeStatusNotGoing)
+		promoted    = string(domain.AttendeeStatusPromoted)
+	)
 
 	t.Run("a stranger sees those going and the maybes, not the waitlist or decliners", func(t *testing.T) {
 		assert.ElementsMatch(t, []uuid.UUID{
 			going, byStatus[domain.AttendeeStatusPromoted], byStatus[domain.AttendeeStatusMaybe],
-		}, list(stranger, nil, nil))
+		}, list(stranger, nil))
 	})
 
 	t.Run("a stranger asking for the maybes gets exactly the maybes", func(t *testing.T) {
-		assert.Equal(t, []uuid.UUID{byStatus[domain.AttendeeStatusMaybe]}, list(stranger, &maybe, nil),
+		assert.Equal(t, []uuid.UUID{byStatus[domain.AttendeeStatusMaybe]}, list(stranger, nil, maybe),
 			"not the people going again")
 	})
 
 	t.Run("a stranger asking for the going gets the going", func(t *testing.T) {
-		status := string(domain.AttendeeStatusGoing)
-		assert.Equal(t, []uuid.UUID{going}, list(stranger, &status, nil))
+		assert.Equal(t, []uuid.UUID{going}, list(stranger, nil, goingStatus))
 	})
 
 	t.Run("a stranger asking for the waitlist or decliners gets nothing", func(t *testing.T) {
-		assert.Empty(t, list(stranger, &pending, nil))
-		assert.Empty(t, list(stranger, &notGoing, nil))
+		assert.Empty(t, list(stranger, nil, pending))
+		assert.Empty(t, list(stranger, nil, notGoing))
+		assert.Empty(t, list(stranger, nil, pending, notGoing))
+	})
+
+	t.Run("several statuses come back in one list, oldest first", func(t *testing.T) {
+		assert.Equal(t, []uuid.UUID{going, byStatus[domain.AttendeeStatusPromoted]}, list(stranger, nil, goingStatus, promoted))
+	})
+
+	t.Run("a stranger's request drops the statuses they may not see and keeps the rest", func(t *testing.T) {
+		assert.Equal(t, []uuid.UUID{going}, list(stranger, nil, goingStatus, pending))
 	})
 
 	t.Run("the creator sees everyone", func(t *testing.T) {
-		assert.Len(t, list(session.CreatedByID(), nil, nil), 5)
-		assert.Equal(t, []uuid.UUID{byStatus[domain.AttendeeStatusPending]}, list(session.CreatedByID(), &pending, nil))
+		assert.Len(t, list(creator, nil), 5)
+		assert.Equal(t, []uuid.UUID{byStatus[domain.AttendeeStatusPending]}, list(creator, nil, pending))
+		assert.ElementsMatch(t, []uuid.UUID{going, byStatus[domain.AttendeeStatusPending]}, list(creator, nil, goingStatus, pending))
+	})
+
+	t.Run("an unknown status is invalid_attendee_status", func(t *testing.T) {
+		sessionID := session.ID()
+		_, err := env.svc.ListRSVPs(env.ctx, application.ListRSVPsParams{
+			RequesterID: creator,
+			SessionID:   &sessionID,
+			Statuses:    []string{goingStatus, "attending"},
+		})
+
+		var appErr *domainerror.AppError
+		require.ErrorAs(t, err, &appErr)
+		assert.Equal(t, "invalid_attendee_status", appErr.Code)
 	})
 
 	t.Run("anyone sees their own row, whatever its status", func(t *testing.T) {
 		own := byStatus[domain.AttendeeStatusPending]
-		assert.Equal(t, []uuid.UUID{own}, list(own, nil, &own))
+		assert.Equal(t, []uuid.UUID{own}, list(own, &own))
 	})
 
 	t.Run("asking for someone else's row is still restricted", func(t *testing.T) {
 		other := byStatus[domain.AttendeeStatusPending]
-		assert.Empty(t, list(stranger, nil, &other))
+		assert.Empty(t, list(stranger, &other))
 	})
+}
+
+// The list isn't paginated; MaxListedAttendees caps it, oldest first.
+func TestAttendeeService_ListRSVPs_CapsTheList(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session := env.createSession(t, domain.ActivityTypeBasketball)
+
+	first := uuid.New()
+	for i := range application.MaxListedAttendees + 1 {
+		userID := uuid.New()
+		if i == 0 {
+			userID = first
+		}
+		attendee, err := domain.NewRSVPManualAttendee(session, session.ActivityGroupID(), userID, domain.AttendeeStatusMaybe, 0)
+		require.NoError(t, err)
+		require.NoError(t, env.attendeeRepo.CreateAttendee(env.ctx, attendee))
+	}
+
+	sessionID := session.ID()
+	attendees, err := env.svc.ListRSVPs(env.ctx, application.ListRSVPsParams{
+		RequesterID: session.CreatedByID(),
+		SessionID:   &sessionID,
+	})
+	require.NoError(t, err)
+
+	require.Len(t, attendees, application.MaxListedAttendees)
+	assert.Equal(t, first, attendees[0].UserID(), "the oldest rows are kept")
 }

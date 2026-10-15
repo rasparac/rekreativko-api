@@ -400,16 +400,18 @@ type UpdateRSVPParams struct {
 	NewStatus string // "going", "not_going", "maybe"
 }
 
-// ListRSVPsParams contains parameters for listing RSVPs
+// ListRSVPsParams contains parameters for listing RSVPs. The list is not
+// paginated: it holds at most MaxListedAttendees rows.
 type ListRSVPsParams struct {
 	// RequesterID is who is asking. Non-managers only see people going.
 	RequesterID     uuid.UUID
 	SessionID       *uuid.UUID
 	ActivityGroupID *uuid.UUID
 	UserID          *uuid.UUID
-	Status          *string // "going", "pending", "not_going", "maybe", "promoted"
-	Limit           int
-	PageToken       string
+	// Statuses limits the list to any of these ("going", "pending",
+	// "not_going", "maybe", "promoted"); empty means every status the
+	// requester may see.
+	Statuses []string
 }
 
 // ListMyInvitesParams contains parameters for listing a user's pending invites

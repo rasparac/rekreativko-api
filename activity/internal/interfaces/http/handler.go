@@ -74,7 +74,7 @@ type (
 		UpdateRSVP(ctx context.Context, params application.UpdateRSVPParams) (*domain.Attendee, error)
 		CancelRSVP(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID) error
 		GetRSVP(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID) (*domain.Attendee, error)
-		ListRSVPs(ctx context.Context, params application.ListRSVPsParams) ([]*domain.Attendee, string, error)
+		ListRSVPs(ctx context.Context, params application.ListRSVPsParams) ([]*domain.Attendee, error)
 		ApproveAttendee(ctx context.Context, params application.ApproveAttendeeParams) error
 		RejectAttendee(ctx context.Context, params application.RejectAttendeeParams) error
 		RemoveAttendee(ctx context.Context, params application.RemoveAttendeeParams) error
