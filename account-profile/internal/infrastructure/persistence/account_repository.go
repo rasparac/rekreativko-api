@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -187,7 +189,7 @@ func (m *accountProfileManager) CreateAccountProfile(
 		model.updatedAt,
 	)
 	if err != nil {
-		return err
+		return mapNicknameTaken(err)
 	}
 
 	// DO NOTHING rather than a unique violation, so the caller's transaction
@@ -198,6 +200,22 @@ func (m *accountProfileManager) CreateAccountProfile(
 	}
 
 	return nil
+}
+
+// nicknameUniqueIndex is the unique index on profiles.nickname (see the schema).
+const nicknameUniqueIndex = "uq_profiles_nickname"
+
+// mapNicknameTaken turns a violation of nicknameUniqueIndex into
+// domain.ErrNickNameAlreadyExists; any other error is returned as is.
+func mapNicknameTaken(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) &&
+		pgErr.Code == pgerrcode.UniqueViolation &&
+		pgErr.ConstraintName == nicknameUniqueIndex {
+		return domain.ErrNickNameAlreadyExists
+	}
+
+	return err
 }
 
 func (m *accountProfileManager) UpdateAccountProfile(
@@ -240,7 +258,7 @@ func (m *accountProfileManager) UpdateAccountProfile(
 		model.accountID,
 	)
 	if err != nil {
-		return err
+		return mapNicknameTaken(err)
 	}
 
 	err = m.replaceActivityInterests(

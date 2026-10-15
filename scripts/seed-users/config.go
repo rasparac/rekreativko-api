@@ -115,6 +115,7 @@ func (f *SeedFile) Validate() error {
 
 	var errs []error
 	seen := make(map[string]struct{}, len(f.Users))
+	nicknames := make(map[string]struct{}, len(f.Users))
 
 	for i, u := range f.Users {
 		at := func(format string, args ...any) {
@@ -137,6 +138,15 @@ func (f *SeedFile) Validate() error {
 		}
 
 		p := u.Profile
+		// nicknames are unique per profile, case-insensitively (CITEXT)
+		if p.Nickname != "" {
+			key := strings.ToLower(p.Nickname)
+			if _, dup := nicknames[key]; dup {
+				at("duplicate nickname %q", p.Nickname)
+			}
+			nicknames[key] = struct{}{}
+		}
+
 		if p.DateOfBirth != "" {
 			if _, err := time.Parse(time.DateOnly, p.DateOfBirth); err != nil {
 				at("date_of_birth %q is not YYYY-MM-DD", p.DateOfBirth)

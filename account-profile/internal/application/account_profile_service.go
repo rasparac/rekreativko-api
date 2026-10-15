@@ -160,7 +160,7 @@ func (s *service) UpdateProfile(ctx context.Context, accountID uuid.UUID, toUpda
 		if toUpdateProfile.Nickname != nil {
 			newNickname, nickNameErr := domain.NewNickname(*toUpdateProfile.Nickname)
 			if nickNameErr != nil {
-				return fmt.Errorf("new nickname: %w", err)
+				return fmt.Errorf("new nickname: %w", nickNameErr)
 			}
 			err = profile.SetNickname(newNickname)
 			if err != nil {

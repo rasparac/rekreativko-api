@@ -13,7 +13,7 @@ defaults:
   password: Test1234! # for every user without their own password
 
 users:
-  - email: igor.borovica@gmail.com
+  - email: a@gmail.com
     profile:
       full_name: Igor Borovica
       nickname: igorb
@@ -31,24 +31,60 @@ users:
       preference.language: hr
       privacy.profile.public: true
 
-  - email: tester@gmail.com
+  - email: b@gmail.com
     profile:
-      full_name: Marko Kovač
+      full_name: B Kovač
       nickname: markok
       location:
         city: Split
         country: Croatia
       activity_interests:
-        - { name: basketball, level: advanced }
+        - { name: basketball, level: intermediate }
 
-  - email: tester1@gmail.com
-    password: Another1234!
+  - email: c@gmail.com
     profile:
-      full_name: Ivana Novak
+      full_name: B Novak
       nickname: ivanan
       location:
-        city: Rijeka
+        city: Zagreb
         country: Croatia
       activity_interests:
         - { name: volleyball, level: intermediate }
         - { name: yoga, level: beginner }
+        - { name: basketball, level: intermediate }
+
+  - email: d@gmail.com
+    profile:
+      full_name: D Novak
+      nickname: dnovak
+      location:
+        city: Zagreb
+        country: Croatia
+      activity_interests:
+        - { name: volleyball, level: intermediate }
+        - { name: yoga, level: beginner }
+        - { name: basketball, level: intermediate }
+
+  - email: e@gmail.com
+    profile:
+      full_name: E Novak
+      nickname: enovak
+      location:
+        city: Zagreb
+        country: Croatia
+      activity_interests:
+        - { name: volleyball, level: intermediate }
+        - { name: yoga, level: beginner }
+        - { name: basketball, level: intermediate }
+
+  - email: f@gmail.com
+    profile:
+      full_name: F Novak
+      nickname: fnovak
+      location:
+        city: Zagreb
+        country: Croatia
+      activity_interests:
+        - { name: volleyball, level: intermediate }
+        - { name: yoga, level: beginner }
+        - { name: basketball, level: intermediate }

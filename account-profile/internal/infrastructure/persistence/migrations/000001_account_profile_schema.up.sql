@@ -26,6 +26,11 @@ CREATE INDEX idx_profiles_deleted_at ON account_profile.profiles(deleted_at);
 
 CREATE INDEX idx_profiles_created_at ON account_profile.profiles(created_at);
 
+-- one profile per nickname, case-insensitively (CITEXT); a profile with no
+-- nickname yet (NULL) or a deleted one doesn't hold one
+CREATE UNIQUE INDEX uq_profiles_nickname ON account_profile.profiles(nickname)
+WHERE (deleted_at IS NULL);
+
 CREATE TABLE account_profile.activity_interests(
     id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
     account_id uuid NOT NULL,

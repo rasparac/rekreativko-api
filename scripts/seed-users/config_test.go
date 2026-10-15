@@ -16,15 +16,16 @@ func TestParseSeedFile(t *testing.T) {
 		file, err := ParseSeedFile(data)
 		require.NoError(t, err)
 
-		require.Len(t, file.Users, 3)
+		require.Len(t, file.Users, 6)
 		assert.Equal(t, "Test1234!", file.Users[0].Password, "the default password fills in")
-		assert.Equal(t, "Another1234!", file.Users[2].Password, "a user's own password wins")
 		assert.Equal(t, "1990-05-15", file.Users[0].Profile.DateOfBirth)
 		assert.Equal(t, true, file.Users[0].Settings["privacy.profile.public"])
 	})
 
 	t.Run("an unquoted date and capitalised interests are accepted", func(t *testing.T) {
 		file, err := ParseSeedFile([]byte(`
+defaults:
+  password: Default1234!
 users:
   - email: a@example.com
     password: Test1234!
@@ -34,6 +35,8 @@ users:
         - { name: Football, level: Advanced }
 `))
 		require.NoError(t, err)
+
+		assert.Equal(t, "Test1234!", file.Users[0].Password, "a user's own password wins over the default")
 
 		p := file.Users[0].Profile
 		assert.Equal(t, "1990-05-15", p.DateOfBirth)
@@ -54,6 +57,12 @@ users:
         - { name: quidditch, level: expert }
   - email: B@example.com
     password: Test1234!
+    profile:
+      nickname: Same
+  - email: c@example.com
+    password: Test1234!
+    profile:
+      nickname: same
 `))
 		require.Error(t, err)
 
@@ -66,6 +75,7 @@ users:
 			`unknown activity "quidditch"`,
 			`level "expert" must be`,
 			"users[2] (B@example.com): duplicate email",
+			`users[3] (c@example.com): duplicate nickname "same"`,
 		} {
 			assert.Contains(t, err.Error(), want)
 		}
