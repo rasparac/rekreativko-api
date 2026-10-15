@@ -435,6 +435,11 @@ tasks:
     cmds:
       - go run ./scripts/seed-users -db "{{.DB_URL}}" {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}-file scripts/seed-users/users.example.yaml{{end}}
 
+  dev:browsers:
+    desc: "Open one Chrome window per seed user, logged in to the web app (:8888) and tiled. Usage: task dev:browsers [-- -file my-users.yaml -only a@gmail.com,b@gmail.com]"
+    cmds:
+      - go run ./scripts/open-browsers {{.CLI_ARGS}}
+
   # ============================================================================
   # Dependencies & tools
   # ============================================================================
