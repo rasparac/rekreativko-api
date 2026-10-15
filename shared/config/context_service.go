@@ -25,6 +25,13 @@ type (
 		URL     string        `envconfig:"NOTIFICATIONS_SERVICE_URL" default:"http://localhost:8083"`
 		Timeout time.Duration `envconfig:"NOTIFICATIONS_SERVICE_TIMEOUT" default:"30s"`
 		Version string        `envconfig:"NOTIFICATIONS_SERVICE_VERSION" default:"1.0.0"`
+
+		// Retention keeps the feed small enough to list without pagination:
+		// read notifications are deleted RetentionRead after they were created,
+		// every notification after RetentionAll. The sweep runs every RetentionInterval.
+		RetentionRead     time.Duration `envconfig:"NOTIFICATIONS_RETENTION_READ" default:"720h"`
+		RetentionAll      time.Duration `envconfig:"NOTIFICATIONS_RETENTION_ALL" default:"2160h"`
+		RetentionInterval time.Duration `envconfig:"NOTIFICATIONS_RETENTION_INTERVAL" default:"1h"`
 	}
 
 	LocationServiceConfig struct {

@@ -18,8 +18,6 @@ type CreateNotificationParams struct {
 type ListNotificationsParams struct {
 	RecipientAccountID uuid.UUID
 	UnreadOnly         bool
-	Limit              int
-	PageToken          string
 }
 
 // MarkAsReadParams contains parameters for marking a notification as read

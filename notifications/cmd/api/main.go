@@ -193,6 +193,18 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		return fmt.Errorf("subscribe to notification events: %w", err)
 	}
 
+	retention := cfg.NotificationsServiceConfig
+	if retention.RetentionRead <= 0 || retention.RetentionAll < retention.RetentionRead || retention.RetentionInterval <= 0 {
+		return fmt.Errorf(
+			"invalid notification retention: read %s, all %s, interval %s - all must be positive and all must not be shorter than read",
+			retention.RetentionRead, retention.RetentionAll, retention.RetentionInterval,
+		)
+	}
+	go notificationService.RunRetention(ctx, application.RetentionPolicy{
+		Read: retention.RetentionRead,
+		All:  retention.RetentionAll,
+	}, retention.RetentionInterval)
+
 	return startServer(cfg.Server.Address(), mux, log)
 }
 

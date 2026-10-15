@@ -29,8 +29,8 @@ type notificationModel struct {
 type NotificationFilter struct {
 	RecipientAccountID uuid.UUID
 	UnreadOnly         bool
-	Limit              int
-	PageToken          string
+	// Limit caps the number of rows returned, newest first; 0 means no cap.
+	Limit int
 }
 
 // NotificationRepository defines the interface for notification persistence
@@ -39,9 +39,12 @@ type NotificationRepository interface {
 	// created is false when one already exists for that event and recipient.
 	Create(ctx context.Context, notification *domain.Notification) (created bool, err error)
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Notification, error)
-	ListByRecipient(ctx context.Context, filter NotificationFilter) ([]*domain.Notification, string, error)
+	ListByRecipient(ctx context.Context, filter NotificationFilter) ([]*domain.Notification, error)
 	CountUnread(ctx context.Context, recipientAccountID uuid.UUID) (int, error)
 	MarkRead(ctx context.Context, notification *domain.Notification) error
+	// DeleteExpired deletes every notification created before createdBefore,
+	// and read ones created before readCreatedBefore. Returns how many it deleted.
+	DeleteExpired(ctx context.Context, readCreatedBefore, createdBefore time.Time) (int64, error)
 }
 
 type notificationManager struct {
@@ -127,7 +130,7 @@ func (m *notificationManager) GetByID(ctx context.Context, id uuid.UUID) (*domai
 func (m *notificationManager) ListByRecipient(
 	ctx context.Context,
 	filter NotificationFilter,
-) ([]*domain.Notification, string, error) {
+) ([]*domain.Notification, error) {
 	qb := &postgres.QueryBuilder{
 		BaseQuery: `
 			SELECT id, event_id, recipient_account_id, type, data, read_at, created_at
@@ -142,24 +145,12 @@ func (m *notificationManager) ListByRecipient(
 		qb.AddRawCondition("read_at IS NULL")
 	}
 
-	cursor, err := postgres.DecodePageToken(filter.PageToken)
-	if err != nil {
-		return nil, "", err
-	}
-	if cursor != nil {
-		sortValue, err := time.Parse(time.RFC3339Nano, cursor.SortValue)
-		if err != nil {
-			return nil, "", postgres.ErrInvalidPageToken
-		}
-		qb.AddKeysetCondition("created_at", "DESC", sortValue, cursor.ID)
-	}
-
 	qb.BaseQuery += " ORDER BY created_at DESC, id DESC"
 
 	if filter.Limit > 0 {
 		qb.ParamCount++
 		qb.BaseQuery += fmt.Sprintf(" LIMIT $%d", qb.ParamCount)
-		qb.Args = append(qb.Args, filter.Limit+1)
+		qb.Args = append(qb.Args, filter.Limit)
 	}
 
 	query, args := qb.Build()
@@ -168,7 +159,7 @@ func (m *notificationManager) ListByRecipient(
 
 	rows, err := q.Query(ctx, query, args...)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to list notifications: %w", err)
+		return nil, fmt.Errorf("failed to list notifications: %w", err)
 	}
 	defer rows.Close()
 
@@ -185,26 +176,22 @@ func (m *notificationManager) ListByRecipient(
 			&model.createdAt,
 		)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to scan notification: %w", err)
+			return nil, fmt.Errorf("failed to scan notification: %w", err)
 		}
 
 		notification, err := notificationModelToDomain(&model)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to convert notification: %w", err)
+			return nil, fmt.Errorf("failed to convert notification: %w", err)
 		}
 
 		notifications = append(notifications, notification)
 	}
 
 	if rows.Err() != nil {
-		return nil, "", fmt.Errorf("error iterating notifications: %w", rows.Err())
+		return nil, fmt.Errorf("error iterating notifications: %w", rows.Err())
 	}
 
-	page, nextPageToken := postgres.BuildPage(notifications, filter.Limit, func(n *domain.Notification) (string, uuid.UUID) {
-		return n.CreatedAt().UTC().Format(time.RFC3339Nano), n.ID()
-	})
-
-	return page, nextPageToken, nil
+	return notifications, nil
 }
 
 func (m *notificationManager) CountUnread(ctx context.Context, recipientAccountID uuid.UUID) (int, error) {
@@ -246,6 +233,26 @@ func (m *notificationManager) MarkRead(ctx context.Context, notification *domain
 	}
 
 	return nil
+}
+
+func (m *notificationManager) DeleteExpired(
+	ctx context.Context,
+	readCreatedBefore, createdBefore time.Time,
+) (int64, error) {
+	query := `
+		DELETE FROM notifications.notification
+		WHERE created_at < $2
+		   OR (created_at < $1 AND read_at IS NOT NULL)
+	`
+
+	q := m.tx.Querier(ctx)
+
+	tag, err := q.Exec(ctx, query, readCreatedBefore, createdBefore)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete expired notifications: %w", err)
+	}
+
+	return tag.RowsAffected(), nil
 }
 
 func notificationModelFromDomain(n *domain.Notification) (*notificationModel, error) {

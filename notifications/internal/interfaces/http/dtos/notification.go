@@ -15,12 +15,10 @@ type NotificationResponse struct {
 	CreatedAt time.Time      `json:"created_at" example:"2024-01-01T00:00:00Z"`
 }
 
-// NotificationListResponse is a response containing a page of notifications.
-// Not the shared generic api.Page[T] envelope, since this endpoint needs one
-// extra field (UnreadCount) that no other list endpoint carries.
+// NotificationListResponse is the whole notification feed (newest first,
+// capped, not paginated). Not the shared generic api.List[T] envelope, since
+// this endpoint needs one extra field (UnreadCount) that no other list carries.
 type NotificationListResponse struct {
-	Items         []NotificationResponse `json:"items"`
-	Limit         int                    `json:"limit"`
-	NextPageToken string                 `json:"next_page_token,omitempty"`
-	UnreadCount   int                    `json:"unread_count"`
+	Items       []NotificationResponse `json:"items"`
+	UnreadCount int                    `json:"unread_count"`
 }

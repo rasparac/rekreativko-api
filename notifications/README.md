@@ -53,10 +53,19 @@ Part of `docker compose up` (container `notifications`, port `8083` internally, 
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/v1/notifications` | Paginated feed for the authenticated user |
+| GET | `/api/v1/notifications` | The authenticated user's whole feed, one unpaginated list |
 | POST | `/api/v1/notifications/{id}/read` | Mark one notification read (must be its own recipient) |
 
-`GET` query params: `unread_only` (bool), `limit` (default 20), `page_token` (opaque cursor). Response: `{ items: [...], limit, next_page_token, unread_count }`; each item is `{ id, type, data, read_at, created_at }`.
+`GET` query param: `unread_only` (bool). Response: `{ items: [...], unread_count }`, newest first; each item is `{ id, type, data, read_at, created_at }`. Not paginated: the list holds at most the 100 newest (`MaxListedNotifications`; hitting it logs a warning), and `unread_count` always counts every unread notification, listed or not. `limit` and `page_token` are ignored.
+
+### Retention
+
+What keeps the feed short enough to list in one go. An in-process ticker (`NotificationService.RunRetention`, started in `main.go`) deletes, right at startup and then every `NOTIFICATIONS_RETENTION_INTERVAL`:
+
+- **read** notifications created more than `NOTIFICATIONS_RETENTION_READ` (30 days) ago,
+- **every** notification created more than `NOTIFICATIONS_RETENTION_ALL` (90 days) ago, read or not.
+
+The `DELETE` is idempotent, so every instance runs it and no locking is needed. A failed run is logged and retried on the next tick. The service refuses to start if the windows are not positive or `ALL` is shorter than `READ`.
 
 There is **no `POST /notifications`** — creation only happens internally, via the event subscriber below. Auth: gateway requires a bearer token for all of `/notifications/api/v1/*`; this service additionally validates `X-Gateway-Key`.
 
@@ -154,6 +163,9 @@ Deliberate fail-fast: a nil sender would otherwise panic mid-flight on the first
 | `GATEWAY_API_KEY` | Required, validated via `X-Gateway-Key` |
 | `NATS_URL` | Required |
 | `PORT` | `8083` in compose |
+| `NOTIFICATIONS_RETENTION_READ` | Default `720h` (30 days) - read notifications older than this are deleted |
+| `NOTIFICATIONS_RETENTION_ALL` | Default `2160h` (90 days) - every notification older than this is deleted |
+| `NOTIFICATIONS_RETENTION_INTERVAL` | Default `1h` - how often the retention sweep runs |
 | `POSTGRES_*`, `TELEMETRY_*`, `METRICS_ENABLED`, `LOG_LEVEL`/`LOGGER_FORMAT` | Shared config |
 
 Not used by this service despite being in the shared config struct: `JWT_*`, `CORS_*`, `REDIS_*`, rate limiter, `OUTBOX_*`, `GATEWAY_API_KEYS` (plural — gateway-only).
@@ -171,7 +183,7 @@ CREATE TABLE notifications.notification(
     created_at timestamptz NOT NULL DEFAULT NOW()
 );
 ```
-Two indexes: `(recipient_account_id, created_at DESC, id DESC)` for the paginated feed's keyset pagination, and a partial index on `recipient_account_id WHERE read_at IS NULL` for the unread-count query.
+Three indexes: `(recipient_account_id, created_at DESC, id DESC)` for the feed (newest first), a partial index on `recipient_account_id WHERE read_at IS NULL` for the unread-count query, and `(created_at)` for the retention sweep across all recipients.
 
 ## Known issues
 

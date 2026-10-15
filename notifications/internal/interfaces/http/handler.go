@@ -18,7 +18,7 @@ import (
 
 type (
 	notificationService interface {
-		ListNotifications(ctx context.Context, params application.ListNotificationsParams) ([]*domain.Notification, int, string, error)
+		ListNotifications(ctx context.Context, params application.ListNotificationsParams) ([]*domain.Notification, int, error)
 		MarkAsRead(ctx context.Context, params application.MarkAsReadParams) error
 	}
 
@@ -56,13 +56,11 @@ func (h *Handler) RegisterRoutes(
 // GetNotifications handles GET /api/v1/notifications
 //
 //	@Summary		List my notifications
-//	@Description	Returns the authenticated user's notification feed (newest first) alongside their current unread count - everything a home-screen notification badge needs in one call.
+//	@Description	Returns the authenticated user's notification feed (newest first) alongside their current unread count - everything a home-screen notification badge needs in one call. One list, not paginated: at most the 100 newest. Read notifications are deleted 30 days after they were created, every notification after 90 days.
 //	@Tags			Notifications
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
 //	@Param			unread_only	query		boolean											false	"Only return unread notifications"
-//	@Param			limit		query		int												false	"Limit number of results (default 20)"
-//	@Param			page_token	query		string											false	"Token from the previous response's next_page_token, to fetch the next page"
 //	@Success		200			{object}	api.Response[dtos.NotificationListResponse]	"Notifications retrieved successfully"
 //	@Failure		400			{object}	api.Response[any]								"Invalid request"
 //	@Failure		401			{object}	api.Response[any]								"Unauthorized"
@@ -80,13 +78,13 @@ func (h *Handler) GetNotifications(w http.ResponseWriter, r *http.Request) {
 	}
 	params.RecipientAccountID = accountID
 
-	notifications, unreadCount, nextPageToken, err := h.notificationService.ListNotifications(ctx, *params)
+	notifications, unreadCount, err := h.notificationService.ListNotifications(ctx, *params)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
 
-	var resp *dtos.NotificationListResponse = mapper.NotificationListToResponse(notifications, params.Limit, nextPageToken, unreadCount)
+	var resp *dtos.NotificationListResponse = mapper.NotificationListToResponse(notifications, unreadCount)
 
 	api.WriteOkResponse(w, resp, "")
 }

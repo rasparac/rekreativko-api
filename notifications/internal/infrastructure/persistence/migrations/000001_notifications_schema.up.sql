@@ -26,3 +26,6 @@ CREATE INDEX idx_notifications_recipient_created ON notifications.notification(r
 -- unread-count query
 CREATE INDEX idx_notifications_recipient_unread ON notifications.notification(recipient_account_id)
 WHERE (read_at IS NULL);
+
+-- retention sweep: notifications older than the retention window, across all recipients
+CREATE INDEX idx_notifications_created ON notifications.notification(created_at);

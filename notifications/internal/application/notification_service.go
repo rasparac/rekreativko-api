@@ -93,12 +93,18 @@ func (s *NotificationService) CreateNotification(
 	return notification, nil
 }
 
-// ListNotifications returns a recipient's notification feed alongside their
-// current unread count - the two numbers a home-screen badge needs in one call.
+// MaxListedNotifications caps the feed: it is one list, newest first, with no
+// pagination. Retention (see DeleteExpiredNotifications) keeps a recipient's
+// feed well under this, so the cap only matters for an unusually busy account.
+const MaxListedNotifications = 100
+
+// ListNotifications returns a recipient's notification feed, newest first and at
+// most MaxListedNotifications long, alongside their current unread count - the
+// two numbers a home-screen badge needs in one call.
 func (s *NotificationService) ListNotifications(
 	ctx context.Context,
 	params ListNotificationsParams,
-) (notifications []*domain.Notification, unreadCount int, nextPageToken string, err error) {
+) (notifications []*domain.Notification, unreadCount int, err error) {
 	ctx, span := s.tracer.Start(ctx, "notifications.service.ListNotifications")
 	defer span.End()
 
@@ -109,29 +115,34 @@ func (s *NotificationService) ListNotifications(
 
 	span.SetAttributes(attribute.String("recipient_account_id", params.RecipientAccountID.String()))
 
-	notifications, nextPageToken, err = s.repo.ListByRecipient(ctx, persistence.NotificationFilter{
+	// One row past the cap tells us whether the cap cut anything off.
+	notifications, err = s.repo.ListByRecipient(ctx, persistence.NotificationFilter{
 		RecipientAccountID: params.RecipientAccountID,
 		UnreadOnly:         params.UnreadOnly,
-		Limit:              params.Limit,
-		PageToken:          params.PageToken,
+		Limit:              MaxListedNotifications + 1,
 	})
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to list notifications", "error", err)
-		return nil, 0, "", mapToAppErr(err)
+		return nil, 0, mapToAppErr(err)
+	}
+
+	if len(notifications) > MaxListedNotifications {
+		notifications = notifications[:MaxListedNotifications]
+		log.Warn(ctx, "notification feed hit the cap, older notifications are not listed", "cap", MaxListedNotifications)
 	}
 
 	unreadCount, err = s.repo.CountUnread(ctx, params.RecipientAccountID)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to count unread notifications", "error", err)
-		return nil, 0, "", mapToAppErr(err)
+		return nil, 0, mapToAppErr(err)
 	}
 
 	span.SetStatus(codes.Ok, "notifications listed")
 	log.Debug(ctx, "notifications listed", "count", len(notifications), "unread_count", unreadCount)
 
-	return notifications, unreadCount, nextPageToken, nil
+	return notifications, unreadCount, nil
 }
 
 // MarkAsRead marks a single notification as read. Only the notification's own
