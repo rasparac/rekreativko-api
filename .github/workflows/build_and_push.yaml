@@ -27,6 +27,11 @@ permissions:
   contents: read
   packages: write
 
+# Runs one at a time so an older commit can't finish last and roll infra back to its image
+concurrency:
+  group: build-and-push-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/rasparac
@@ -35,6 +40,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - service: identity
@@ -51,21 +57,33 @@ jobs:
           - service: outbox-publisher
             cmd_path: worker
     steps:
-      - uses: actions/checkout@v4
+      # The matrix can't be filtered at job level, so every later step checks this gate:
+      # a manual run builds only the chosen service
+      - name: Check if this service should run
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.service }}" != "${{ matrix.service }}" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Skip if manual trigger and wrong service
-        if: github.event_name == 'workflow_dispatch' && inputs.service != matrix.service
-        run: exit 0
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
 
       - name: Set version
+        if: steps.gate.outputs.run == 'true'
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "VERSION=${{ inputs.version }}" >> $GITHUB_ENV
+            echo "VERSION=${INPUT_VERSION}" >> $GITHUB_ENV
           else
             echo "VERSION=$(date +'%Y.%m.%d')-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_ENV
           fi
 
       - name: Log in to GitHub Container Registry
+        if: steps.gate.outputs.run == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -73,6 +91,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
+        if: steps.gate.outputs.run == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -85,12 +104,9 @@ jobs:
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ env.VERSION }}
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
 
-      - name: Install yq
-        run: |
-          sudo wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
-          sudo chmod +x /usr/local/bin/yq
-
+      # yq (mikefarah v4) is preinstalled on ubuntu-latest runners
       - name: Bump image tag in rekreativko-infra
+        if: steps.gate.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ secrets.INFRA_REPO_TOKEN }}
         run: |
@@ -121,18 +137,21 @@ jobs:
             IMAGE_PATH=".spec.template.spec.containers[0].image"
           fi
 
+          PUSHED=false
           for i in 1 2 3 4 5; do
             yq -i "${IMAGE_PATH} = \"${IMAGE}\"" "$FILE"
             git add "$FILE"
 
             if git diff --cached --quiet; then
               echo "image already up to date, nothing to commit"
+              PUSHED=true
               break
             fi
 
             git commit -m "chore(${SVC}): bump image to ${{ env.VERSION }}"
 
             if git push origin HEAD:main; then
+              PUSHED=true
               break
             fi
 
@@ -141,3 +160,8 @@ jobs:
             git reset --hard origin/main
             sleep $((RANDOM % 5 + 1))
           done
+
+          if [ "$PUSHED" != "true" ]; then
+            echo "::error::failed to push image bump for ${SVC} after 5 attempts"
+            exit 1
+          fi
