@@ -313,12 +313,17 @@ func (s *InviteService) ExpireStaleInvites(ctx context.Context) (int, error) {
 	return expiredCount, nil
 }
 
-// ListMyInvites retrieves the caller's own pending invites
+// MaxListedInvites caps the caller's pending invites list (group and session
+// invites alike): it is one list, not paginated. One pending invite per group
+// or session and a 7-day expiry keep it far below this.
+const MaxListedInvites = 100
+
+// ListMyInvites retrieves the caller's own pending, unexpired invites, newest
+// first and at most MaxListedInvites of them
 func (s *InviteService) ListMyInvites(
 	ctx context.Context,
 	userID uuid.UUID,
-	params ListMyInvitesParams,
-) ([]*domain.GroupInvite, string, error) {
+) ([]*domain.GroupInvite, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
 		"activity.service.ListMyInvites",
@@ -334,17 +339,20 @@ func (s *InviteService) ListMyInvites(
 
 	invites, nextPageToken, err := s.inviteRepo.ListPendingInvitesForUser(ctx, persistence.ListPendingInvitesFilter{
 		InvitedUserID: userID,
-		Limit:         params.Limit,
-		PageToken:     params.PageToken,
+		Limit:         MaxListedInvites,
 	})
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to list invites", "error", err)
-		return nil, "", mapToAppErr(err)
+		return nil, mapToAppErr(err)
+	}
+
+	if nextPageToken != "" {
+		log.Warn(ctx, "invites list hit the cap, older invites are not listed", "cap", MaxListedInvites)
 	}
 
 	span.SetStatus(codes.Ok, "invites listed")
 	log.Debug(ctx, "invites listed", "count", len(invites))
 
-	return invites, nextPageToken, nil
+	return invites, nil
 }

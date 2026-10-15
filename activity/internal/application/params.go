@@ -414,12 +414,6 @@ type ListRSVPsParams struct {
 	Statuses []string
 }
 
-// ListMyInvitesParams contains parameters for listing a user's pending invites
-type ListMyInvitesParams struct {
-	Limit     int
-	PageToken string
-}
-
 // ProposeTeamsParams contains parameters for proposing a division into teams
 type ProposeTeamsParams struct {
 	SessionID uuid.UUID

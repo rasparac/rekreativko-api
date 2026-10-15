@@ -128,7 +128,7 @@ func TestSessionInviteService_InviteAcceptFlow_MakesInviteeAnAttendee(t *testing
 	_, err := env.attendeeRepo.GetAttendeeBySessionAndUser(env.ctx, session.ID(), invitee)
 	require.ErrorIs(t, err, domain.ErrAttendeeNotFound)
 
-	listed, _, err := env.svc.ListMyInvites(env.ctx, invitee, application.ListMyInvitesParams{Limit: 20})
+	listed, err := env.svc.ListMyInvites(env.ctx, invitee)
 	require.NoError(t, err)
 	require.Len(t, listed, 1)
 	assert.Equal(t, invite.ID(), listed[0].ID())
@@ -148,7 +148,7 @@ func TestSessionInviteService_InviteAcceptFlow_MakesInviteeAnAttendee(t *testing
 	assert.Equal(t, domain.InviteStatusAccepted, storedInvite.Status())
 
 	// No longer pending, so no longer listed.
-	listed, _, err = env.svc.ListMyInvites(env.ctx, invitee, application.ListMyInvitesParams{Limit: 20})
+	listed, err = env.svc.ListMyInvites(env.ctx, invitee)
 	require.NoError(t, err)
 	assert.Empty(t, listed)
 
@@ -301,7 +301,7 @@ func TestSessionInviteService_ExpireStaleInvites(t *testing.T) {
 	env.invite(t, session, uuid.New()) // a fresh one that must survive the sweep
 
 	// Expired-but-still-pending invites aren't offered to the invitee...
-	listed, _, err := env.svc.ListMyInvites(env.ctx, invitee, application.ListMyInvitesParams{Limit: 20})
+	listed, err := env.svc.ListMyInvites(env.ctx, invitee)
 	require.NoError(t, err)
 	assert.Empty(t, listed)
 

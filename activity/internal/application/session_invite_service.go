@@ -327,12 +327,12 @@ func (s *SessionInviteService) ExpireStaleInvites(ctx context.Context) (int, err
 	return expiredCount, nil
 }
 
-// ListMyInvites retrieves the caller's own pending session invites
+// ListMyInvites retrieves the caller's own pending, unexpired session invites,
+// newest first and at most MaxListedInvites of them
 func (s *SessionInviteService) ListMyInvites(
 	ctx context.Context,
 	userID uuid.UUID,
-	params ListMyInvitesParams,
-) ([]*domain.SessionInvite, string, error) {
+) ([]*domain.SessionInvite, error) {
 	ctx, span := s.tracer.Start(ctx, "activity.service.ListMySessionInvites")
 	defer span.End()
 
@@ -345,17 +345,20 @@ func (s *SessionInviteService) ListMyInvites(
 
 	invites, nextPageToken, err := s.sessionInviteRepo.ListPendingInvitesForUser(ctx, persistence.ListPendingInvitesFilter{
 		InvitedUserID: userID,
-		Limit:         params.Limit,
-		PageToken:     params.PageToken,
+		Limit:         MaxListedInvites,
 	})
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to list session invites", "error", err)
-		return nil, "", mapToAppErr(err)
+		return nil, mapToAppErr(err)
+	}
+
+	if nextPageToken != "" {
+		log.Warn(ctx, "session invites list hit the cap, older invites are not listed", "cap", MaxListedInvites)
 	}
 
 	span.SetStatus(codes.Ok, "session invites listed")
 	log.Debug(ctx, "session invites listed", "count", len(invites))
 
-	return invites, nextPageToken, nil
+	return invites, nil
 }

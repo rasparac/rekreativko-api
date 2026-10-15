@@ -87,7 +87,7 @@ type (
 		SendInvite(ctx context.Context, params application.SendInviteParams) (*domain.GroupInvite, error)
 		AcceptInvite(ctx context.Context, inviteID uuid.UUID, userID uuid.UUID) (*domain.Member, error)
 		DeclineInvite(ctx context.Context, inviteID uuid.UUID, userID uuid.UUID) error
-		ListMyInvites(ctx context.Context, userID uuid.UUID, params application.ListMyInvitesParams) ([]*domain.GroupInvite, string, error)
+		ListMyInvites(ctx context.Context, userID uuid.UUID) ([]*domain.GroupInvite, error)
 	}
 
 	// sessionInviteService defines the interface for standalone session invite operations
@@ -95,7 +95,7 @@ type (
 		SendInvite(ctx context.Context, params application.SendSessionInviteParams) (*domain.SessionInvite, error)
 		AcceptInvite(ctx context.Context, inviteID uuid.UUID, userID uuid.UUID) (*domain.Attendee, error)
 		DeclineInvite(ctx context.Context, inviteID uuid.UUID, userID uuid.UUID) error
-		ListMyInvites(ctx context.Context, userID uuid.UUID, params application.ListMyInvitesParams) ([]*domain.SessionInvite, string, error)
+		ListMyInvites(ctx context.Context, userID uuid.UUID) ([]*domain.SessionInvite, error)
 	}
 
 	// teamDraftService defines the interface for captain draft operations

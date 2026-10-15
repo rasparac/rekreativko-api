@@ -68,34 +68,25 @@ func (h *Handler) SendSessionInvite(w http.ResponseWriter, r *http.Request) {
 // ListMySessionInvites handles GET /api/v1/session-invites
 //
 //	@Summary		List my pending session invites
-//	@Description	Lists the authenticated user's own pending, unexpired session invites
+//	@Description	Lists the authenticated user's own pending, unexpired session invites, newest first. One list, not paginated: at most 100.
 //	@Tags			Session Invites
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
-//	@Param			limit		query		int													false	"Limit number of results (default 20)"
-//	@Param			page_token	query		string												false	"Token from the previous response's next_page_token, to fetch the next page"
-//	@Success		200			{object}	api.Response[api.Page[dtos.SessionInviteResponse]]	"Invites retrieved successfully"
-//	@Failure		401			{object}	api.Response[any]									"Unauthorized"
-//	@Failure		500			{object}	api.Response[any]									"Internal server error"
+//	@Success		200	{object}	api.Response[api.List[dtos.SessionInviteResponse]]	"Invites retrieved successfully"
+//	@Failure		401	{object}	api.Response[any]									"Unauthorized"
+//	@Failure		500	{object}	api.Response[any]									"Internal server error"
 //	@Router			/api/v1/session-invites [get]
 func (h *Handler) ListMySessionInvites(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	accountID := authcontext.GetAccountID(ctx)
 
-	params, err := mapper.QueryToListMyInvitesParams(r.URL.Query())
-	if err != nil {
-		h.logger.Error(ctx, "failed to parse query parameters", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_params", "Invalid query parameters")
-		return
-	}
-
-	invites, nextPageToken, err := h.sessionInviteService.ListMyInvites(ctx, accountID, *params)
+	invites, err := h.sessionInviteService.ListMyInvites(ctx, accountID)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
 
-	api.WriteOkResponse(w, api.NewPage(invites, params.Limit, nextPageToken, mapper.SessionInviteToResponse), "")
+	api.WriteOkResponse(w, api.NewList(invites, mapper.SessionInviteToResponse), "")
 }
 
 // AcceptSessionInvite handles POST /api/v1/session-invites/{id}/accept
