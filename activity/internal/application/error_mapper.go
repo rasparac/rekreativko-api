@@ -190,6 +190,8 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.ValidationError("invalid_attendee_transition", "Invalid attendee status transition", err)
 	case errors.Is(err, domain.ErrInvalidAttendeeStatus):
 		return domainerror.ValidationError("invalid_attendee_status", "Invalid attendee status", err)
+	case errors.Is(err, domain.ErrInvalidSessionTimeframe):
+		return domainerror.ValidationError("invalid_session_timeframe", "when must be upcoming, past or all", err)
 	case errors.Is(err, domain.ErrAttendeeNotAwaitingApproval):
 		return domainerror.Conflict("attendee_not_awaiting_approval", "Attendee is not awaiting approval", err)
 	case errors.Is(err, domain.ErrCannotRemoveCreator):

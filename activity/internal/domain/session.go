@@ -153,6 +153,21 @@ func (ss SessionSchedule) StartTime() time.Time {
 	return ss.startTime
 }
 
+// DefaultSessionDuration is how long a session without an end time is assumed
+// to last. It is the one definition of "a session has ended" for such sessions:
+// discover, the sessions list's upcoming/past split and the expiry job all use
+// it (the SQL side mirrors it in persistence.sessionEndExpr).
+const DefaultSessionDuration = 3 * time.Hour
+
+// EffectiveEndTime is the end time if one was set, otherwise the start time
+// plus DefaultSessionDuration.
+func (ss SessionSchedule) EffectiveEndTime() time.Time {
+	if ss.endTime != nil {
+		return *ss.endTime
+	}
+	return ss.startTime.Add(DefaultSessionDuration)
+}
+
 func (ss SessionSchedule) EndTime() *time.Time {
 	return ss.endTime
 }
@@ -818,12 +833,12 @@ func (s *Session) Complete(
 	return nil
 }
 
-// ExpireSchedule auto-completes a session whose end time has passed. Unlike
+// ExpireSchedule auto-completes a session whose end has passed (its end time, or
+// start time + DefaultSessionDuration when it has none). Unlike
 // Complete, this is a system-driven time transition, not a user action - no
 // requester/role check, mirroring GroupInvite.Expire.
 func (s *Session) ExpireSchedule(now time.Time) error {
-	endTime := s.Schedule().EndTime()
-	if endTime == nil || !now.After(*endTime) {
+	if !now.After(s.Schedule().EffectiveEndTime()) {
 		return ErrSessionNotExpiredYet
 	}
 

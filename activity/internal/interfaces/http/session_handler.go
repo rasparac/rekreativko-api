@@ -385,10 +385,11 @@ func (h *Handler) SetSessionVisibility(w http.ResponseWriter, r *http.Request) {
 // ListSessions handles GET /api/v1/sessions
 //
 //	@Summary		List sessions
-//	@Description	Lists sessions with optional filters
+//	@Description	Lists sessions with optional filters. By default only sessions that have not ended yet (running ones included) are returned, soonest first; when=past returns the ones that have ended, most recent first. A session ends at its end time, or 3 hours after its start when it has none.
 //	@Tags			Sessions
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			when				query		string									false	"upcoming (default), past or all"	Enums(upcoming, past, all)
 //	@Param			activity_group_id	query		string									false	"Filter by activity group ID"
 //	@Param			session_template_id	query		string									false	"Filter by session template ID"
 //	@Param			created_by_id		query		string									false	"Filter by creator ID"
@@ -404,6 +405,7 @@ func (h *Handler) SetSessionVisibility(w http.ResponseWriter, r *http.Request) {
 //	@Param			page_token			query		string									false	"Token from the previous response's next_page_token, to fetch the next page"
 //	@Success		200					{object}	api.Response[api.Page[dtos.SessionResponse]]	"Sessions retrieved successfully"
 //	@Failure		400					{object}	api.Response[any]							"Invalid request"
+//	@Failure		422					{object}	api.Response[any]							"Invalid when value (invalid_session_timeframe)"
 //	@Failure		500					{object}	api.Response[any]							"Internal server error"
 //	@Router			/api/v1/sessions [get]
 func (h *Handler) ListSessions(w http.ResponseWriter, r *http.Request) {

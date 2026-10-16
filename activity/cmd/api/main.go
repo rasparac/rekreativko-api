@@ -307,6 +307,12 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	activityHandler.RegisterRoutes(mux, middlewaresChain)
 
+	if interval := cfg.ActivityServiceConfig.SessionExpiryInterval; interval > 0 {
+		go sessionService.RunSessionExpiry(ctx, interval)
+	} else {
+		log.Warn(ctx, "session expiry disabled: ACTIVITY_SESSION_EXPIRY_INTERVAL is not positive")
+	}
+
 	return startServer(cfg.Server.Address(), mux, liveHub, log)
 }
 

@@ -256,6 +256,8 @@ func QueryToListSessionsParams(query url.Values) (*application.ListSessionsParam
 		params.AttendeeStatus = statuses
 	}
 
+	params.When = query.Get("when")
+
 	// Parse status filter
 	if status := query.Get("status"); status != "" {
 		params.Status = &status

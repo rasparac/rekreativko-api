@@ -81,6 +81,7 @@ var (
 	ErrAttendeeCannotPromote       = errors.New("no pending attendees to promote to confirmed status")
 	ErrInvalidAttendeeTransition   = errors.New("invalid attendee status transition")
 	ErrInvalidAttendeeStatus       = errors.New("invalid attendee status")
+	ErrInvalidSessionTimeframe     = errors.New("invalid session timeframe")
 	ErrAttendeeNotAwaitingApproval = errors.New("attendee is not awaiting approval")
 )
 

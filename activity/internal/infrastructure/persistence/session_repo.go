@@ -69,7 +69,29 @@ type SessionRepository interface {
 }
 
 // SessionFilter defines query filters for listing sessions
+// SessionTimeframe restricts a session listing by whether the sessions have
+// ended (see sessionEndExpr).
+type SessionTimeframe string
+
+const (
+	// SessionTimeframeAll applies no time restriction; sorted soonest first.
+	SessionTimeframeAll SessionTimeframe = ""
+	// SessionTimeframeUpcoming is sessions that have not ended yet (running ones
+	// included), sorted soonest first.
+	SessionTimeframeUpcoming SessionTimeframe = "upcoming"
+	// SessionTimeframePast is sessions that have ended, most recent first.
+	SessionTimeframePast SessionTimeframe = "past"
+)
+
+// sessionEndExpr is the SQL form of domain.SessionSchedule.EffectiveEndTime:
+// the end time, or the start time plus domain.DefaultSessionDuration.
+var sessionEndExpr = fmt.Sprintf(
+	"COALESCE(end_time, start_time + interval '%d seconds')",
+	int(domain.DefaultSessionDuration.Seconds()),
+)
+
 type SessionFilter struct {
+	Timeframe         SessionTimeframe
 	ActivityGroupID   *uuid.UUID
 	SessionTemplateID *uuid.UUID
 	CreatedByID       *uuid.UUID
@@ -460,7 +482,7 @@ func (m *sessionManager) FindSessionsPastEndTime(ctx context.Context) ([]*domain
 			title, activity_type, difficulty_level, location_street, requires_approval,
 			team_count, min_players_per_team, teams_source
 		FROM activity.session
-		WHERE status IN ('scheduled', 'started') AND end_time IS NOT NULL AND end_time < now()
+		WHERE status IN ('scheduled', 'started') AND ` + sessionEndExpr + ` < now()
 			AND deleted_at IS NULL
 	`
 
@@ -638,6 +660,13 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 		qb.AddCondition("start_time <= ", filter.StartTimeTo.Time)
 	}
 
+	switch filter.Timeframe {
+	case SessionTimeframeUpcoming:
+		qb.AddRawCondition(sessionEndExpr + " > now()")
+	case SessionTimeframePast:
+		qb.AddRawCondition(sessionEndExpr + " <= now()")
+	}
+
 	if filter.AttendeeID != nil {
 		qb.ParamCount++
 		attendeeParam := qb.ParamCount
@@ -692,11 +721,20 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 		if err != nil {
 			return nil, "", postgres.ErrInvalidPageToken
 		}
-		qb.AddKeysetCondition("start_time", "ASC", sortValue, cursor.ID)
+		direction := "ASC"
+		if filter.Timeframe == SessionTimeframePast {
+			direction = "DESC"
+		}
+		qb.AddKeysetCondition("start_time", direction, sortValue, cursor.ID)
 	}
 
-	// Ordering - id is a tiebreaker for rows with an identical start_time
-	qb.BaseQuery += " ORDER BY start_time ASC, id ASC"
+	// Ordering - id is a tiebreaker for rows with an identical start_time.
+	// Past sessions are history: most recent first.
+	if filter.Timeframe == SessionTimeframePast {
+		qb.BaseQuery += " ORDER BY start_time DESC, id DESC"
+	} else {
+		qb.BaseQuery += " ORDER BY start_time ASC, id ASC"
+	}
 
 	// Fetch one extra row so we can tell whether there's a next page
 	fetchLimit := filter.Limit
@@ -900,7 +938,7 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter DiscoverSe
 			WHERE visibility = 'public'
 				AND status = 'scheduled'
 				AND deleted_at IS NULL
-				AND (end_time IS NULL OR end_time > now())
+				AND `+sessionEndExpr+` > now()
 				AND location_lat BETWEEN $3 AND $4
 				AND location_lng BETWEEN $5 AND $6
 				%s

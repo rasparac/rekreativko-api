@@ -19,6 +19,10 @@ type (
 		URL     string        `envconfig:"ACTIVITY_SERVICE_URL" default:"http://localhost:8084"`
 		Timeout time.Duration `envconfig:"ACTIVITY_SERVICE_TIMEOUT" default:"30s"`
 		Version string        `envconfig:"ACTIVITY_SERVICE_VERSION" default:"1.0.0"`
+
+		// SessionExpiryInterval is how often the activity service completes
+		// sessions whose end has passed (end time, or start + 3h without one).
+		SessionExpiryInterval time.Duration `envconfig:"ACTIVITY_SESSION_EXPIRY_INTERVAL" default:"5m"`
 	}
 
 	NotificationsServiceConfig struct {

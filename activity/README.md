@@ -10,13 +10,21 @@ Two entry points, both part of `docker compose up`:
 
 Every route requires a bearer token at the gateway (`^/activity/api/v1/.*` → `RequireAuth: true`, no public carve-outs, no method restrictions) — including the `discover` endpoints.
 
+## When a session has ended
+
+One rule, used by discover, the sessions list and the expiry job: a session ends at its `end_time`, or, when it has none, 3 hours after `start_time` (`domain.DefaultSessionDuration`; the SQL twin is `persistence.sessionEndExpr` - change both together). A session that has started but not ended is still *upcoming*.
+
+`GET /sessions` takes `when`: `upcoming` (the default - not ended yet, soonest first), `past` (ended, **most recent first**, for a history view) or `all` (no time restriction, soonest first; the old behaviour). Anything else is `422 invalid_session_timeframe`. `start_time_from`/`start_time_to` still apply on top. Canceled sessions are not special-cased: they follow the same time rule.
+
+`GET /sessions/discover` lists only scheduled, public sessions that have not ended. The expiry job runs in every API instance: each session is reloaded under its advisory lock first, so only one instance completes it and its event is published once.
+
 ## The cron job
 
 Runs 3 steps in order, each independent (a later step still runs if the current one logs an error, per the code, but a hard failure in step N aborts the job):
 
 1. **`GenerateSessionsFromTemplates`** — 14-day lookahead window (hardcoded). For every active template whose `generated_up_to` watermark is behind that window, walks `RecurrenceRule.NextOccurrenceAfter` forward creating one `Session` per occurrence, then advances the watermark.
 2. **`ExpireStaleInvites`** — flips every pending `GroupInvite` past `expires_at` to `expired`, publishes `activity.invite.expired`.
-3. **`ExpireCompletedSessions`** — flips every scheduled/started `Session` whose `end_time` has passed to `completed` (distinct from user-initiated `Complete()`), publishes `activity.session.expired`.
+3. **`ExpireCompletedSessions`** — flips every scheduled/started `Session` that has ended (see [When a session has ended](#when-a-session-has-ended)) to `completed` (distinct from user-initiated `Complete()`), publishes `activity.session.expired`. The API service also runs it by itself every `ACTIVITY_SESSION_EXPIRY_INTERVAL` (default `5m`, `0` turns it off), so past sessions no longer depend on this cron being run; the cron still does it as well, and still owns the two invite expiries.
 
 Nothing else in the system ever performs these three transitions — without this cron running periodically, stale invites and past-due sessions accumulate forever and keep polluting list/discover queries.
 

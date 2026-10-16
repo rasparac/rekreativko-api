@@ -869,10 +869,22 @@ func (s *SessionService) ExpireCompletedSessions(ctx context.Context) (int, erro
 	now := time.Now().UTC()
 
 	var expiredCount int
-	for _, session := range sessions {
+	for _, found := range sessions {
+		var expired bool
 		err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-			if err := lockSessionCapacity(tCtx, s.txManager, session.ID()); err != nil {
+			if err := lockSessionCapacity(tCtx, s.txManager, found.ID()); err != nil {
 				return err
+			}
+
+			// Reload under the lock: another instance's sweep (or an organizer)
+			// may have finished this session since it was found, and acting on
+			// the stale copy would complete it twice and publish its events twice.
+			session, err := s.sessionRepo.GetSessionByID(tCtx, found.ID())
+			if err != nil {
+				return fmt.Errorf("reload session: %w", err)
+			}
+			if status := session.Status(); status != domain.SessionStatusScheduled && status != domain.SessionStatusStarted {
+				return nil
 			}
 
 			if err := session.ExpireSchedule(now); err != nil {
@@ -893,19 +905,41 @@ func (s *SessionService) ExpireCompletedSessions(ctx context.Context) (int, erro
 			}
 			session.ClearEvents()
 
+			expired = true
 			return nil
 		})
 		if err != nil {
-			log.Error(ctx, "failed to expire session", "session_id", session.ID(), "error", err)
+			log.Error(ctx, "failed to expire session", "session_id", found.ID(), "error", err)
 			continue
 		}
-		expiredCount++
+		if expired {
+			expiredCount++
+		}
 	}
 
 	span.SetAttributes(attribute.Int("expired_count", expiredCount))
 	log.Info(ctx, "expired completed sessions", "count", expiredCount, "found", len(sessions))
 
 	return expiredCount, nil
+}
+
+// RunSessionExpiry completes ended sessions right away and then every interval,
+// until ctx is done. Safe to run in every instance: each session is reloaded
+// under its lock, so only one of them completes it. A failed run is logged
+// (by ExpireCompletedSessions) and retried on the next tick.
+func (s *SessionService) RunSessionExpiry(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		_, _ = s.ExpireCompletedSessions(ctx)
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 // CancelSession cancels a session (soft delete with reason)
@@ -1263,7 +1297,14 @@ func (s *SessionService) ListSessions(
 		difficultyLevel = domain.DifficultyLevel(*params.DifficultyLevel)
 	}
 
+	timeframe, err := parseSessionTimeframe(params.When)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return nil, "", nil, mapToAppErr(err)
+	}
+
 	filter := persistence.SessionFilter{
+		Timeframe:         timeframe,
 		ActivityGroupID:   params.ActivityGroupID,
 		SessionTemplateID: params.SessionTemplateID,
 		CreatedByID:       params.CreatedByID,
@@ -1361,6 +1402,21 @@ func (s *SessionService) ListSessions(
 	log.Debug(ctx, "sessions listed", "count", len(sessions))
 
 	return sessions, nextPageToken, attendeeStatuses, nil
+}
+
+// parseSessionTimeframe maps ListSessionsParams.When to the repository's
+// timeframe; an empty value means upcoming.
+func parseSessionTimeframe(when string) (persistence.SessionTimeframe, error) {
+	switch when {
+	case "", string(persistence.SessionTimeframeUpcoming):
+		return persistence.SessionTimeframeUpcoming, nil
+	case string(persistence.SessionTimeframePast):
+		return persistence.SessionTimeframePast, nil
+	case "all":
+		return persistence.SessionTimeframeAll, nil
+	default:
+		return "", fmt.Errorf("%w: %q", domain.ErrInvalidSessionTimeframe, when)
+	}
 }
 
 // DiscoverSessions finds scheduled, public sessions near a location, ordered by distance

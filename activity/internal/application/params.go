@@ -215,7 +215,11 @@ type ListSessionsParams struct {
 	// AttendeeStatus restricts AttendeeID's RSVP statuses (e.g. "going",
 	// "promoted"); empty defaults to whichever statuses currently hold a
 	// spot. Ignored when AttendeeID is nil.
-	AttendeeStatus  []string
+	AttendeeStatus []string
+	// When restricts the list by whether the sessions have ended: "upcoming"
+	// (the default - not ended yet, running ones included, soonest first),
+	// "past" (ended, most recent first) or "all" (everything, soonest first).
+	When            string
 	Status          *string // "scheduled", "started", "canceled", "completed"
 	ActivityType    *string
 	DifficultyLevel *string
