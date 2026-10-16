@@ -27,20 +27,17 @@ func (s *service) HandleVerificationCodeGenerated(ctx context.Context, payload [
 	span.SetAttributes(
 		attribute.String("event.id", event.EventID.String()),
 		attribute.String("event.delivery_type", event.DeliveryType),
-		attribute.String("event.code", event.Code),
 		attribute.String("event.account_id", event.AccountID.String()),
 	)
 
 	switch event.DeliveryType {
 	case "email":
-		span.SetAttributes(attribute.String("event.email", event.Email))
 		err = s.sendVerificationCodeEmail(ctx, event.Email, event.Code)
 		if err != nil {
 			span.RecordError(err)
 			return fmt.Errorf("send verification code email: %w", err)
 		}
 	case "phone":
-		span.SetAttributes(attribute.String("event.phone", event.Phone))
 		err = s.sendVerificationCodeSMS(ctx, event.Phone, event.Code)
 		if err != nil {
 			span.RecordError(err)
@@ -77,7 +74,6 @@ func (s *service) HandleAccountVerified(ctx context.Context, payload []byte) err
 
 	switch event.DeliveryType {
 	case "email":
-		span.SetAttributes(attribute.String("event.email", event.Email))
 		err = s.sendWelcomeEmail(ctx, event.Email)
 		if err != nil {
 			span.RecordError(err)
@@ -115,14 +111,12 @@ func (s *service) HandlePasswordChanged(ctx context.Context, payload []byte) err
 
 	switch event.DeliveryType {
 	case "email":
-		span.SetAttributes(attribute.String("event.email", event.Email))
 		err = s.sendPasswordChangedEmail(ctx, event.Email)
 		if err != nil {
 			span.RecordError(err)
 			return fmt.Errorf("send password changed email: %w", err)
 		}
 	case "sms":
-		span.SetAttributes(attribute.String("event.phone", event.Phone))
 		err = s.sendPasswordChangedSMS(ctx, event.Phone)
 		if err != nil {
 			span.RecordError(err)
@@ -159,14 +153,12 @@ func (s *service) HandleAccountLocked(ctx context.Context, payload []byte) error
 
 	switch event.DeliveryType {
 	case "email":
-		span.SetAttributes(attribute.String("event.email", event.Email))
 		err = s.sendAccountLockedEmail(ctx, event.Email, event.Reason)
 		if err != nil {
 			span.RecordError(err)
 			return fmt.Errorf("send account locked email: %w", err)
 		}
 	case "sms":
-		span.SetAttributes(attribute.String("event.phone", event.Phone))
 		err = s.sendAccountLockedSMS(ctx, event.Phone, event.Reason)
 		if err != nil {
 			span.RecordError(err)

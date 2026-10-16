@@ -27,7 +27,7 @@ func NewDisabledSMSSender(log *logger.Logger) *DisabledSMSSender {
 }
 
 func (dsms *DisabledSMSSender) SendSMS(ctx context.Context, to, message string) error {
-	dsms.logger.Error(ctx, "sms send attempted while SMS sending is disabled", "to", to)
+	dsms.logger.Error(ctx, "sms send attempted while SMS sending is disabled")
 	return fmt.Errorf("sms sending is disabled: phone registration is not enabled and no SMS provider is configured")
 }
 

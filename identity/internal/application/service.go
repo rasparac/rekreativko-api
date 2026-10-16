@@ -211,8 +211,6 @@ func (s *Service) Register(ctx context.Context, req RegistrationParams) (uuid.UU
 
 	log := s.logger.WithValues(
 		"method", "Register",
-		"email", req.Email,
-		"phone_number", req.PhoneNumber,
 	)
 
 	span.AddEvent("registration started")
@@ -275,10 +273,6 @@ func (s *Service) Register(ctx context.Context, req RegistrationParams) (uuid.UU
 		if err != nil {
 			return fmt.Errorf("generate verification code: %w", err)
 		}
-
-		log = log.WithValues(
-			"code", code,
-		)
 
 		registrationMethod = "email"
 		codeType := domain.CodeTypeEmail
@@ -355,8 +349,6 @@ func (s *Service) Login(ctx context.Context, req LoginParams) (*domain.RefreshTo
 
 	log := s.logger.WithValues(
 		"method", "Login",
-		"email", req.Email,
-		"phone_number", req.PhoneNumber,
 	)
 
 	loginMethod := "email"
@@ -530,7 +522,6 @@ func (s *Service) VerifyAccount(ctx context.Context, req VerifyAccountParams) (u
 
 	log := s.logger.WithValues(
 		"method", "VerifyAccount",
-		"code", req.Code,
 	)
 
 	var accountID uuid.UUID
@@ -737,10 +728,6 @@ func (s *Service) ResendVerificationCode(ctx context.Context, req ResendVerifica
 		if err != nil {
 			return fmt.Errorf("generate verification code: %w", err)
 		}
-
-		log = log.WithValues(
-			"code", code,
-		)
 
 		codeType := domain.CodeTypeEmail
 		if !account.HasEmail() {
