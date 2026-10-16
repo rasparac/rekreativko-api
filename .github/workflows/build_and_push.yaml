@@ -1,4 +1,4 @@
-name: Build & Push Image
+name: Build & Deploy to Dev
 
 on:
   push:
@@ -16,6 +16,8 @@ on:
           - account-profile
           - outbox-publisher
           - gateway
+          - notifications
+          - location
           - activity
           - activity-cron
       version:
@@ -56,6 +58,10 @@ jobs:
             cmd_path: cron
           - service: outbox-publisher
             cmd_path: worker
+          - service: notifications
+            cmd_path: api
+          - service: location
+            cmd_path: api
     steps:
       # The matrix can't be filtered at job level, so every later step checks this gate:
       # a manual run builds only the chosen service
@@ -112,63 +118,10 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
           yq --version
 
-      - name: Bump image tag in rekreativko-infra
+      # Every merge to main goes to dev; other environments only get an image through release.yaml
+      - name: Deploy to dev
         if: steps.gate.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ secrets.INFRA_REPO_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          declare -A DEPLOY_PATH=(
-            [identity]="k8s/base/identity/deployment.yaml"
-            [account-profile]="k8s/base/account-profile/deployment.yaml"
-            [gateway]="k8s/base/gateway/deployment.yaml"
-            [outbox-publisher]="k8s/base/outbox-publisher/deployment.yaml"
-            [activity]="k8s/base/activity/deployment.yaml"
-            [activity-cron]="k8s/base/activity/cronjob.yaml"
-          )
-
-          SVC="${{ matrix.service }}"
-          FILE="${DEPLOY_PATH[$SVC]}"
-          IMAGE="${{ env.IMAGE_PREFIX }}/${SVC}:${{ env.VERSION }}"
-
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/rasparac/rekreativko-infra.git" infra-repo
-          cd infra-repo
-          git config user.name "rekreativko-ci"
-          git config user.email "ci@rekreativko.local"
-
-          # activity-cron is a CronJob (image path is nested under jobTemplate); everything else is a Deployment
-          if [ "$SVC" = "activity-cron" ]; then
-            IMAGE_PATH=".spec.jobTemplate.spec.template.spec.containers[0].image"
-          else
-            IMAGE_PATH=".spec.template.spec.containers[0].image"
-          fi
-
-          PUSHED=false
-          for i in 1 2 3 4 5; do
-            yq -i "${IMAGE_PATH} = \"${IMAGE}\"" "$FILE"
-            git add "$FILE"
-
-            if git diff --cached --quiet; then
-              echo "image already up to date, nothing to commit"
-              PUSHED=true
-              break
-            fi
-
-            git commit -m "chore(${SVC}): bump image to ${{ env.VERSION }}"
-
-            if git push origin HEAD:main; then
-              PUSHED=true
-              break
-            fi
-
-            echo "push rejected (attempt $i), rebasing onto latest main and retrying..."
-            git fetch origin main
-            git reset --hard origin/main
-            sleep $((RANDOM % 5 + 1))
-          done
-
-          if [ "$PUSHED" != "true" ]; then
-            echo "::error::failed to push image bump for ${SVC} after 5 attempts"
-            exit 1
-          fi
+          SKIP_IF_MISSING: "true"
+        run: .github/scripts/bump-infra-image.sh dev "${{ matrix.service }}" "${{ env.VERSION }}"

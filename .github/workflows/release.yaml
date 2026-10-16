@@ -1,0 +1,88 @@
+name: Release
+
+# Opens a rekreativko-infra PR that points an environment at an image build_and_push.yaml already
+# built - nothing is rebuilt, so what runs there is exactly what ran in dev. Merging the PR is the
+# release (ArgoCD syncs infra main); the PR lists the commits it brings in. Also how dev is rolled
+# back to an older tag.
+run-name: Release ${{ inputs.service }} ${{ inputs.tag }} to ${{ inputs.environment }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to release to"
+        required: true
+        type: choice
+        options:
+          - dev
+      service:
+        description: "Service to release"
+        required: true
+        type: choice
+        options:
+          - identity
+          - account-profile
+          - outbox-publisher
+          - gateway
+          - notifications
+          - location
+          - activity
+          - activity-cron
+      tag:
+        description: "Image tag to release (e.g. 2026.10.15-3d69f5b)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+# One release per environment at a time
+concurrency:
+  group: release-${{ inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_PREFIX: ghcr.io/rasparac
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history so the release PR can list the commits between the running tag and this one
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Fails on a typo'd or never-built tag before anything in infra changes
+      - name: Check the image exists
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ inputs.service }}:${{ inputs.tag }}
+        run: |
+          if ! docker buildx imagetools inspect "$IMAGE" > /dev/null; then
+            echo "::error::${IMAGE} not found in ghcr"
+            exit 1
+          fi
+
+      # Pinned so a runner image change (or a new yq release) can't break the bump step
+      - name: Install yq
+        run: |
+          sudo wget -q https://github.com/mikefarah/yq/releases/download/v4.54.1/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Open release PR
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_REPO_TOKEN }}
+          MODE: pr
+          ENVIRONMENT: ${{ inputs.environment }}
+          SERVICE: ${{ inputs.service }}
+          TAG: ${{ inputs.tag }}
+        run: .github/scripts/bump-infra-image.sh "$ENVIRONMENT" "$SERVICE" "$TAG"
