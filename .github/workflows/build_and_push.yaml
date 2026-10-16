@@ -47,12 +47,15 @@ jobs:
         include:
           - service: identity
             cmd_path: api
+            migrations: true
           - service: account-profile
             cmd_path: api
+            migrations: true
           - service: gateway
             cmd_path: api
           - service: activity
             cmd_path: api
+            migrations: true
           - service: activity-cron
             service_name: activity
             cmd_path: cron
@@ -60,8 +63,10 @@ jobs:
             cmd_path: worker
           - service: notifications
             cmd_path: api
+            migrations: true
           - service: location
             cmd_path: api
+            migrations: true
     steps:
       # The matrix can't be filtered at job level, so every later step checks this gate:
       # a manual run builds only the chosen service
@@ -74,8 +79,11 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # Full history so the dev deploy can tell whether migrations changed since the running tag
       - uses: actions/checkout@v7
         if: steps.gate.outputs.run == 'true'
+        with:
+          fetch-depth: 0
 
       - name: Set version
         if: steps.gate.outputs.run == 'true'
@@ -109,6 +117,18 @@ jobs:
           tags: |
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ env.VERSION }}
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
+
+      # Migrations ship as their own image (same tag) and are run by hand: rekreativko-infra's task migrate
+      - name: Build and push migrations image
+        if: steps.gate.outputs.run == 'true' && matrix.migrations
+        uses: docker/build-push-action@v7
+        with:
+          context: ./${{ matrix.service }}/internal/infrastructure/persistence/migrations
+          file: ./build/migrations.Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}-migrations:${{ env.VERSION }}
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}-migrations:latest
 
       # Pinned so a runner image change (or a new yq release) can't break the bump step
       - name: Install yq

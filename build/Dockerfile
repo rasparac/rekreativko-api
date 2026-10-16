@@ -1,8 +1,4 @@
 ARG GO_VERSION=1.26-alpine
-# migrate CLI shipped in every image so the k8s migrate Job can run with the service's own image
-ARG MIGRATE_VERSION=v4.19.1
-
-FROM migrate/migrate:${MIGRATE_VERSION} AS migrate
 
 # ---- build stage ----
 FROM golang:${GO_VERSION} AS builder
@@ -33,20 +29,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o service \
     ./${SERVICE}/cmd/${CMD_PATH}/main.go
 
-# The service's SQL migrations, if it has any (gateway and outbox-publisher don't)
-RUN mkdir -p /out/migrations && \
-    if [ -d ./${SERVICE}/internal/infrastructure/persistence/migrations ]; then \
-      cp ./${SERVICE}/internal/infrastructure/persistence/migrations/*.sql /out/migrations/; \
-    fi
-
 # ---- runtime stage ----
 FROM gcr.io/distroless/base-debian12
 
 WORKDIR /app
 
 COPY --from=builder /app/service /app/service
-COPY --from=builder /out/migrations /migrations
-COPY --from=migrate /usr/local/bin/migrate /usr/local/bin/migrate
 
 EXPOSE 8080
 

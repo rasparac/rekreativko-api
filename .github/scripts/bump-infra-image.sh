@@ -12,6 +12,9 @@
 #                         the commits being released
 #        SKIP_IF_MISSING  "true" to exit 0 when the environment has no overlay for the service
 #                         (a service that is built before it is deployed anywhere)
+#
+# Migrations are never run here (they're run by hand: rekreativko-infra's task migrate). When the
+# new tag brings migration changes, the dev deploy warns in the run and the release PR says so.
 set -euo pipefail
 
 ENV="$1"
@@ -63,8 +66,21 @@ tag_commit() {
   fi
 }
 
+# The service's migration files that differ between two commits. Empty for images without a schema
+# of their own (activity-cron uses activity's, whose deploy reports it)
+MIGRATIONS_DIR="${SVC}/internal/infrastructure/persistence/migrations"
+changed_migrations() {
+  if [ -d "${API_DIR}/${MIGRATIONS_DIR}" ]; then
+    git -C "$API_DIR" diff --name-only "$1" "$2" -- "$MIGRATIONS_DIR"
+  fi
+}
+
+CURRENT=$(IMAGE_NAME="$IMAGE_NAME" yq '.images[] | select(.name == strenv(IMAGE_NAME)) | .newTag' "$FILE")
+FROM=$(tag_commit "$CURRENT")
+TO=$(tag_commit "$TAG")
+MIGRATE_CMD="task migrate -- ${ENV} ${SVC} ${TAG}"
+
 if [ "$MODE" = "pr" ]; then
-  CURRENT=$(IMAGE_NAME="$IMAGE_NAME" yq '.images[] | select(.name == strenv(IMAGE_NAME)) | .newTag' "$FILE")
   set_tag
   if git diff --cached --quiet; then
     echo "::notice::${SVC} already runs ${TAG} in ${ENV}, nothing to release"
@@ -83,8 +99,6 @@ if [ "$MODE" = "pr" ]; then
   git push -q origin "$BRANCH"
 
   # The code the release brings in (or, on a rollback, takes out), limited to what the image is built from
-  FROM=$(tag_commit "$CURRENT")
-  TO=$(tag_commit "$TAG")
   SRC_PATHS=("${OVERLAY}/" shared/ go.mod go.sum build/Dockerfile)
   BODY=$(mktemp)
   {
@@ -105,8 +119,25 @@ if [ "$MODE" = "pr" ]; then
       echo "${LOG:-_No changes to ${OVERLAY}/, shared/ or the build - the image is a rebuild of the same code._}"
       echo
       echo "Full diff: https://github.com/rasparac/rekreativko-api/compare/${FROM}...${TO}"
+      MIGRATIONS=$(changed_migrations "$FROM" "$TO")
+      if [ -n "$MIGRATIONS" ]; then
+        echo
+        echo "### ⚠️ Migrations"
+        echo
+        if git -C "$API_DIR" merge-base --is-ancestor "$TO" "$FROM"; then
+          echo "The rolled-back code predates these migrations. Nothing runs \`down\`, so the database keeps the newer schema - make sure the old code works with it."
+        else
+          echo "This release changes migrations. **Run them before merging**, in rekreativko-infra: \`${MIGRATE_CMD}\`"
+        fi
+        echo
+        echo "$MIGRATIONS" | sed 's/^/- /'
+      fi
     else
       echo "_Can't list commits: \`${CURRENT}\` or \`${TAG}\` doesn't name a commit in rekreativko-api._"
+      if [ -d "${API_DIR}/${MIGRATIONS_DIR}" ]; then
+        echo
+        echo "_Can't tell whether migrations changed either - if they did, run them before merging: \`${MIGRATE_CMD}\`_"
+      fi
     fi
     echo
     echo "Opened by the [Release workflow](${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-rasparac/rekreativko-api}/actions/runs/${GITHUB_RUN_ID:-}) for ${GITHUB_ACTOR:-unknown}."
@@ -135,6 +166,12 @@ for i in 1 2 3 4 5; do
   if git push -q origin HEAD:main; then
     echo "${ENV}: ${SVC} -> ${TAG}"
     PUSHED=true
+    if [ -n "$FROM" ] && [ -n "$TO" ]; then
+      MIGRATIONS=$(changed_migrations "$FROM" "$TO")
+      if [ -n "$MIGRATIONS" ]; then
+        echo "::warning title=${SVC} migrations::${ENV} now runs code with migrations changed since ${CURRENT} ($(echo "$MIGRATIONS" | xargs -n1 basename | paste -sd, -)). Run them in rekreativko-infra: ${MIGRATE_CMD}"
+      fi
+    fi
     break
   fi
 
