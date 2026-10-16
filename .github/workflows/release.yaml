@@ -4,7 +4,7 @@ name: Release
 # built - nothing is rebuilt, so what runs there is exactly what ran in dev. Merging the PR is the
 # release (ArgoCD syncs infra main); the PR lists the commits it brings in. Also how dev is rolled
 # back to an older tag.
-run-name: Release ${{ inputs.service }} ${{ inputs.tag || '(tag dev runs)' }} to ${{ inputs.environment }}
+run-name: Release ${{ inputs.service }} ${{ inputs.tag || '(same image as dev)' }} to ${{ inputs.environment }}
 
 on:
   workflow_dispatch:
@@ -30,7 +30,7 @@ on:
           - activity-cron
       # Input defaults can't be computed, so an empty tag means "what dev runs now" - resolved below
       tag:
-        description: "Image tag to release (e.g. 2026.10.15-3d69f5b) - leave empty for the tag dev runs now"
+        description: "Image tag to release, e.g. 2026.10.15-3d69f5b. Leave empty to release the same image dev is running now."
         required: false
         type: string
 
