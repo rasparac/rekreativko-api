@@ -4,7 +4,7 @@ name: Release
 # built - nothing is rebuilt, so what runs there is exactly what ran in dev. Merging the PR is the
 # release (ArgoCD syncs infra main); the PR lists the commits it brings in. Also how dev is rolled
 # back to an older tag.
-run-name: Release ${{ inputs.service }} ${{ inputs.tag }} to ${{ inputs.environment }}
+run-name: Release ${{ inputs.service }} ${{ inputs.tag || '(tag dev runs)' }} to ${{ inputs.environment }}
 
 on:
   workflow_dispatch:
@@ -28,9 +28,10 @@ on:
           - location
           - activity
           - activity-cron
+      # Input defaults can't be computed, so an empty tag means "what dev runs now" - resolved below
       tag:
-        description: "Image tag to release (e.g. 2026.10.15-3d69f5b)"
-        required: true
+        description: "Image tag to release (e.g. 2026.10.15-3d69f5b) - leave empty for the tag dev runs now"
+        required: false
         type: string
 
 permissions:
@@ -62,15 +63,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Fails on a typo'd or never-built tag before anything in infra changes
-      - name: Check the image exists
-        env:
-          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ inputs.service }}:${{ inputs.tag }}
-        run: |
-          if ! docker buildx imagetools inspect "$IMAGE" > /dev/null; then
-            echo "::error::${IMAGE} not found in ghcr"
-            exit 1
-          fi
-
       # Pinned so a runner image change (or a new yq release) can't break the bump step
       - name: Install yq
         run: |
@@ -78,11 +70,45 @@ jobs:
           sudo chmod +x /usr/local/bin/yq
           yq --version
 
+      - name: Resolve tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_REPO_TOKEN }}
+          SERVICE: ${{ inputs.service }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          TAG="$INPUT_TAG"
+          if [ -z "$TAG" ]; then
+            # activity-cron is set in the activity overlay
+            OVERLAY="$SERVICE"
+            if [ "$SERVICE" = "activity-cron" ]; then
+              OVERLAY="activity"
+            fi
+            TAG=$(gh api "repos/rasparac/rekreativko-infra/contents/k8s/overlays/dev/${OVERLAY}/kustomization.yaml" --jq .content \
+              | base64 -d \
+              | IMAGE_NAME="${IMAGE_PREFIX}/${SERVICE}" yq '.images[] | select(.name == strenv(IMAGE_NAME)) | .newTag')
+            if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+              echo "::error::no tag given and ${SERVICE} isn't deployed to dev to take one from"
+              exit 1
+            fi
+            echo "::notice::no tag given, releasing the one dev runs: ${TAG}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Check the image exists
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ inputs.service }}:${{ steps.tag.outputs.tag }}
+        run: |
+          if ! docker buildx imagetools inspect "$IMAGE" > /dev/null; then
+            echo "::error::${IMAGE} not found in ghcr"
+            exit 1
+          fi
+
       - name: Open release PR
         env:
           GH_TOKEN: ${{ secrets.INFRA_REPO_TOKEN }}
           MODE: pr
           ENVIRONMENT: ${{ inputs.environment }}
           SERVICE: ${{ inputs.service }}
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: .github/scripts/bump-infra-image.sh "$ENVIRONMENT" "$SERVICE" "$TAG"
