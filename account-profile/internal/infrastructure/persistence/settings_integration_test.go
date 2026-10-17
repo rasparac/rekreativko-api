@@ -25,7 +25,6 @@ func TestAccountSettingsService_UpdateSettings(t *testing.T) {
 	svc := application.NewAccountSettingsService(
 		persistence.NewAccountProfileSettingsManager(txManager),
 		txManager,
-		domainevent.NewDomainEventManager(txManager, logger),
 		logger,
 		testMetrics(),
 	)

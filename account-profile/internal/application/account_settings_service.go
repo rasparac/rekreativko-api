@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/domain"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/metrics"
-	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
 	"github.com/rasparac/rekreativko-api/shared/telemetry"
@@ -29,14 +28,12 @@ type (
 		txManager              *postgres.TransactionManager
 		tracer                 trace.Tracer
 		metrics                *metrics.Metrics
-		eventWriter            domainevent.EventWriter
 	}
 )
 
 func NewAccountSettingsService(
 	accountSettingsManager accountSettingsReaderWriter,
 	txManager *postgres.TransactionManager,
-	eventWriter domainevent.EventWriter,
 	logger *logger.Logger,
 	metrics *metrics.Metrics,
 ) *accountSettingsService {
@@ -46,7 +43,6 @@ func NewAccountSettingsService(
 		logger:                 logger.WithName("account_settings.service"),
 		tracer:                 telemetry.Tracer(telemetry.TracerAccountSettingsService),
 		metrics:                metrics,
-		eventWriter:            eventWriter,
 	}
 }
 

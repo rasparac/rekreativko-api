@@ -33,7 +33,7 @@ Free-form key/value store (`GET`/`PUT /my/settings`), namespaced dotted keys (`n
 
 **Consumed**: exactly one — `identity.account.verified` → creates a blank `AccountProfile` row and a default `AccountProfileSettings` row (11 seeded keys) in one transaction. This is the only place a profile gets created; there's no manual "create profile" endpoint.
 
-**Published** (to `account_profile.event_outbox`): `account_profile.created/deleted/anonymized`, `.location.changed`, `.profile_picture.changed`, `.activity_interest.added/removed/level.changed`, `.account_settings_bulk_updated`. Several other defined event types are dead — see below.
+**Published** (to `account_profile.event_outbox`): `account_profile.created/deleted/anonymized`, `.location.changed`, `.profile_picture.changed`, `.activity_interest.added/removed/level.changed`. Several other defined event types are dead — see below. Settings changes publish nothing: no service consumes them, and the planned consumers (`notification.email.enabled`, stored language) need events carrying the new value, which they add when they are built.
 
 ## Configuration & schema
 
@@ -56,7 +56,7 @@ This service had the most drift from its original design doc of anything documen
 
 - The entire **statistics** feature: `AccountStatistics` domain type + `profile_statistics` table exist, but nothing persists, reads, or updates them — no event handler populates them from activity-domain events despite that being the evident intent.
 - `AccountProfileSettings.CreatedAt()` returns `updatedAt` by mistake — the real `created_at` is never observable through the domain API (though stored correctly in the DB).
-- `ResetToDefault()` and its event (`account_settings_reset`) — no endpoint calls it.
+- `ResetToDefault()` and `AccountProfileSettings.UpdateSetting()` — no endpoint calls them.
 - `AccountProfileNicknameChangedEvent` — defined, but `SetNickname()` never actually emits it.
 - `EventAccountProfilePictureChanged` and `EventProfilePictureChanged` are two separately-named constants for the identical event-type string — only one is used; having both is just confusing.
 - Optimistic locking isn't actually exposed to clients: `PUT /my/settings` accepts no `version` field, so there's no way for a caller to detect "someone else changed this concurrently" the way the original design intended — the internal version check only guards against two in-flight requests racing each other server-side.

@@ -25,7 +25,6 @@ func TestAccountProfileSettings_UpdateSettings_ReportsWhetherAnythingChanged(t *
 
 	assert.False(t, settings.UpdateSettings(same))
 	assert.Equal(t, 1, settings.Version(), "nothing changed: the version must stay put")
-	assert.Empty(t, settings.Events())
 
 	assert.False(t, settings.UpdateSettings(map[string]*Setting{}))
 	assert.Equal(t, 1, settings.Version())
@@ -34,10 +33,8 @@ func TestAccountProfileSettings_UpdateSettings_ReportsWhetherAnythingChanged(t *
 
 	assert.True(t, settings.UpdateSettings(different))
 	assert.Equal(t, 2, settings.Version())
-	assert.Len(t, settings.Events(), 1)
 
 	// The same values again are now the current ones.
 	assert.False(t, settings.UpdateSettings(different))
 	assert.Equal(t, 2, settings.Version())
-	assert.Len(t, settings.Events(), 1)
 }

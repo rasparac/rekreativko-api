@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/rasparac/rekreativko-api/shared/domainevent"
 )
 
 type AccountProfileSettings struct {
@@ -14,7 +13,6 @@ type AccountProfileSettings struct {
 
 	createdAt time.Time
 	updatedAt time.Time
-	events    []domainevent.Event
 }
 
 func NewAccountProfileSettings(accountID uuid.UUID) (*AccountProfileSettings, error) {
@@ -73,56 +71,36 @@ func (ups *AccountProfileSettings) UpdateSetting(setting *Setting) {
 	ups.settings[setting.Key()] = setting
 	ups.version++
 	ups.updatedAt = time.Now()
-
-	ups.addEvent(NewAccountSettingUpdatedEvent(
-		ups.accountID,
-		setting.Key(),
-		setting.Value(),
-	))
 }
 
 // UpdateSettings applies the given values to the settings it already has and
 // reports whether anything actually changed. When nothing did, the aggregate is
-// left untouched - same version, no event - so the caller must not save it: the
+// left untouched - same version - so the caller must not save it: the
 // repository's optimistic-lock UPDATE expects a bumped version and would
 // otherwise fail with a version conflict.
 func (ups *AccountProfileSettings) UpdateSettings(settings map[string]*Setting) (changed bool) {
-	changedSettings := make(map[string]*Setting, 0)
 	for key, setting := range settings {
 		if existingSetting, exists := ups.settings[key]; exists {
 			if existingSetting.Value() == setting.Value() {
 				continue
 			}
-			changedSettings[key] = setting
+			changed = true
 			ups.settings[key] = setting
 		}
 	}
 
-	if len(changedSettings) == 0 {
+	if !changed {
 		return false
 	}
 
 	ups.version++
 	ups.updatedAt = time.Now()
 
-	ups.addEvent(NewAccountSettingsBulkUpdatedEvent(
-		ups.accountID,
-		changedSettings,
-	))
-
 	return true
 }
 
 func (ups *AccountProfileSettings) Version() int {
 	return ups.version
-}
-
-func (ups *AccountProfileSettings) Events() []domainevent.Event {
-	return ups.events
-}
-
-func (ups *AccountProfileSettings) ClearEvents() {
-	ups.events = make([]domainevent.Event, 0)
 }
 
 func (ups *AccountProfileSettings) ResetToDefault() error {
@@ -134,19 +112,11 @@ func (ups *AccountProfileSettings) ResetToDefault() error {
 	ups.version++
 	ups.touch()
 
-	ups.addEvent(NewAccountSettingsResetEvent(
-		ups.accountID,
-	))
-
 	return nil
 }
 
 func (ups *AccountProfileSettings) touch() {
 	ups.updatedAt = time.Now().UTC()
-}
-
-func (ups *AccountProfileSettings) addEvent(event domainevent.Event) {
-	ups.events = append(ups.events, event)
 }
 
 func GetDefaultSettings() (map[string]*Setting, error) {

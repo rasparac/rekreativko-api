@@ -110,7 +110,6 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	accountSettingsService := application.NewAccountSettingsService(
 		accountSettingsRepo,
 		txManager,
-		domainEventMgr,
 		log,
 		appMetrics,
 	)
