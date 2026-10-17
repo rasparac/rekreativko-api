@@ -73,7 +73,7 @@ Codes are unique **globally**, not per-account — the code alone identifies whi
 
 → `200` `{ "access_token", "refresh_token", "expires_in", "token_type": "Bearer" }`.
 
-**Failed-login lockout**: 5 consecutive failures → locked 15 minutes; 10 → locked ~365 days (effectively permanent, needs manual intervention). A successful login resets the counter.
+**Failed-login lockout** (`failedLoginLockTiers` in `domain/account.go`): the 5th consecutive failed login locks the account for 15 minutes, the 10th for 1 hour, the 15th and every one after for 24 hours - the longest a lock gets; nothing locks an account for good. When a lock runs out the count is kept, so the next wrong password locks again for the tier of the new count; only a successful login clears it. The count stops at 15. Every wrong password is saved in its own committed transaction (`Service.recordFailedLogin`, account row locked `FOR UPDATE`, so parallel attempts all count and a request that races an existing lock does not escalate it); the login itself still fails with `identity_invalid_credentials`. A locked account gets `403 identity_account_locked` ("Account is locked until <time>") - even with the right password. There is no lockout email/SMS and no way to unlock early yet.
 
 ### Refresh token — `POST /refresh-token`
 
@@ -127,7 +127,7 @@ Published to `identity.event_outbox`, relayed to NATS by the outbox publisher. S
 | `identity.account.verified` | verify-account success | `notifications` (sends welcome / unblocks feature access) |
 | `identity.account.activated` | verify-account success (paired with `verified`) | — |
 | `identity.account.suspended` | `Account.Suspend` | — |
-| `identity.account.locked` | failed-login threshold hit | — (no consumer; but the lock is never persisted today, `rekreativko-api-hsa`) |
+| `identity.account.locked` | failed-login threshold hit | — (no consumer; no lockout email/SMS) |
 | `identity.account.unlocked` | `Account.Unlock` | — |
 | `identity.account.login.succeeded` | successful login | — |
 | `identity.account.login.failed` | failed login attempt | — |

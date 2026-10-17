@@ -184,22 +184,49 @@ func (a *Account) Lock(duration time.Duration, reason string) error {
 	return nil
 }
 
+// failedLoginLockTiers is the lockout back-off: from atLeast consecutive failed
+// logins on, the account is locked for lockFor. Each wrong password after a lock
+// has expired locks it again, for as long as the tier of the new count says, so
+// guessing gets slower the more is guessed - but no lock is ever longer than a
+// day, and a successful login clears the count. (A permanent lock would let
+// anyone who knows an email or phone number lock that person out for good.)
+var failedLoginLockTiers = []struct {
+	atLeast int
+	lockFor time.Duration
+}{
+	{atLeast: 5, lockFor: 15 * time.Minute},
+	{atLeast: 10, lockFor: time.Hour},
+	{atLeast: 15, lockFor: 24 * time.Hour},
+}
+
+// maxCountedFailedLogins is where the count stops: the longest tier starts
+// there, so counting further changes nothing (and the event reports it as int8).
+const maxCountedFailedLogins = 15
+
+// failedLoginLockDuration returns how long to lock an account after its
+// attempts-th consecutive failed login; zero means not at all yet.
+func failedLoginLockDuration(attempts int) time.Duration {
+	var lockFor time.Duration
+	for _, tier := range failedLoginLockTiers {
+		if attempts >= tier.atLeast {
+			lockFor = tier.lockFor
+		}
+	}
+	return lockFor
+}
+
 func (a *Account) RecordFailedLoginAttempt(ipAddress string) error {
-	a.failedLoginAttempts++
+	if a.failedLoginAttempts < maxCountedFailedLogins {
+		a.failedLoginAttempts++
+	}
 	a.touch()
 
 	a.addEvent(
 		NewLoginFailedEvent(a, ipAddress, "invalid credentials", int8(a.failedLoginAttempts)),
 	)
 
-	if a.failedLoginAttempts >= 5 {
-		lockDuration := 15 * time.Minute
-
-		if a.failedLoginAttempts >= 10 {
-			lockDuration = 365 * 24 * time.Hour
-		}
-
-		return a.Lock(lockDuration, "too many failed login attempts")
+	if lockFor := failedLoginLockDuration(a.failedLoginAttempts); lockFor > 0 {
+		return a.Lock(lockFor, "too many failed login attempts")
 	}
 
 	return nil
@@ -256,8 +283,8 @@ func (a *Account) ChangePassword(newPassword *Password) error {
 func (a *Account) CanLogin() error {
 	if a.IsLocked() {
 		return NewAccountLockedError(
+			"account is temporarily locked",
 			a.lockedUntil.Format(time.RFC3339),
-			"account is temporarly locked",
 		)
 	}
 

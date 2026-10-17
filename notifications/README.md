@@ -81,7 +81,7 @@ Each subscription creates its own durable JetStream consumer (`<service>+<subjec
 | `identity.account.verified` | send welcome email — email accounts only; a phone account sends nothing |
 | `identity.account.password.changed` | send alert — **dead today**, identity has no route that changes passwords yet |
 
-Each handler picks the channel from the event's `code_type` (`notification.DeliveryTypeEmail` / `DeliveryTypePhone`). Anything else is acked but dropped loudly: an error log (`dropping event with unknown delivery type`), `NotificationSendFailures{channel="unknown", reason="unknown_delivery_type"}`, and an error on the span - retrying can't fix a bad payload. There is deliberately **no lockout email/SMS** (`identity.account.locked` is not subscribed): lockout itself never takes effect today (`rekreativko-api-hsa`), and whether to alert users about it is a separate decision.
+Each handler picks the channel from the event's `code_type` (`notification.DeliveryTypeEmail` / `DeliveryTypePhone`). Anything else is acked but dropped loudly: an error log (`dropping event with unknown delivery type`), `NotificationSendFailures{channel="unknown", reason="unknown_delivery_type"}`, and an error on the span - retrying can't fix a bad payload. There is deliberately **no lockout email/SMS** (`identity.account.locked` is not subscribed); whether to alert users about a lockout is a separate decision.
 
 **Activity-domain** (create an in-app `Notification` row via `CreateNotification`):
 

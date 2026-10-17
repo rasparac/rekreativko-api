@@ -27,6 +27,12 @@ type (
 		PhoneNumber *string
 		UUID        *uuid.UUID
 		Email       *string
+
+		// ForUpdate locks the row until the surrounding transaction ends, so
+		// concurrent read-modify-write cycles on one account (counting failed
+		// logins) queue up instead of overwriting each other. Only meaningful
+		// inside a transaction.
+		ForUpdate bool
 	}
 
 	AccountManager struct {
@@ -118,9 +124,14 @@ func (am *AccountManager) GetBy(ctx context.Context, filter AccountFilter) (*dom
 	}
 
 	baseQuery = fmt.Sprintf(baseQuery, strings.Join(filters, " AND "))
+	if filter.ForUpdate {
+		baseQuery += " FOR UPDATE"
+	}
 
+	// The transaction's querier when there is one, so a ForUpdate lock is taken
+	// in (and held by) the caller's transaction, not on a separate connection.
 	var model accoutModel
-	err = am.db.QueryRow(ctx, baseQuery, args...).Scan(
+	err = am.tx.Querier(ctx).QueryRow(ctx, baseQuery, args...).Scan(
 		&model.ID,
 		&model.Email,
 		&model.PhoneNumber,

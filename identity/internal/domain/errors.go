@@ -85,6 +85,16 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		)
 	}
 
+	// CanLogin returns a *AccountLockedError (the lock's end is in it), which the
+	// sentinel switch below can't match.
+	if lockedErr, ok := errors.AsType[*AccountLockedError](err); ok {
+		return domainerror.Forbidden(
+			"identity_account_locked",
+			"Account is locked until "+lockedErr.LockedUntil,
+			err,
+		)
+	}
+
 	switch err {
 	case ErrAccountNotFound:
 		return domainerror.NotFound(

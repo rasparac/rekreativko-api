@@ -386,52 +386,60 @@ func (s *Service) Login(ctx context.Context, req LoginParams) (*domain.RefreshTo
 		return nil, mapToAppErr(err)
 	}
 
+	// The password is checked outside any transaction: bcrypt is slow, and a
+	// failed attempt must be saved even though the login itself fails.
+	err = s.passwordHasher.ComparePasswordAndHash(req.Password, account.Password().String())
+	if err != nil {
+		span.RecordError(err)
+		s.metrics.LoginFailuresTotal.WithLabelValues("invalid_credentials").Inc()
+
+		log.Error(ctx, "failed to compare password", "error", err)
+
+		// Saved in its own, committed transaction. Recording it inside the
+		// one that returns the error would roll the counter, the login.failed
+		// event and the lockout back, and an account could never be locked.
+		if recordErr := s.recordFailedLogin(ctx, account.ID()); recordErr != nil {
+			span.RecordError(recordErr)
+			log.Error(ctx, "failed to record failed login", "error", recordErr)
+			return nil, mapToAppErr(recordErr)
+		}
+
+		return nil, mapToAppErr(domain.ErrInvalidCredentials)
+	}
+
+	accountID := account.ID()
+
 	var token *domain.RefreshToken
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		err = s.passwordHasher.ComparePasswordAndHash(req.Password, account.Password().String())
+		// Reloaded under a row lock: the copy above is stale if a concurrent
+		// request has since failed (or locked) this account.
+		locked, err := s.accountRepository.GetBy(tCtx, persistence.AccountFilter{UUID: &accountID, ForUpdate: true})
 		if err != nil {
-			span.RecordError(err)
-			s.metrics.LoginFailuresTotal.WithLabelValues("invalid_credentials").Inc()
-
-			s.logger.Error(ctx, "failed to compare password", "error", err)
-
-			account.RecordFailedLoginAttempt(api.IpAddressFromContext(ctx))
-
-			err = s.accountRepository.UpdateAccount(tCtx, account)
-			if err != nil {
-				span.RecordError(err)
-				return fmt.Errorf("update account, failed login: %w", err)
-			}
-
-			span.AddEvent("insert events, failed login")
-
-			err = s.domainWriter.InsertEvents(tCtx, schema, account.Events())
-			if err != nil {
-				span.RecordError(err)
-				return fmt.Errorf("insert events: %w", err)
-			}
-
-			return domain.ErrInvalidCredentials
+			return fmt.Errorf("lock account: %w", err)
 		}
 
-		token, err = s.generateToken(tCtx, account.ID())
-		if err != nil {
-			return fmt.Errorf("generate token: %w", err)
+		if err := locked.CanLogin(); err != nil {
+			return err
 		}
 
-		account.RecordSuccessfulLogin(api.IpAddressFromContext(ctx))
+		locked.RecordSuccessfulLogin(api.IpAddressFromContext(ctx))
 
-		err = s.accountRepository.UpdateAccount(tCtx, account)
+		err = s.accountRepository.UpdateAccount(tCtx, locked)
 		if err != nil {
 			return fmt.Errorf("update account, successful login: %w", err)
+		}
+
+		token, err = s.generateToken(tCtx, locked.ID())
+		if err != nil {
+			return fmt.Errorf("generate token: %w", err)
 		}
 
 		allEvents := make(
 			[]domainevent.Event,
 			0,
-			len(account.Events())+(len(token.Events())),
+			len(locked.Events())+(len(token.Events())),
 		)
-		allEvents = append(allEvents, account.Events()...)
+		allEvents = append(allEvents, locked.Events()...)
 		allEvents = append(allEvents, token.Events()...)
 
 		err = s.domainWriter.InsertEvents(tCtx, schema, allEvents)
@@ -439,7 +447,7 @@ func (s *Service) Login(ctx context.Context, req LoginParams) (*domain.RefreshTo
 			return fmt.Errorf("insert events: %w", err)
 		}
 
-		account.ClearEvents()
+		locked.ClearEvents()
 		token.ClearEvents()
 
 		return nil
@@ -457,6 +465,40 @@ func (s *Service) Login(ctx context.Context, req LoginParams) (*domain.RefreshTo
 	log.Debug(ctx, "login successful")
 
 	return token, nil
+}
+
+// recordFailedLogin counts a wrong password against the account and locks it at
+// the threshold (see Account.RecordFailedLoginAttempt), committing both and the
+// login.failed / account.locked events. The account row is locked for the
+// read-modify-write, so parallel wrong passwords all count.
+func (s *Service) recordFailedLogin(ctx context.Context, accountID uuid.UUID) error {
+	return s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		account, err := s.accountRepository.GetBy(tCtx, persistence.AccountFilter{UUID: &accountID, ForUpdate: true})
+		if err != nil {
+			return fmt.Errorf("lock account: %w", err)
+		}
+
+		// A request that raced this one has already locked the account; more
+		// failures must not push it towards the longer lock.
+		if account.IsLocked() {
+			return nil
+		}
+
+		if err := account.RecordFailedLoginAttempt(api.IpAddressFromContext(ctx)); err != nil {
+			return fmt.Errorf("record failed login: %w", err)
+		}
+
+		if err := s.accountRepository.UpdateAccount(tCtx, account); err != nil {
+			return fmt.Errorf("update account, failed login: %w", err)
+		}
+
+		if err := s.domainWriter.InsertEvents(tCtx, schema, account.Events()); err != nil {
+			return fmt.Errorf("insert events: %w", err)
+		}
+		account.ClearEvents()
+
+		return nil
+	})
 }
 
 func (s *Service) Logout(ctx context.Context, req LogoutParams) (*EmptyResponse, error) {
