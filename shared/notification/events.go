@@ -2,6 +2,13 @@ package notification
 
 import "github.com/google/uuid"
 
+// The delivery types identity puts in an event's code_type: the channel the
+// account registered with (identity's CodeType).
+const (
+	DeliveryTypeEmail = "email"
+	DeliveryTypePhone = "phone"
+)
+
 type (
 	VerificationCodeGeneratedEvent struct {
 		EventID      uuid.UUID `json:"event_id"`
@@ -18,15 +25,6 @@ type (
 		Email        string    `json:"email"`
 		Phone        string    `json:"phone"`
 		DeliveryType string    `json:"code_type"`
-	}
-
-	AccountLockedEvent struct {
-		EventID      uuid.UUID `json:"event_id"`
-		DeliveryType string    `json:"code_type"`
-		AccountID    uuid.UUID `json:"account_id"`
-		Email        string    `json:"email"`
-		Phone        string    `json:"phone"`
-		Reason       string    `json:"reason"`
 	}
 
 	PasswordChangedEvent struct {

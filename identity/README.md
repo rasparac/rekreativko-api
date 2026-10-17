@@ -127,7 +127,7 @@ Published to `identity.event_outbox`, relayed to NATS by the outbox publisher. S
 | `identity.account.verified` | verify-account success | `notifications` (sends welcome / unblocks feature access) |
 | `identity.account.activated` | verify-account success (paired with `verified`) | — |
 | `identity.account.suspended` | `Account.Suspend` | — |
-| `identity.account.locked` | failed-login threshold hit | `notifications` (alerts the user) |
+| `identity.account.locked` | failed-login threshold hit | — (no consumer; but the lock is never persisted today, `rekreativko-api-hsa`) |
 | `identity.account.unlocked` | `Account.Unlock` | — |
 | `identity.account.login.succeeded` | successful login | — |
 | `identity.account.login.failed` | failed login attempt | — |

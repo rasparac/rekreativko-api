@@ -1,0 +1,122 @@
+package notification
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"testing"
+
+	"github.com/google/uuid"
+	dto "github.com/prometheus/client_model/go"
+	"github.com/rasparac/rekreativko-api/shared/logger"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+)
+
+// recordingSender remembers where each message went.
+type recordingSender struct {
+	emails []string
+	sms    []string
+}
+
+func (r *recordingSender) SendEmail(_ context.Context, to, _, _ string) error {
+	r.emails = append(r.emails, to)
+	return nil
+}
+
+func (r *recordingSender) SendSMS(_ context.Context, to, _ string) error {
+	r.sms = append(r.sms, to)
+	return nil
+}
+
+func counterValue(t *testing.T, c interface{ Write(*dto.Metric) error }) float64 {
+	t.Helper()
+
+	var m dto.Metric
+	require.NoError(t, c.Write(&m))
+	return m.GetCounter().GetValue()
+}
+
+// Each identity-event handler routes by the event's code_type: email goes to
+// the email sender, phone to the SMS sender (or, for the welcome message, to
+// nobody - there is no welcome SMS). Anything else is dropped loudly, not
+// silently: an error log and a send-failure metric.
+func TestEventHandlers_RouteByDeliveryType(t *testing.T) {
+	type outcome struct {
+		emailsTo, smsTo []string
+		dropped         bool
+	}
+	nobody := outcome{}
+	emailed := outcome{emailsTo: []string{secretEmail}}
+	texted := outcome{smsTo: []string{secretPhone}}
+	dropped := outcome{dropped: true}
+
+	for name, tc := range map[string]struct {
+		notificationType string
+		handle           func(*service) func(context.Context, []byte) error
+		want             map[string]outcome // by code_type
+	}{
+		"verification code": {
+			notificationType: "verification",
+			handle:           func(s *service) func(context.Context, []byte) error { return s.HandleVerificationCodeGenerated },
+			want:             map[string]outcome{"email": emailed, "phone": texted, "sms": dropped, "": dropped},
+		},
+		"account verified": {
+			notificationType: "welcome_message",
+			handle:           func(s *service) func(context.Context, []byte) error { return s.HandleAccountVerified },
+			want:             map[string]outcome{"email": emailed, "phone": nobody, "sms": dropped, "": dropped},
+		},
+		"password changed": {
+			notificationType: "password_changed",
+			handle:           func(s *service) func(context.Context, []byte) error { return s.HandlePasswordChanged },
+			want:             map[string]outcome{"email": emailed, "phone": texted, "sms": dropped, "": dropped},
+		},
+	} {
+		for deliveryType, want := range tc.want {
+			t.Run(name+"/code_type="+deliveryType, func(t *testing.T) {
+				var (
+					sender  recordingSender
+					logs    bytes.Buffer
+					metrics = newFakeMetrics()
+					svc     = &service{
+						SMSSender:   &sender,
+						EmailSender: &sender,
+						tracer:      sdktrace.NewTracerProvider().Tracer("test"),
+						metrics:     metrics,
+						logger:      logger.NewWithWriter("error", "json", &logs),
+					}
+				)
+
+				payload, err := json.Marshal(map[string]any{
+					"event_id":   uuid.New(),
+					"account_id": uuid.New(),
+					"code_type":  deliveryType,
+					"code":       secretCode,
+					"email":      secretEmail,
+					"phone":      secretPhone,
+				})
+				require.NoError(t, err)
+
+				// Even a dropped event is acked: a retry can't fix a bad payload.
+				require.NoError(t, tc.handle(svc)(context.Background(), payload))
+
+				assert.Equal(t, want.emailsTo, sender.emails)
+				assert.Equal(t, want.smsTo, sender.sms)
+
+				unknown := counterValue(t, metrics.failures.WithLabelValues(tc.notificationType, "unknown", "unknown_delivery_type"))
+				if want.dropped {
+					assert.Equal(t, 1.0, unknown, "the drop is counted")
+					assert.Contains(t, logs.String(), "dropping event with unknown delivery type")
+					// The log names the type, never the contact details or the code.
+					assert.NotContains(t, logs.String(), secretEmail)
+					assert.NotContains(t, logs.String(), secretPhone)
+					assert.NotContains(t, logs.String(), secretCode)
+				} else {
+					assert.Zero(t, unknown)
+					assert.Empty(t, logs.String())
+				}
+			})
+		}
+	}
+}

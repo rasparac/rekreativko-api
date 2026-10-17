@@ -12,7 +12,6 @@ import (
 // from gateway, which had no business owning delivery-channel concerns.
 type identityNotifier interface {
 	HandleAccountVerified(ctx context.Context, payload []byte) error
-	HandleAccountLocked(ctx context.Context, payload []byte) error
 	HandlePasswordChanged(ctx context.Context, payload []byte) error
 	HandleVerificationCodeGenerated(ctx context.Context, payload []byte) error
 }
@@ -102,7 +101,6 @@ func (s *Subscriber) Subscribe(ctx context.Context) error {
 		handler events.MessageHandler
 	}{
 		{"identity.account.verified", s.identityNotifier.HandleAccountVerified},
-		{"identity.account.locked", s.identityNotifier.HandleAccountLocked},
 		{"identity.account.password.changed", s.identityNotifier.HandlePasswordChanged},
 		{"identity.verification_code.created", s.identityNotifier.HandleVerificationCodeGenerated},
 		{"activity.member.join_requested", s.memberJoinRequestedHandler.Handle},

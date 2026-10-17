@@ -218,7 +218,7 @@ sequenceDiagram
 |---|---|---|---|
 | User registers | `identity.verification_code.created` | notifications | sends the verification code via email/SMS |
 | User verifies their account | `identity.account.verified` | account-profile, notifications | account-profile creates a blank profile + default settings; notifications sends confirmation |
-| Too many failed logins | `identity.account.locked` | notifications | sends a lockout alert |
+| Too many failed logins | `identity.account.locked` | — | nobody consumes it yet (no lockout email/SMS; and lockout itself is broken, `rekreativko-api-hsa`) |
 | User requests to join a private group | `activity.member.join_requested` | notifications | notifies the group's managers |
 | User RSVPs "going" on an approval-gated session | `activity.session.attendee.join_requested` | notifications | notifies the session's managers |
 | A join request is approved/rejected | `activity.member.approved/rejected`, `activity.session.attendee.join_approved/rejected` | notifications | notifies the requester |

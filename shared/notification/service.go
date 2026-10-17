@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/telemetry"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -17,6 +18,7 @@ type (
 
 		tracer  trace.Tracer
 		metrics Metrics
+		logger  *logger.Logger
 	}
 
 	Metrics interface {
@@ -30,12 +32,14 @@ func NewService(
 	smsSender SMSSender,
 	emailSender EmailSender,
 	metrics Metrics,
+	log *logger.Logger,
 ) *service {
 	return &service{
 		SMSSender:   smsSender,
 		EmailSender: emailSender,
 
 		metrics: metrics,
+		logger:  log.WithName("notification.service"),
 		tracer:  telemetry.Tracer("notification.service"),
 	}
 }
@@ -161,50 +165,5 @@ func (s *service) sendPasswordChangedSMS(ctx context.Context, to string) error {
 
 	duration := time.Since(start).Milliseconds()
 	s.metrics.NotificationSendDuration().WithLabelValues("password_changed", "sms").Observe(float64(duration))
-	return err
-}
-
-func (s *service) sendAccountLockedEmail(ctx context.Context, to, reason string) error {
-	var (
-		subject = "Rekreativko account locked"
-		body    = fmt.Sprintf(`
-		Hello,
-		
-		Your Rekreativko account has been locked for the following reason: %s
-		
-		Best regards,
-		Rekreativko
-		`, reason)
-	)
-
-	s.metrics.NotificationSendTotal().WithLabelValues("account_locked", "email").Inc()
-
-	start := time.Now()
-
-	err := s.EmailSender.SendEmail(ctx, to, subject, body)
-	if err != nil {
-		s.metrics.NotificationSendFailures().WithLabelValues("account_locked", "email", "send_failed").Inc()
-		return fmt.Errorf("send password changed email: %w", err)
-	}
-
-	duration := time.Since(start).Milliseconds()
-	s.metrics.NotificationSendDuration().WithLabelValues("account_locked", "email").Observe(float64(duration))
-	return err
-}
-
-func (s *service) sendAccountLockedSMS(ctx context.Context, to, reason string) error {
-	message := fmt.Sprintf("Your Rekreativko account has been locked for the following reason: %s", reason)
-	s.metrics.NotificationSendTotal().WithLabelValues("account_locked", "sms").Inc()
-
-	start := time.Now()
-
-	err := s.SMSSender.SendSMS(ctx, to, message)
-	if err != nil {
-		s.metrics.NotificationSendFailures().WithLabelValues("account_locked", "sms", "send_failed").Inc()
-		return fmt.Errorf("send account locked sms: %w", err)
-	}
-
-	duration := time.Since(start).Milliseconds()
-	s.metrics.NotificationSendDuration().WithLabelValues("account_locked", "sms").Observe(float64(duration))
 	return err
 }

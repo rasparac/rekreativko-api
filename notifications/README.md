@@ -3,7 +3,7 @@
 Two responsibilities bundled into one service (name is a bit narrow for what it does — see [Known issues](#known-issues)):
 
 1. **In-app notification feed** — list/mark-read for notifications generated from activity-domain events (member joins, invites, attendee approvals/removals).
-2. **Identity account-lifecycle delivery** — sends the actual email/SMS for verification codes, account-locked alerts, and password-changed alerts. Moved here from `gateway`, since gateway had no business owning delivery-channel concerns.
+2. **Identity account-lifecycle delivery** — sends the actual email/SMS for verification codes, the welcome email, and password-changed alerts. Moved here from `gateway`, since gateway had no business owning delivery-channel concerns.
 
 ## How it works today
 
@@ -79,10 +79,9 @@ Each subscription creates its own durable JetStream consumer (`<service>+<subjec
 |---|---|
 | `identity.verification_code.created` | send the actual code (email, or SMS for `phone`) |
 | `identity.account.verified` | send welcome email — email accounts only; a phone account sends nothing |
-| `identity.account.locked` | send lockout alert — **never delivered today**: identity's event has no contact fields or delivery type, so the handler drops it (`rekreativko-api-yn0`) |
 | `identity.account.password.changed` | send alert — **dead today**, identity has no route that changes passwords yet |
 
-Each handler picks the channel from the event's `code_type` (`email` / `phone`); an unknown or missing value is dropped without an error (see [Known issues](#known-issues)).
+Each handler picks the channel from the event's `code_type` (`notification.DeliveryTypeEmail` / `DeliveryTypePhone`). Anything else is acked but dropped loudly: an error log (`dropping event with unknown delivery type`), `NotificationSendFailures{channel="unknown", reason="unknown_delivery_type"}`, and an error on the span - retrying can't fix a bad payload. There is deliberately **no lockout email/SMS** (`identity.account.locked` is not subscribed): lockout itself never takes effect today (`rekreativko-api-hsa`), and whether to alert users about it is a separate decision.
 
 **Activity-domain** (create an in-app `Notification` row via `CreateNotification`):
 
@@ -190,9 +189,6 @@ Three indexes: `(recipient_account_id, created_at DESC, id DESC)` for the feed (
 - **This service cannot start outside dev mode, regardless of `PHONE_REGISTRATION_ENABLED`.** The sender-construction `if`/`else if` never assigns `emailSender` in the non-dev branch at all — only `smsSender` gets a fallback there. So in any non-dev environment, `emailSender` stays `nil` and startup fails on "no email sender configured," whether or not phone registration is on. This is intentional (no real SMTP sender exists yet) but means **a real `EmailSender` implementation is a hard prerequisite for any non-dev deployment**, not just an eventual nice-to-have.
 - When both senders end up `nil` (non-dev + `PHONE_REGISTRATION_ENABLED=true`), only the email error is ever surfaced (checked first) — the SMS error is equally true but never shown, which could confuse debugging.
 - **Dev senders log the code, email and phone.** `InMemoryEmailSender`/`InMemorySMSSender` (dev mode only) log recipient and message body, which is the only way to read a verification code locally. Nothing else logs or traces a code, email or phone: the handlers' spans carry only `event.id`, `event.account_id` and `event.delivery_type` (`TestEventHandlers_SpansCarryNoCodeEmailOrPhone`), and identity's log lines no longer carry the code, email or phone (`rekreativko-api-7r1`).
-- **Account-locked alerts are never sent** (`rekreativko-api-yn0`): identity's `AccountLockedEvent` carries only `Reason` and `LockedUntil` — no `code_type`, email, phone or account id — so `HandleAccountLocked` always takes the unknown-delivery-type branch.
-- **SMS alerts can't be sent** (`rekreativko-api-yn0`): the locked and password-changed handlers match the delivery type `"sms"`, but identity's values are `"email"` and `"phone"`.
-- The 4 identity-event handlers (`HandleAccountVerified` et al., in `shared/notification/event_handlers.go`) silently no-op on an unrecognized `DeliveryType` instead of erroring — which is why the two bugs above went unnoticed, and a future channel (e.g. push) would fail the same way.
 - `identity.account.password.changed` is subscribed, but nothing publishes it — identity has no route wired to `Account.ChangePassword()` yet (see `identity/README.md`).
 - `notification.email.enabled` (account-profile setting) is ignored (`rekreativko-api-22a`).
 - Cosmetic: `Notification`'s private field is misspelled `recipientAccontID` (missing a `u`) — the exported getter `RecipientAccountID()` is correct, so this doesn't affect callers.

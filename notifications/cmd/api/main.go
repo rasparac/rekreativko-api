@@ -180,7 +180,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	if smsSender == nil {
 		return fmt.Errorf("no SMS sender configured - required outside dev mode when phone registration is enabled, and no real SMS provider is implemented yet")
 	}
-	identityNotifier := notification.NewService(smsSender, emailSender, appMetrics)
+	identityNotifier := notification.NewService(smsSender, emailSender, appMetrics, log)
 
 	subscriber := notificationsEvents.NewSubscriber(
 		messageBroker,

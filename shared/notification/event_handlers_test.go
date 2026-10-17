@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -21,19 +22,23 @@ const (
 	secretPhone = "+385911234567"
 )
 
-type fakeMetrics struct{}
-
-func (fakeMetrics) NotificationSendTotal() *prometheus.CounterVec {
-	return prometheus.NewCounterVec(prometheus.CounterOpts{Name: "t"}, []string{"type", "channel"})
+// fakeMetrics keeps its vectors so a test can read what a handler counted.
+type fakeMetrics struct {
+	total, failures *prometheus.CounterVec
+	duration        *prometheus.HistogramVec
 }
 
-func (fakeMetrics) NotificationSendFailures() *prometheus.CounterVec {
-	return prometheus.NewCounterVec(prometheus.CounterOpts{Name: "f"}, []string{"type", "channel", "reason"})
+func newFakeMetrics() *fakeMetrics {
+	return &fakeMetrics{
+		total:    prometheus.NewCounterVec(prometheus.CounterOpts{Name: "t"}, []string{"type", "channel"}),
+		failures: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "f"}, []string{"type", "channel", "reason"}),
+		duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "d"}, []string{"type", "channel"}),
+	}
 }
 
-func (fakeMetrics) NotificationSendDuration() *prometheus.HistogramVec {
-	return prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "d"}, []string{"type", "channel"})
-}
+func (m *fakeMetrics) NotificationSendTotal() *prometheus.CounterVec      { return m.total }
+func (m *fakeMetrics) NotificationSendFailures() *prometheus.CounterVec   { return m.failures }
+func (m *fakeMetrics) NotificationSendDuration() *prometheus.HistogramVec { return m.duration }
 
 type okSender struct{}
 
@@ -47,12 +52,11 @@ func TestEventHandlers_SpansCarryNoCodeEmailOrPhone(t *testing.T) {
 		"verification code": func(s *service) func(context.Context, []byte) error { return s.HandleVerificationCodeGenerated },
 		"account verified":  func(s *service) func(context.Context, []byte) error { return s.HandleAccountVerified },
 		"password changed":  func(s *service) func(context.Context, []byte) error { return s.HandlePasswordChanged },
-		"account locked":    func(s *service) func(context.Context, []byte) error { return s.HandleAccountLocked },
 	}
 
-	// "sms" is what password-changed/locked handlers match, "phone" what the
-	// verification handlers match - send every spelling so each branch runs.
-	for _, deliveryType := range []string{"email", "phone", "sms"} {
+	// "sms" is no delivery type (identity sends "email" or "phone"), so it takes
+	// the unknown-type branch: that path must not leak either.
+	for _, deliveryType := range []string{DeliveryTypeEmail, DeliveryTypePhone, "sms"} {
 		for name, handler := range handlers {
 			t.Run(fmt.Sprintf("%s/%s", name, deliveryType), func(t *testing.T) {
 				recorder := tracetest.NewSpanRecorder()
@@ -61,7 +65,8 @@ func TestEventHandlers_SpansCarryNoCodeEmailOrPhone(t *testing.T) {
 					SMSSender:   okSender{},
 					EmailSender: okSender{},
 					tracer:      provider.Tracer("test"),
-					metrics:     fakeMetrics{},
+					metrics:     newFakeMetrics(),
+					logger:      logger.New("error", "json"),
 				}
 
 				eventID, accountID := uuid.New(), uuid.New()
