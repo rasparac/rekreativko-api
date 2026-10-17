@@ -170,3 +170,22 @@ func TestRouter_TokenExpiryHeaderIsTheGatewaysOwn(t *testing.T) {
 		})
 	}
 }
+
+// Anonymous callers of the endpoints that guess credentials or cost an SMS get
+// the tight limits; every other path falls to the default class.
+func TestRouter_RateClassOf(t *testing.T) {
+	r := NewRouter(nil)
+
+	for path, want := range map[string]RateClass{
+		"/identity/api/v1/login":                    RateClassLogin,
+		"/identity/api/v1/register":                 RateClassSensitive,
+		"/identity/api/v1/verify-account":           RateClassSensitive,
+		"/identity/api/v1/resend-verification-code": RateClassSensitive,
+		"/identity/api/v1/refresh-token":            RateClassDefault,
+		"/identity/api/v1/me":                       RateClassDefault,
+		"/activity/api/v1/groups":                   RateClassDefault,
+		"/nowhere":                                  RateClassDefault,
+	} {
+		assert.Equal(t, want, r.RateClassOf(path), path)
+	}
+}

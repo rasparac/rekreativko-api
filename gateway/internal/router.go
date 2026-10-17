@@ -37,8 +37,25 @@ type (
 	AuthRule struct {
 		PathPattern string
 		RequireAuth bool
-		compiled    *regexp.Regexp
+		// RateClass is the limit for anonymous callers of this path; the
+		// zero value is RateClassDefault. Logged-in callers are limited per
+		// account whatever the path.
+		RateClass RateClass
+		compiled  *regexp.Regexp
 	}
+
+	// RateClass names a limit for anonymous callers of a public endpoint. The
+	// gateway's main maps each class to its limiter.
+	RateClass int
+)
+
+const (
+	RateClassDefault RateClass = iota
+	// RateClassLogin is credential guessing: tight, per client address.
+	RateClassLogin
+	// RateClassSensitive is an endpoint that creates an account or sends an
+	// SMS or email (register, verify, resend): tight, as each call costs money.
+	RateClassSensitive
 )
 
 func NewRouter(proxy *ReverseProxy) *Router {
@@ -59,7 +76,17 @@ func (r *Router) loadRoutes() {
 		StripPrefix: true,
 		AuthRule: []AuthRule{
 			{
-				PathPattern: "^/identity/api/v1/(login|register|verify-account|resend-verification-code|refresh-token)$",
+				PathPattern: "^/identity/api/v1/login$",
+				RequireAuth: false,
+				RateClass:   RateClassLogin,
+			},
+			{
+				PathPattern: "^/identity/api/v1/(register|verify-account|resend-verification-code)$",
+				RequireAuth: false,
+				RateClass:   RateClassSensitive,
+			},
+			{
+				PathPattern: "^/identity/api/v1/refresh-token$",
 				RequireAuth: false,
 			},
 			{
@@ -168,6 +195,15 @@ func (r *Router) PublicPaths() []string {
 		}
 	}
 	return paths
+}
+
+// RateClassOf returns the limit class of the auth rule path falls under.
+func (r *Router) RateClassOf(path string) RateClass {
+	route := r.matchRoute(path)
+	if route == nil {
+		return RateClassDefault
+	}
+	return r.matchAuthRule(route, path).RateClass
 }
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {

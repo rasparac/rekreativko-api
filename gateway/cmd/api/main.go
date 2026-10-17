@@ -115,6 +115,13 @@ func main() {
 
 	router := gateway.NewRouter(proxy)
 
+	limiters, err := newRateLimiters(cfg.RateLimiter)
+	if err != nil {
+		log.Error(ctx, "invalid rate limiter configuration", "error", err)
+		os.Exit(1)
+	}
+	defer limiters.stop()
+
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -156,12 +163,17 @@ func main() {
 		middleware.Tracing,
 		middleware.SpanEnrichment,
 		middleware.CORS(corsConfig),
-		middleware.NewRateLimiter(cfg.RateLimiter.RequestsPerMinute).RateLimiter,
+		// Per client address before authentication, so a flood of requests that
+		// auth rejects is limited too; per account after it.
+		limiters.ip.ByClientIP,
 		middleware.NewAuthMiddleware(
 			tokenGen,
 			log,
 			publicPaths,
 		).RequireAuth,
+		middleware.LimitCaller(limiters.account, func(path string) *middleware.RateLimiter {
+			return limiters.anonymousFor(router.RateClassOf(path))
+		}),
 		middleware.AddGatewayKey(cfg.GatewayServiceConfig.GatewayKeys),
 	)
 
@@ -229,4 +241,59 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, `{"service": "rekreativko-api", "status": "running", "version": 1.0.0}`)
+}
+
+// rateLimiters are the gateway's token buckets, see config.RateLimiterConfig.
+type rateLimiters struct {
+	ip        *middleware.RateLimiter
+	account   *middleware.RateLimiter
+	anonymous *middleware.RateLimiter
+	login     *middleware.RateLimiter
+	sensitive *middleware.RateLimiter
+}
+
+func newRateLimiters(cfg config.RateLimiterConfig) (*rateLimiters, error) {
+	var (
+		l   rateLimiters
+		err error
+	)
+
+	for _, c := range []struct {
+		name  string
+		limit middleware.RateLimit
+		into  **middleware.RateLimiter
+	}{
+		{"ip", middleware.RateLimit{Burst: cfg.IPBurst, PerMinute: cfg.IPPerMinute}, &l.ip},
+		{"account", middleware.RateLimit{Burst: cfg.AccountBurst, PerMinute: cfg.AccountPerMinute}, &l.account},
+		{"anonymous", middleware.RateLimit{Burst: cfg.AnonymousBurst, PerMinute: cfg.AnonymousPerMinute}, &l.anonymous},
+		{"login", middleware.RateLimit{Burst: cfg.LoginBurst, PerMinute: cfg.LoginPerMinute}, &l.login},
+		{"sensitive", middleware.RateLimit{Burst: cfg.SensitiveBurst, PerMinute: cfg.SensitivePerMinute}, &l.sensitive},
+	} {
+		*c.into, err = middleware.NewRateLimiter(c.limit)
+		if err != nil {
+			l.stop()
+			return nil, fmt.Errorf("%s limit: %w", c.name, err)
+		}
+	}
+
+	return &l, nil
+}
+
+func (l *rateLimiters) anonymousFor(class gateway.RateClass) *middleware.RateLimiter {
+	switch class {
+	case gateway.RateClassLogin:
+		return l.login
+	case gateway.RateClassSensitive:
+		return l.sensitive
+	default:
+		return l.anonymous
+	}
+}
+
+func (l *rateLimiters) stop() {
+	for _, rl := range []*middleware.RateLimiter{l.ip, l.account, l.anonymous, l.login, l.sensitive} {
+		if rl != nil {
+			rl.Stop()
+		}
+	}
 }

@@ -1,106 +1,176 @@
 package middleware
 
 import (
+	"errors"
+	"math"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/shared/api"
+	"github.com/rasparac/rekreativko-api/shared/authcontext"
 )
 
 type (
-	clientRequests struct {
-		count     int
-		resetTime time.Time
+	// RateLimit is a token bucket: a caller can send Burst requests at once,
+	// and gets PerMinute of them back each minute. A burst is smoothed out
+	// instead of locking the caller out until a window ends.
+	RateLimit struct {
+		Burst     int
+		PerMinute int
 	}
 
+	bucket struct {
+		tokens float64
+		last   time.Time
+	}
+
+	// RateLimiter holds one bucket per key (an account or a client address).
+	// In memory and per process: a second instance counts on its own.
 	RateLimiter struct {
-		requests map[string]*clientRequests
-		mu       sync.RWMutex
-		limit    int
-		window   time.Duration
-		stop     chan struct{}
+		mu      sync.Mutex
+		buckets map[string]*bucket
+		burst   float64
+		perSec  float64
+		now     func() time.Time
+		stop    chan struct{}
 	}
 )
 
-func NewRateLimiter(requestsPerMinute int) *RateLimiter {
+var errInvalidRateLimit = errors.New("rate limit burst and per-minute rate must be positive")
+
+func NewRateLimiter(limit RateLimit) (*RateLimiter, error) {
+	if limit.Burst < 1 || limit.PerMinute < 1 {
+		return nil, errInvalidRateLimit
+	}
+
 	rl := &RateLimiter{
-		requests: make(map[string]*clientRequests),
-		limit:    requestsPerMinute,
-		window:   time.Minute,
-		stop:     make(chan struct{}),
+		buckets: make(map[string]*bucket),
+		burst:   float64(limit.Burst),
+		perSec:  float64(limit.PerMinute) / 60,
+		now:     time.Now,
+		stop:    make(chan struct{}),
 	}
 
 	go rl.cleanup()
 
-	return rl
+	return rl, nil
 }
 
-func (rl *RateLimiter) RateLimiter(next http.Handler) http.Handler {
+// ByClientIP limits every request by the client address ClientInfo resolved
+// (the connection's own address if the context has none). It runs before
+// authentication, so it also covers requests auth rejects.
+func (rl *RateLimiter) ByClientIP(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// ClientInfo runs before the limiter and has resolved the client's address
-		// (trusted proxies only); the connection's own is the fallback.
-		clientIP := api.IpAddressFromContext(r.Context())
-		if clientIP == "" {
-			clientIP = peerHost(r)
-		}
-
-		if rl.allow(clientIP) {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		api.WriteError(
-			w,
-			http.StatusTooManyRequests,
-			"too_many_requests",
-			http.StatusText(http.StatusTooManyRequests),
-			nil,
-		)
-
+		rl.serve(w, r, next, clientAddress(r))
 	})
 }
 
-func (rl *RateLimiter) allow(clientIP string) bool {
+// LimitCaller limits a request after authentication: by account for a
+// logged-in caller, so users behind one address don't share a bucket, and
+// otherwise by client address with the limiter anonymous picks for the path
+// (login and the like get stricter ones).
+func LimitCaller(account *RateLimiter, anonymous func(path string) *RateLimiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if accountID := authcontext.GetAccountID(r.Context()); accountID != uuid.Nil {
+				account.serve(w, r, next, accountID.String())
+				return
+			}
+
+			anonymous(r.URL.Path).serve(w, r, next, clientAddress(r))
+		})
+	}
+}
+
+func (rl *RateLimiter) serve(w http.ResponseWriter, r *http.Request, next http.Handler, key string) {
+	allowed, retryAfter := rl.take(key)
+	if allowed {
+		next.ServeHTTP(w, r)
+		return
+	}
+
+	w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(retryAfter)))
+	// Nothing to do if the client has gone: the refusal is already decided.
+	_ = api.WriteError(
+		w,
+		http.StatusTooManyRequests,
+		"too_many_requests",
+		http.StatusText(http.StatusTooManyRequests),
+		nil,
+	)
+}
+
+// take spends a token from key's bucket. When there is none it returns how
+// long until there is one.
+func (rl *RateLimiter) take(key string) (bool, time.Duration) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	now := time.Now()
+	now := rl.now()
 
-	client, exists := rl.requests[clientIP]
-	if !exists || now.After(client.resetTime) {
-		rl.requests[clientIP] = &clientRequests{
-			count:     1,
-			resetTime: now.Add(rl.window),
-		}
-		return true
+	b, exists := rl.buckets[key]
+	if !exists {
+		b = &bucket{tokens: rl.burst, last: now}
+		rl.buckets[key] = b
 	}
 
-	if client.count >= rl.limit {
-		return false
+	b.tokens = math.Min(rl.burst, b.tokens+now.Sub(b.last).Seconds()*rl.perSec)
+	b.last = now
+
+	if b.tokens >= 1 {
+		b.tokens--
+		return true, 0
 	}
 
-	client.count++
-	return true
+	wait := time.Duration((1 - b.tokens) / rl.perSec * float64(time.Second))
+	return false, wait
 }
 
+// retryAfterSeconds rounds up, never to 0: "0" would invite an immediate retry
+// that is refused again.
+func retryAfterSeconds(wait time.Duration) int {
+	return max(1, int(math.Ceil(wait.Seconds())))
+}
+
+// clientAddress is the address ClientInfo resolved; the connection's own
+// address if it did not run.
+func clientAddress(r *http.Request) string {
+	if ip := api.IpAddressFromContext(r.Context()); ip != "" {
+		return ip
+	}
+	return peerHost(r)
+}
+
+// cleanup sweeps once a minute until Stop.
 func (rl *RateLimiter) cleanup() {
-	ticker := time.NewTicker(rl.window)
+	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			rl.mu.Lock()
-			now := time.Now()
-			for k, v := range rl.requests {
-				if now.After(v.resetTime) {
-					delete(rl.requests, k)
-				}
-			}
-			rl.mu.Unlock()
+			rl.sweep()
 		case <-rl.stop:
 			return
+		}
+	}
+}
+
+// sweep drops buckets that have been idle long enough to be full again, as a
+// missing bucket starts full.
+func (rl *RateLimiter) sweep() {
+	refill := time.Duration(rl.burst / rl.perSec * float64(time.Second))
+
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := rl.now()
+	for k, b := range rl.buckets {
+		if now.Sub(b.last) >= refill {
+			delete(rl.buckets, k)
 		}
 	}
 }

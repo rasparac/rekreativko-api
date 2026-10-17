@@ -127,9 +127,10 @@ func TestRateLimiter_KeysOnTheResolvedClientAddress(t *testing.T) {
 	resolver, err := NewClientIPResolver(nil)
 	require.NoError(t, err)
 
-	rl := NewRateLimiter(5)
+	rl, err := NewRateLimiter(RateLimit{Burst: 5, PerMinute: 5})
+	require.NoError(t, err)
 	defer rl.Stop()
-	handler := ClientInfoFrom(resolver)(rl.RateLimiter(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
+	handler := ClientInfoFrom(resolver)(rl.ByClientIP(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})))
 
 	send := func(remote string, headers map[string]string) int {
 		w := httptest.NewRecorder()

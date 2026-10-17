@@ -67,8 +67,27 @@ type (
 		TrustedProxyCIDRs []string `envconfig:"TRUSTED_PROXY_CIDRS"`
 	}
 
+	// RateLimiterConfig sets the gateway's token buckets: Burst requests at
+	// once, PerMinute refilled each minute.
 	RateLimiterConfig struct {
-		RequestsPerMinute int `envconfig:"REQUESTS_PER_MINUTE" default:"60"`
+		// IP is the backstop in front of authentication, per client address.
+		// Generous: many users can sit behind one address (mobile carriers).
+		IPBurst     int `envconfig:"RATE_LIMIT_IP_BURST" default:"600"`
+		IPPerMinute int `envconfig:"RATE_LIMIT_IP_PER_MINUTE" default:"600"`
+		// Account is the limit for a logged-in caller, per account.
+		AccountBurst     int `envconfig:"RATE_LIMIT_ACCOUNT_BURST" default:"120"`
+		AccountPerMinute int `envconfig:"RATE_LIMIT_ACCOUNT_PER_MINUTE" default:"90"`
+		// Anonymous is for public endpoints without a stricter class (refresh
+		// token), per client address.
+		AnonymousBurst     int `envconfig:"RATE_LIMIT_ANONYMOUS_BURST" default:"60"`
+		AnonymousPerMinute int `envconfig:"RATE_LIMIT_ANONYMOUS_PER_MINUTE" default:"60"`
+		// Login is for the login endpoint, per client address.
+		LoginBurst     int `envconfig:"RATE_LIMIT_LOGIN_BURST" default:"10"`
+		LoginPerMinute int `envconfig:"RATE_LIMIT_LOGIN_PER_MINUTE" default:"10"`
+		// Sensitive is for endpoints that send an SMS or email or create an
+		// account (register, verify, resend), per client address.
+		SensitiveBurst     int `envconfig:"RATE_LIMIT_SENSITIVE_BURST" default:"5"`
+		SensitivePerMinute int `envconfig:"RATE_LIMIT_SENSITIVE_PER_MINUTE" default:"5"`
 	}
 
 	PostgresConfig struct {

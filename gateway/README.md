@@ -51,7 +51,8 @@ Independent of user JWT auth: the gateway injects `X-Gateway-Key` (`AddGatewayKe
 
 ```
 Recover → RequestID → ClientInfo → Logging → Tracing → SpanEnrichment
-  → CORS → RateLimiter → RequireAuth → AddGatewayKey → [Metrics, if enabled] → Router
+  → CORS → RateLimiter (per IP) → RequireAuth → LimitCaller (per account) → AddGatewayKey
+  → [Metrics, if enabled] → Router
 ```
 
 `ClientInfo` must run before anything that logs (it puts IP/user-agent into context); `RequireAuth` must run before the router (it's what populates `accountID`); `AddGatewayKey` runs last so it applies to the actual outbound proxied request.
@@ -65,7 +66,7 @@ Recover → RequestID → ClientInfo → Logging → Tracing → SpanEnrichment
 | `GATEWAY_API_KEY` | The gateway's own key, used by `RequireMetricsToken` on `/metrics` |
 | `JWT_SECRET` | Must match `identity`'s — the gateway validates tokens `identity` issues |
 | `CORS_ALLOWED_ORIGINS` | Defaults to `*` in dev; `AllowCredentials` is hardcoded `false` (browser requires exact origins, not `*`, to use credentials — flip both together if this ever needs real cookie-based auth) |
-| `REQUESTS_PER_MINUTE` | Per-client-IP rate limit (in-memory, resets on restart — see [Known issues](#known-issues)) |
+| `RATE_LIMIT_<CLASS>_BURST`, `RATE_LIMIT_<CLASS>_PER_MINUTE` | Token buckets, classes `IP`, `ACCOUNT`, `ANONYMOUS`, `LOGIN`, `SENSITIVE`. See [Rate limiting](#rate-limiting) for the defaults. Replaces `REQUESTS_PER_MINUTE` |
 | `TRUSTED_PROXY_CIDRS` | Comma-separated CIDRs/addresses of the proxies in front of the gateway (ingress, load balancer). See [Client IP](#client-ip). Empty (the default, right for docker compose) means no forwarded header is believed |
 | `METRICS_ENABLED` | Gates `/metrics` registration |
 | `SERVICE_ENVIRONMENT=development` | Also enables `/swagger/*` (aggregates all 4 services' specs via `swagger-ui` container, separate from this one) |
@@ -81,7 +82,27 @@ One address per request, worked out once by `middleware.ClientInfoFrom(resolver)
 - `CF-Connecting-IP`, `True-Client-IP` and `Forwarded` are not believed at all.
 - An address that does not parse is never used as a key: the connection's address is.
 
-**Deploying behind an ingress / load balancer, set `TRUSTED_PROXY_CIDRS` to its address range** (the ingress controller's pod network in Kubernetes). Without it every client arrives as the proxy's own address and they all share one rate-limit bucket. Docker compose has no proxy, so leave it empty there - but note every browser on one machine is then one client (one bucket); per-account limiting is `rekreativko-api-wd8`.
+**Deploying behind an ingress / load balancer, set `TRUSTED_PROXY_CIDRS` to its address range** (the ingress controller's pod network in Kubernetes). Without it every client arrives as the proxy's own address and they all share one rate-limit bucket. Docker compose has no proxy, so leave it empty there - but note every browser on one machine is then one client, so the `IP` backstop and the anonymous limits are shared by all of them (logged-in users are limited per account, see [Rate limiting](#rate-limiting)).
+
+## Rate limiting
+
+Token buckets (`middleware.RateLimit`): a caller can send `Burst` requests at once and gets `PerMinute` of them back each minute, so a burst is smoothed instead of locking the caller out until a fixed window ends. A refused request gets `429 too_many_requests` with `Retry-After` (whole seconds until the next token, at least 1).
+
+Two places in the chain, three kinds of key:
+
+| Limiter | Where | Key | Default burst / per minute |
+|---|---|---|---|
+| `IP` | before `RequireAuth` | client address | 600 / 600 |
+| `ACCOUNT` | after `RequireAuth`, logged-in callers | account id | 120 / 90 |
+| `ANONYMOUS` | after `RequireAuth`, public paths without a stricter class (`refresh-token`) | client address | 60 / 60 |
+| `LOGIN` | `login` | client address | 10 / 10 |
+| `SENSITIVE` | `register`, `verify-account`, `resend-verification-code` (they create accounts or send an SMS/email) | client address | 5 / 5 |
+
+- `IP` is a backstop in front of authentication: requests that auth rejects (missing or bad token) still cost something, so they are counted. Keep it generous, as many users can share one address (mobile carriers, offices). A logged-in request is counted against both its address and its account.
+- Logged-in callers are limited per account, so users behind one address do not share a bucket. A request's class for anonymous callers is declared on the router's auth rule (`AuthRule.RateClass`), next to whether it is public.
+- Not counted: CORS preflight (answered before the limiter), `/health`, `/metrics`, `/swagger/`. An SSE stream (`/events`) costs one token when it connects, not one per event, so a reconnect loop is still limited.
+- Sizing (measured): a Home load is ~6 requests, a session page ~8, idle polling ~4/min, fallback polling 12-36/min per open screen.
+- A limit of 0 is refused at start-up.
 
 ## Reverse proxy behavior
 
@@ -93,5 +114,5 @@ One address per request, worked out once by `middleware.ClientInfoFrom(resolver)
 ## Known issues
 
 - **Dual auth-allowlist duplication** (see above) — a real design smell, not just a one-off bug. Worth consolidating into one source of truth so a future "make X public" change can't silently half-apply.
-- **Rate limiter is in-memory, per-instance.** Fine for a single gateway replica (today's setup); would under-count if the gateway is ever scaled horizontally, since each replica tracks its own counters.
+- **Rate limiter is in-memory, per-instance.** Each replica tracks its own buckets, so with N replicas (k8s runs 2) a caller can get up to N times the limit, and a restart resets them. Fine for these limits; if exact limits matter, back the buckets with Redis (already running).
 - **Root handler (`GET /`) returns malformed JSON**: `{"service": "rekreativko-api", "status": "running", "version": 1.0.0}` — `1.0.0` is an unquoted string in a JSON literal, which is invalid JSON (two decimal points). Cosmetic only (nothing parses this response), but confusing if you ever curl it expecting valid JSON.
