@@ -112,3 +112,18 @@ func TestQueryToProfilesFilter_RejectsABadAccountID(t *testing.T) {
 	_, err := QueryToProfilesFilter(parse(t, "account_id=not-a-uuid"))
 	assert.Error(t, err)
 }
+
+// A search is paged and a page is bounded: limit=0 is the default, not
+// everything, and a huge limit is cut.
+func TestQueryToProfilesFilter_SearchLimitIsBounded(t *testing.T) {
+	for raw, want := range map[string]int{
+		"city=Zagreb&limit=0":         20,
+		"city=Zagreb&limit=100":       100,
+		"city=Zagreb&limit=100000":    100,
+		"city=Zagreb&limit=100000000": 100,
+	} {
+		filter, err := QueryToProfilesFilter(parse(t, raw))
+		require.NoError(t, err, raw)
+		assert.Equal(t, want, filter.Limit, raw)
+	}
+}

@@ -492,7 +492,7 @@ func (h *Handler) GetMember(w http.ResponseWriter, r *http.Request) {
 //	@Param			groupId	path		string								true	"Activity Group ID"
 //	@Param			status	query		string								false	"Filter by status (pending, confirmed, rejected, left, removed)"
 //	@Param			role	query		string								false	"Filter by role (creator, admin, member)"
-//	@Param			limit	query		int									false	"Limit results"	default(20)
+//	@Param			limit	query		int									false	"Limit number of results (default 20, max 100; 0 means the default)"	default(20)
 //	@Param			page_token	query	string								false	"Token from the previous response's next_page_token, to fetch the next page"
 //	@Success		200		{object}	api.Response[api.Page[dtos.MemberResponse]]	"List of members"
 //	@Failure		400		{object}	api.Response[any]					"Invalid request"

@@ -176,7 +176,7 @@ func (h *accountPorfileHandler) GetProfileByID(
 //	@Param			sort_by			query		string		false	"Sort field (e.g. created_at, nickname)"
 //	@Param			sort_order		query		string		false	"Sort order (asc, desc)"
 //	@Param			country			query		string		false	"Filter by location country"
-//	@Param			limit			query		int			false	"Limit number of results (default 20); ignored when account_id or nickname is given"
+//	@Param			limit			query		int			false	"Limit number of results (default 20, max 100; 0 means the default); ignored when account_id or nickname is given"
 //	@Param			page_token		query		string		false	"Token from the previous response's next_page_token, to fetch the next page"
 //
 //	@Success		200				{object}	api.Response[api.Page[dtos.AccountProfileResponse]]

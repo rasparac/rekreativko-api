@@ -59,6 +59,42 @@ func TestParsePageParams(t *testing.T) {
 			defaultLimit: 20,
 			wantErr:      true,
 		},
+		{
+			name:         "limit 0 is the default, not unlimited",
+			query:        url.Values{"limit": {"0"}},
+			defaultLimit: 20,
+			wantLimit:    20,
+		},
+		{
+			name:         "the maximum itself is allowed",
+			query:        url.Values{"limit": {"100"}},
+			defaultLimit: 20,
+			wantLimit:    MaxPageLimit,
+		},
+		{
+			name:         "a limit past the maximum is cut to it",
+			query:        url.Values{"limit": {"101"}},
+			defaultLimit: 20,
+			wantLimit:    MaxPageLimit,
+		},
+		{
+			name:         "a huge limit is cut to the maximum",
+			query:        url.Values{"limit": {"100000000"}},
+			defaultLimit: 20,
+			wantLimit:    MaxPageLimit,
+		},
+		{
+			name:         "a limit too large for an int is rejected",
+			query:        url.Values{"limit": {"99999999999999999999"}},
+			defaultLimit: 20,
+			wantErr:      true,
+		},
+		{
+			name:         "a default past the maximum is cut as well",
+			query:        url.Values{},
+			defaultLimit: 500,
+			wantLimit:    MaxPageLimit,
+		},
 	}
 
 	for _, tt := range tests {

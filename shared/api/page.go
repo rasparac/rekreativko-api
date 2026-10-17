@@ -42,7 +42,15 @@ func NewList[TIn, TOut any](items []TIn, mapOne func(TIn) TOut) List[TOut] {
 	return List[TOut]{Items: responses}
 }
 
+// MaxPageLimit is the most items one page may hold, whatever limit a client asks for.
+const MaxPageLimit = 100
+
 // ParsePageParams parses the standard "limit"/"page_token" pagination query params.
+//
+// A limit past MaxPageLimit is cut to it, and 0 means "not given" (the
+// default): the repositories read a limit of 0 as "no LIMIT", so passing it
+// through would hand back a whole table. Negative or non-numeric limits are an
+// error. defaultLimit must be positive and at most MaxPageLimit.
 func ParsePageParams(q url.Values, defaultLimit int) (limit int, pageToken string, err error) {
 	limit = defaultLimit
 	if v := q.Get("limit"); v != "" {
@@ -50,7 +58,11 @@ func ParsePageParams(q url.Values, defaultLimit int) (limit int, pageToken strin
 		if convErr != nil || l < 0 {
 			return 0, "", fmt.Errorf("invalid limit")
 		}
-		limit = l
+		if l > 0 {
+			limit = l
+		}
 	}
+	limit = min(limit, MaxPageLimit)
+
 	return limit, q.Get("page_token"), nil
 }
