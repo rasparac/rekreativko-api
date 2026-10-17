@@ -22,7 +22,7 @@ type (
 		ActivateSessionTemplate(ctx context.Context, templateID uuid.UUID, requesterID uuid.UUID) error
 		DeactivateSessionTemplate(ctx context.Context, templateID uuid.UUID, requesterID uuid.UUID) error
 		DeleteSessionTemplate(ctx context.Context, templateID uuid.UUID, requesterID uuid.UUID) error
-		ListSessionTemplates(ctx context.Context, params application.ListSessionTemplatesParams) ([]*domain.SessionTemplate, string, error)
+		ListSessionTemplates(ctx context.Context, params application.ListSessionTemplatesParams) ([]*domain.SessionTemplate, error)
 	}
 
 	// activityGroupService defines the interface for activity group operations

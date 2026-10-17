@@ -9,7 +9,6 @@ import (
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
-	"github.com/rasparac/rekreativko-api/shared/api"
 )
 
 // CreateRequestToParams converts CreateSessionTemplateRequest to application params
@@ -181,9 +180,7 @@ func DomainToResponse(template *domain.SessionTemplate) *dtos.SessionTemplateRes
 
 // QueryToListParams converts URL query parameters to ListSessionTemplatesParams
 func QueryToListParams(query url.Values) (*application.ListSessionTemplatesParams, error) {
-	params := &application.ListSessionTemplatesParams{
-		Limit: 20, // default
-	}
+	params := &application.ListSessionTemplatesParams{}
 
 	// Activity group ID
 	if groupIDStr := query.Get("activity_group_id"); groupIDStr != "" {
@@ -216,13 +213,6 @@ func QueryToListParams(query url.Values) (*application.ListSessionTemplatesParam
 		}
 		params.IsRecurring = &isRecurring
 	}
-
-	limit, pageToken, err := api.ParsePageParams(query, params.Limit)
-	if err != nil {
-		return nil, err
-	}
-	params.Limit = limit
-	params.PageToken = pageToken
 
 	return params, nil
 }

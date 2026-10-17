@@ -109,16 +109,14 @@ func (h *Handler) GetSessionTemplate(w http.ResponseWriter, r *http.Request) {
 // ListSessionTemplates handles GET /api/v1/activity-groups/{groupId}/templates
 //
 //	@Summary		List session templates
-//	@Description	Lists all session templates for an activity group with optional filters
+//	@Description	Lists the session templates of an activity group with optional filters. Not paginated: the whole list is returned (at most 100), limit and page_token are ignored.
 //	@Tags			Session Templates
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
 //	@Param			groupId		path		string										true	"Activity Group ID"
 //	@Param			status		query		string										false	"Filter by status (active, inactive)"
 //	@Param			is_recurring	query		boolean										false	"Filter by recurring status"
-//	@Param			limit		query		int											false	"Limit number of results (default 20)"
-//	@Param			page_token	query		string										false	"Token from the previous response's next_page_token, to fetch the next page"
-//	@Success		200			{object}	api.Response[api.Page[dtos.SessionTemplateResponse]]	"Templates retrieved successfully"
+//	@Success		200			{object}	api.Response[api.List[dtos.SessionTemplateResponse]]	"Templates retrieved successfully"
 //	@Failure		400			{object}	api.Response[any]									"Invalid request"
 //	@Failure		500			{object}	api.Response[any]									"Internal server error"
 //	@Router			/api/v1/activity-groups/{groupId}/templates [get]
@@ -146,15 +144,13 @@ func (h *Handler) ListSessionTemplates(w http.ResponseWriter, r *http.Request) {
 	params.ActivityGroupID = &groupID
 
 	// List templates
-	templates, nextPageToken, err := h.sessionTemplateService.ListSessionTemplates(ctx, *params)
+	templates, err := h.sessionTemplateService.ListSessionTemplates(ctx, *params)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
 	}
 
-	api.WriteOkResponse(w,
-		api.NewPage(templates, params.Limit, nextPageToken, mapper.DomainToResponse),
-		"")
+	_ = api.WriteOkResponse(w, api.NewList(templates, mapper.DomainToResponse), "")
 }
 
 // UpdateSessionTemplate handles PUT /api/v1/templates/{id}

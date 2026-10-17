@@ -459,11 +459,16 @@ func (s *SessionTemplateService) DeleteSessionTemplate(
 	return nil
 }
 
-// ListSessionTemplates retrieves session templates with optional filters
+// MaxListedTemplates caps the templates list of a group: it is one list, not
+// paginated. A group has a handful of templates (a weekly game, a monthly one).
+const MaxListedTemplates = 100
+
+// ListSessionTemplates retrieves session templates with optional filters, at
+// most MaxListedTemplates of them
 func (s *SessionTemplateService) ListSessionTemplates(
 	ctx context.Context,
 	params ListSessionTemplatesParams,
-) ([]*domain.SessionTemplate, string, error) {
+) ([]*domain.SessionTemplate, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
 		"activity.service.ListSessionTemplates",
@@ -493,21 +498,24 @@ func (s *SessionTemplateService) ListSessionTemplates(
 		IsRecurring:     params.IsRecurring,
 		NeedsGeneration: params.NeedsGeneration,
 		LookaheadWindow: params.LookaheadWindow,
-		Limit:           params.Limit,
-		PageToken:       params.PageToken,
+		Limit:           MaxListedTemplates,
 	}
 
 	templates, nextPageToken, err := s.templateRepo.ListSessionTemplates(ctx, filter)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to list session templates", "error", err)
-		return nil, "", mapToAppErr(err)
+		return nil, mapToAppErr(err)
+	}
+
+	if nextPageToken != "" {
+		log.Warn(ctx, "session templates list hit the cap, the rest are not listed", "cap", MaxListedTemplates)
 	}
 
 	span.SetStatus(codes.Ok, "session templates listed")
 	log.Debug(ctx, "session templates listed", "count", len(templates))
 
-	return templates, nextPageToken, nil
+	return templates, nil
 }
 
 // buildRecurrenceRule constructs a RecurrenceRule from create params

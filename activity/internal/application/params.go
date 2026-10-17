@@ -65,10 +65,6 @@ type ListSessionTemplatesParams struct {
 	// For cron job
 	NeedsGeneration *bool
 	LookaheadWindow *time.Duration
-
-	// Pagination
-	Limit     int
-	PageToken string
 }
 
 // CreateActivityGroupParams contains parameters for creating a new activity group
