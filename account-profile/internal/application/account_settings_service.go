@@ -107,17 +107,12 @@ func (uss *accountSettingsService) UpdateSettings(
 			return err
 		}
 
-		currentSettings.UpdateSettings(domainSettings)
-
-		err = uss.accountSettingsManager.UpdateSettings(
-			ctx,
-			currentSettings,
-		)
-		if err != nil {
-			return err
+		// Saving unchanged settings is a no-op, not a version conflict.
+		if !currentSettings.UpdateSettings(domainSettings) {
+			return nil
 		}
 
-		return nil
+		return uss.accountSettingsManager.UpdateSettings(tCtx, currentSettings)
 	})
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())

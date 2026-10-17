@@ -81,7 +81,12 @@ func (ups *AccountProfileSettings) UpdateSetting(setting *Setting) {
 	))
 }
 
-func (ups *AccountProfileSettings) UpdateSettings(settings map[string]*Setting) {
+// UpdateSettings applies the given values to the settings it already has and
+// reports whether anything actually changed. When nothing did, the aggregate is
+// left untouched - same version, no event - so the caller must not save it: the
+// repository's optimistic-lock UPDATE expects a bumped version and would
+// otherwise fail with a version conflict.
+func (ups *AccountProfileSettings) UpdateSettings(settings map[string]*Setting) (changed bool) {
 	changedSettings := make(map[string]*Setting, 0)
 	for key, setting := range settings {
 		if existingSetting, exists := ups.settings[key]; exists {
@@ -94,7 +99,7 @@ func (ups *AccountProfileSettings) UpdateSettings(settings map[string]*Setting) 
 	}
 
 	if len(changedSettings) == 0 {
-		return
+		return false
 	}
 
 	ups.version++
@@ -104,6 +109,8 @@ func (ups *AccountProfileSettings) UpdateSettings(settings map[string]*Setting) 
 		ups.accountID,
 		changedSettings,
 	))
+
+	return true
 }
 
 func (ups *AccountProfileSettings) Version() int {
