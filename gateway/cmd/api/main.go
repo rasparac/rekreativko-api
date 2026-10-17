@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -155,6 +156,19 @@ func main() {
 		AllowCredentials: false,
 	}
 
+	appMetrics := gateway.New()
+
+	appKeys := cfg.GatewayServiceConfig.AppKeys
+	enforceAppKey := cfg.GatewayServiceConfig.AppKeyEnforce
+	switch {
+	case len(appKeys) == 0:
+		log.Warn(ctx, "app key check is off: APP_KEYS is empty")
+	case enforceAppKey:
+		log.Info(ctx, "app key check enforced")
+	default:
+		log.Warn(ctx, "app key check only reports: requests without a valid key are counted, not refused (APP_KEY_ENFORCE=false)")
+	}
+
 	middlewaresChain := middleware.NewChain(
 		middleware.Recover(log),
 		middleware.RequestID,
@@ -163,6 +177,10 @@ func main() {
 		middleware.Tracing,
 		middleware.SpanEnrichment,
 		middleware.CORS(corsConfig),
+		// After CORS: a browser's preflight can't carry the header.
+		middleware.RequireAppKey(appKeys, enforceAppKey, func(reason string) {
+			appMetrics.AppKeyRejections.WithLabelValues(reason, strconv.FormatBool(enforceAppKey)).Inc()
+		}),
 		// Per client address before authentication, so a flood of requests that
 		// auth rejects is limited too; per account after it.
 		limiters.ip.ByClientIP,
@@ -176,8 +194,6 @@ func main() {
 		}),
 		middleware.AddGatewayKey(cfg.GatewayServiceConfig.GatewayKeys),
 	)
-
-	appMetrics := gateway.New()
 
 	if cfg.Telemetry.MetricsEnabled {
 		log.Info(ctx, "metrics enabled")

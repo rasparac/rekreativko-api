@@ -51,7 +51,7 @@ Independent of user JWT auth: the gateway injects `X-Gateway-Key` (`AddGatewayKe
 
 ```
 Recover → RequestID → ClientInfo → Logging → Tracing → SpanEnrichment
-  → CORS → RateLimiter (per IP) → RequireAuth → LimitCaller (per account) → AddGatewayKey
+  → CORS → RequireAppKey → RateLimiter (per IP) → RequireAuth → LimitCaller (per account) → AddGatewayKey
   → [Metrics, if enabled] → Router
 ```
 
@@ -67,6 +67,7 @@ Recover → RequestID → ClientInfo → Logging → Tracing → SpanEnrichment
 | `JWT_SECRET` | Must match `identity`'s — the gateway validates tokens `identity` issues |
 | `CORS_ALLOWED_ORIGINS` | Defaults to `*` in dev; `AllowCredentials` is hardcoded `false` (browser requires exact origins, not `*`, to use credentials — flip both together if this ever needs real cookie-based auth) |
 | `RATE_LIMIT_<CLASS>_BURST`, `RATE_LIMIT_<CLASS>_PER_MINUTE` | Token buckets, classes `IP`, `ACCOUNT`, `ANONYMOUS`, `LOGIN`, `SENSITIVE`. See [Rate limiting](#rate-limiting) for the defaults. Replaces `REQUESTS_PER_MINUTE` |
+| `APP_KEYS`, `APP_KEY_ENFORCE` | Mobile app key, see [App key](#app-key). Empty `APP_KEYS` (the default) turns the check off; `APP_KEY_ENFORCE=false` (the default) only counts requests without a valid key |
 | `TRUSTED_PROXY_CIDRS` | Comma-separated CIDRs/addresses of the proxies in front of the gateway (ingress, load balancer). See [Client IP](#client-ip). Empty (the default, right for docker compose) means no forwarded header is believed |
 | `METRICS_ENABLED` | Gates `/metrics` registration |
 | `SERVICE_ENVIRONMENT=development` | Also enables `/swagger/*` (aggregates all 4 services' specs via `swagger-ui` container, separate from this one) |
@@ -83,6 +84,19 @@ One address per request, worked out once by `middleware.ClientInfoFrom(resolver)
 - An address that does not parse is never used as a key: the connection's address is.
 
 **Deploying behind an ingress / load balancer, set `TRUSTED_PROXY_CIDRS` to its address range** (the ingress controller's pod network in Kubernetes). Without it every client arrives as the proxy's own address and they all share one rate-limit bucket. Docker compose has no proxy, so leave it empty there - but note every browser on one machine is then one client, so the `IP` backstop and the anonymous limits are shared by all of them (logged-in users are limited per account, see [Rate limiting](#rate-limiting)).
+
+## App key
+
+The mobile app is built with a key and sends it in `X-App-Key` on every request (`middleware.RequireAppKey`, after CORS and before the rate limiter, so a browser's preflight - which can't carry the header - is answered first). `/health`, `/metrics` and `/swagger/` are outside the chain and need no key.
+
+**It is not a secret.** Anyone can read it out of the app or from one intercepted request, so it is not authentication. It keeps out casual traffic (curl, scanners, bots), lets a leaked key be rotated, and lets old app versions be turned away. It does not replace per-account limits or login lockout.
+
+- `APP_KEYS`: comma-separated; any one is accepted, so a new key can be released before the old one is removed. Empty: the check is off.
+- `APP_KEY_ENFORCE`: `false` (default) only counts requests with a missing or invalid key (`gateway_app_key_rejections_total{reason="missing|invalid", enforced}`) and lets them through, so you can see who would be refused before turning it on. `true` refuses them with **403** `app_key_invalid` - deliberately not 401, which the app answers by refreshing its token and logging out.
+- The header is removed before the request is proxied; the backends never see it.
+- Rotation: add the new key to `APP_KEYS`, release the app with it, and remove the old one once its share of traffic is gone (`enforced="false"` counts show this while not enforcing).
+- Rollout: set `APP_KEYS`, release the app that sends it, watch `gateway_app_key_rejections_total` fall to the clients that should be turned away (scripts, the web app, old builds), then set `APP_KEY_ENFORCE=true`.
+- Keep the key out of the repo: inject it at build time in the app and as a secret for the gateway.
 
 ## Rate limiting
 

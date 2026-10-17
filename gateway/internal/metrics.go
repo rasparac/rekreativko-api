@@ -11,6 +11,10 @@ type Metrics struct {
 	HTTPRequestDuration *prometheus.HistogramVec
 	HTTPResponseSize    *prometheus.HistogramVec
 	HTTPRequestSize     *prometheus.HistogramVec
+
+	// AppKeyRejections counts requests with a missing or invalid X-App-Key.
+	// enforced is false while the check only reports.
+	AppKeyRejections *prometheus.CounterVec
 }
 
 func New() *Metrics {
@@ -45,6 +49,13 @@ func New() *Metrics {
 				Buckets: prometheus.ExponentialBuckets(100, 10, 7),
 			},
 			[]string{"method", "path"},
+		),
+		AppKeyRejections: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "gateway_app_key_rejections_total",
+				Help: "Requests with a missing or invalid app key",
+			},
+			[]string{"reason", "enforced"},
 		),
 	}
 }

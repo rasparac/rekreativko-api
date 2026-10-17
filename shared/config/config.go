@@ -54,6 +54,14 @@ type (
 
 	GatewayServiceConfig struct {
 		GatewayKeys string `envconfig:"GATEWAY_API_KEYS" required:"true"`
+
+		// AppKeys are the keys the mobile app is built with, sent in
+		// X-App-Key (comma separated: several at once for rotation). Empty
+		// turns the check off.
+		AppKeys []string `envconfig:"APP_KEYS"`
+		// AppKeyEnforce refuses requests without a valid key. False only
+		// counts them, to see who would be turned away first.
+		AppKeyEnforce bool `envconfig:"APP_KEY_ENFORCE" default:"false"`
 	}
 
 	ServerConfig struct {
