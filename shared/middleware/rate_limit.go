@@ -38,7 +38,12 @@ func NewRateLimiter(requestsPerMinute int) *RateLimiter {
 
 func (rl *RateLimiter) RateLimiter(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clientIP := GetIP(r)
+		// ClientInfo runs before the limiter and has resolved the client's address
+		// (trusted proxies only); the connection's own is the fallback.
+		clientIP := api.IpAddressFromContext(r.Context())
+		if clientIP == "" {
+			clientIP = peerHost(r)
+		}
 
 		if rl.allow(clientIP) {
 			next.ServeHTTP(w, r)

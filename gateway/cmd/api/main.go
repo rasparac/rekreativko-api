@@ -95,6 +95,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Who may speak for a client: forwarded headers are believed only from these
+	// proxies (see TRUSTED_PROXY_CIDRS); from anyone else the connection's own
+	// address is the client.
+	clientIPs, err := middleware.NewClientIPResolver(cfg.Server.TrustedProxyCIDRs)
+	if err != nil {
+		log.Error(ctx, "invalid TRUSTED_PROXY_CIDRS", "error", err)
+		os.Exit(1)
+	}
+	if len(cfg.Server.TrustedProxyCIDRs) == 0 {
+		log.Info(ctx, "no trusted proxies: forwarded client IP headers are ignored, clients are told apart by connection address")
+	}
+
 	tokenGen := token.NewGenerator(
 		[]byte(cfg.JWT.Secret),
 		cfg.JWT.AccessTokenDuration,
@@ -139,7 +151,7 @@ func main() {
 	middlewaresChain := middleware.NewChain(
 		middleware.Recover(log),
 		middleware.RequestID,
-		middleware.ClientInfo,
+		middleware.ClientInfoFrom(clientIPs),
 		middleware.Logging(log),
 		middleware.Tracing,
 		middleware.SpanEnrichment,

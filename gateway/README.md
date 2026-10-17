@@ -66,15 +66,27 @@ Recover → RequestID → ClientInfo → Logging → Tracing → SpanEnrichment
 | `JWT_SECRET` | Must match `identity`'s — the gateway validates tokens `identity` issues |
 | `CORS_ALLOWED_ORIGINS` | Defaults to `*` in dev; `AllowCredentials` is hardcoded `false` (browser requires exact origins, not `*`, to use credentials — flip both together if this ever needs real cookie-based auth) |
 | `REQUESTS_PER_MINUTE` | Per-client-IP rate limit (in-memory, resets on restart — see [Known issues](#known-issues)) |
+| `TRUSTED_PROXY_CIDRS` | Comma-separated CIDRs/addresses of the proxies in front of the gateway (ingress, load balancer). See [Client IP](#client-ip). Empty (the default, right for docker compose) means no forwarded header is believed |
 | `METRICS_ENABLED` | Gates `/metrics` registration |
 | `SERVICE_ENVIRONMENT=development` | Also enables `/swagger/*` (aggregates all 4 services' specs via `swagger-ui` container, separate from this one) |
 
 No database, no NATS connection (removed this session — notification-sending was moved to the `notifications` service, which now owns that NATS subscription).
 
+## Client IP
+
+One address per request, worked out once by `middleware.ClientInfoFrom(resolver)` and used for the rate limiter, the access log, traces and the IP stored with login attempts (`middleware.ClientIPResolver`):
+
+- The client is the connection's own address (`RemoteAddr`, port stripped) - never empty.
+- `X-Forwarded-For` / `X-Real-IP` are written by whoever sends the request, so they are believed **only when the connection comes from a proxy in `TRUSTED_PROXY_CIDRS`**. Then the client is the first address in `X-Forwarded-For`, reading from the right, that is not itself a trusted proxy (what is further left may be made up by the client); `X-Real-IP` if there is no chain.
+- `CF-Connecting-IP`, `True-Client-IP` and `Forwarded` are not believed at all.
+- An address that does not parse is never used as a key: the connection's address is.
+
+**Deploying behind an ingress / load balancer, set `TRUSTED_PROXY_CIDRS` to its address range** (the ingress controller's pod network in Kubernetes). Without it every client arrives as the proxy's own address and they all share one rate-limit bucket. Docker compose has no proxy, so leave it empty there - but note every browser on one machine is then one client (one bucket); per-account limiting is `rekreativko-api-wd8`.
+
 ## Reverse proxy behavior
 
 - `DisableKeepAlives: true` on every backend connection — deliberate: a pooled connection to a backend that restarted (common in local dev, or during a rolling deploy) fails with "connection reset by peer" rather than being retried, especially for non-idempotent methods. Trades a little latency for correctness.
-- Forwards `X-Forwarded-For`/`X-Forwarded-Host`/`X-Forwarded-Proto` (`pr.SetXForwarded()`), which is how `ClientInfo` downstream recovers the real client IP through the proxy hop.
+- Forwards `X-Forwarded-Host`/`X-Forwarded-Proto` (`pr.SetXForwarded()`) and sets `X-Forwarded-For` to the client address the gateway resolved (see [Client IP](#client-ip)), not the address of its own peer and not whatever the client wrote. Backends take that header as it is (`middleware.ClientInfo`, `TrustAllProxies`): they only accept requests carrying the gateway key, so only the gateway can have written it.
 - Adds `X-ProxiedBy: rekreativko-gateway` and `X-Service-Name: <backend>` to every response.
 - On a dead/unreachable backend: `503 Service unavailable`. On no route match: `404`. On an unregistered method for a prefix that restricts methods: `405`.
 

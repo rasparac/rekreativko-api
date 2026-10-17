@@ -1,68 +1,156 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
-	"regexp"
+	"net/netip"
 	"strings"
 
 	"github.com/rasparac/rekreativko-api/shared/api"
 )
 
+// ClientInfo records the caller's user agent and IP address on the request
+// context (logs, traces and the login-attempt record read them from there).
+//
+// For services that sit behind the gateway: their only caller is the gateway,
+// which has already worked out the real client address and sends it as the
+// X-Forwarded-For header, so that header is taken as it is. The gateway itself
+// uses ClientInfoFrom with its trusted proxies instead.
 func ClientInfo(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userAgent := r.UserAgent()
-		ctx := api.WithUserAgent(r.Context(), userAgent)
-
-		remoteAddr := GetIP(r)
-
-		ctx = api.WithIpAddress(ctx, remoteAddr)
-
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+	return ClientInfoFrom(TrustAllProxies())(next)
 }
 
-// RxFor regex is used to strip out remote address from request struct
-// The first element will always be the 'for=' capture, which we ignore.
-// In the case of multiple IP addresses (for=8.8.8.8, 8.8.4.4,172.16.1.20 is valid)
-// we only extract the first, which should be the client IP.
-var RxFor = regexp.MustCompile(`(?i)(?:for=)([^(;|,| )]+)`)
+// ClientInfoFrom is ClientInfo with an explicit rule for which proxies may
+// speak for the client.
+func ClientInfoFrom(resolver *ClientIPResolver) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := api.WithUserAgent(r.Context(), r.UserAgent())
+			ctx = api.WithIpAddress(ctx, resolver.IP(r))
 
-// this method is from robokiller enterprise.
-// it will check cloudflare headers to get users IP and if it's empty
-// it will check other IP headers
-func GetIP(r *http.Request) string {
-	var addr string
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
 
-	if fwd := r.Header.Get("CF-Connecting-IP"); fwd != "" {
-		addr = fwd
-	} else if fwd := r.Header.Get("True-Client-IP"); fwd != "" {
-		addr = fwd
-	} else if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		// Only grab the first (client) address. Note that '192.168.0.1,
-		// 10.1.1.1' is a valid key for X-Forwarded-For where addresses after
-		// the first may represent forwarding proxies earlier in the chain.
-		s := strings.Index(fwd, ", ")
-		if s == -1 {
-			s = len(fwd)
+// ClientIPResolver decides which address a request's client has.
+//
+// Forwarded headers (X-Forwarded-For, X-Real-IP) are written by whoever sends
+// the request, so they are believed only when the connection itself comes from
+// a trusted proxy; from anyone else they are ignored and the connection's own
+// address is the client. Without this a client could pick its own address by
+// sending a header (and with it its rate-limit bucket).
+type ClientIPResolver struct {
+	trusted  []netip.Prefix
+	trustAll bool
+}
+
+// NewClientIPResolver trusts forwarded headers from the given proxies, each a
+// CIDR ("10.0.0.0/8") or a single address. No proxies means no forwarded
+// header is ever believed.
+func NewClientIPResolver(proxies []string) (*ClientIPResolver, error) {
+	resolver := &ClientIPResolver{}
+
+	for _, raw := range proxies {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
 		}
-		addr = fwd[:s]
-	} else if fwd := r.Header.Get("X-Real-IP"); fwd != "" {
-		// X-Real-IP should only contain one IP address (the client making the
-		// request).
-		addr = fwd
-	} else if fwd := r.Header.Get("Forwarded"); fwd != "" {
-		// match should contain at least two elements if the protocol was
-		// specified in the Forwarded header. The first element will always be
-		// the 'for=' capture, which we ignore. In the case of multiple IP
-		// addresses (for=8.8.8.8, 8.8.4.4,172.16.1.20 is valid) we only
-		// extract the first, which should be the client IP.
 
-		if match := RxFor.FindStringSubmatch(fwd); len(match) > 1 {
-			// IPv6 addresses in Forwarded headers are quoted-strings. We strip
-			// these quotes.
-			addr = strings.Trim(match[1], `"`)
+		if prefix, err := netip.ParsePrefix(raw); err == nil {
+			resolver.trusted = append(resolver.trusted, prefix.Masked())
+			continue
+		}
+
+		addr, err := netip.ParseAddr(raw)
+		if err != nil {
+			return nil, &net.ParseError{Type: "trusted proxy CIDR or address", Text: raw}
+		}
+		resolver.trusted = append(resolver.trusted, netip.PrefixFrom(addr.Unmap(), addr.Unmap().BitLen()))
+	}
+
+	return resolver, nil
+}
+
+// TrustAllProxies believes X-Forwarded-For from any connection. Only for
+// services that cannot be reached except through the gateway.
+func TrustAllProxies() *ClientIPResolver {
+	return &ClientIPResolver{trustAll: true}
+}
+
+// IP returns the client's address. It is never empty for a real connection.
+func (c *ClientIPResolver) IP(r *http.Request) string {
+	peer := peerHost(r)
+
+	peerAddr, peerOK := parseAddr(peer)
+	if !c.trustAll && !(peerOK && c.isTrusted(peerAddr)) {
+		return peer
+	}
+
+	if hops := forwardedFor(r); len(hops) > 0 {
+		if c.trustAll {
+			if addr, ok := parseAddr(hops[0]); ok {
+				return addr.String()
+			}
+			return peer
+		}
+
+		// Walk from the proxy nearest to us outwards: the first address that is
+		// not one of our own proxies is the client. Anything further left was
+		// written by the client and could be made up.
+		for i := len(hops) - 1; i >= 0; i-- {
+			addr, ok := parseAddr(hops[i])
+			if !ok {
+				return peer
+			}
+			if !c.isTrusted(addr) || i == 0 {
+				return addr.String()
+			}
 		}
 	}
 
-	return addr
+	if addr, ok := parseAddr(r.Header.Get("X-Real-IP")); ok {
+		return addr.String()
+	}
+
+	return peer
+}
+
+func (c *ClientIPResolver) isTrusted(addr netip.Addr) bool {
+	for _, prefix := range c.trusted {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// peerHost is the address of the other end of the connection, without the port.
+func peerHost(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+func parseAddr(s string) (netip.Addr, bool) {
+	addr, err := netip.ParseAddr(strings.TrimSpace(s))
+	if err != nil {
+		return netip.Addr{}, false
+	}
+	return addr.Unmap().WithZone(""), true
+}
+
+// forwardedFor is the X-Forwarded-For chain, client first, over all header lines.
+func forwardedFor(r *http.Request) []string {
+	var hops []string
+	for _, line := range r.Header.Values("X-Forwarded-For") {
+		for _, hop := range strings.Split(line, ",") {
+			if hop = strings.TrimSpace(hop); hop != "" {
+				hops = append(hops, hop)
+			}
+		}
+	}
+	return hops
 }

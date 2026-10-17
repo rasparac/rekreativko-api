@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -74,6 +75,12 @@ func NewReverseProxy(
 				pr.SetURL(target)
 				pr.Out.URL.Path = pr.In.URL.Path
 				pr.SetXForwarded()
+				// SetXForwarded wrote the address of our own peer (an ingress, a
+				// load balancer). The services want the client the gateway worked
+				// out, which they take as it is.
+				if clientIP := api.IpAddressFromContext(pr.In.Context()); clientIP != "" {
+					pr.Out.Header.Set("X-Forwarded-For", clientIP)
+				}
 			},
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 				rp.logger.Error(r.Context(), "failed to proxy request", "error", err)

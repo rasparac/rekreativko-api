@@ -59,6 +59,12 @@ type (
 	ServerConfig struct {
 		Host string `envconfig:"HOST"`
 		Port string `envconfig:"PORT" default:"8080"`
+
+		// TrustedProxyCIDRs lists the proxies in front of the gateway (CIDRs or
+		// addresses, comma separated) whose X-Forwarded-For / X-Real-IP the
+		// gateway believes when working out a client's address. Empty: forwarded
+		// headers are ignored and the connection's own address is the client.
+		TrustedProxyCIDRs []string `envconfig:"TRUSTED_PROXY_CIDRS"`
 	}
 
 	RateLimiterConfig struct {

@@ -270,3 +270,44 @@ func TestStreamRoute_ClientHangupCancelsBackend(t *testing.T) {
 		t.Fatal("the backend request was not cancelled after the client hung up")
 	}
 }
+
+// The services take the client's address from X-Forwarded-For. It must be the
+// one the gateway worked out, not the address of the gateway's own peer and not
+// whatever the client wrote.
+func TestReverseProxy_ForwardsTheResolvedClientAddress(t *testing.T) {
+	var got string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("X-Forwarded-For")
+	}))
+	defer backend.Close()
+
+	proxy, err := NewReverseProxy(map[string]ServiceConfig{"svc": {URL: backend.URL, Timeout: time.Second}}, logger.New("error", "json"))
+	require.NoError(t, err)
+
+	resolver, err := middleware.NewClientIPResolver([]string{"10.0.0.0/8"})
+	require.NoError(t, err)
+	handler := middleware.ClientInfoFrom(resolver)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxy.ProxyToService("svc", w, r)
+	}))
+
+	for name, tc := range map[string]struct {
+		remote  string
+		headers map[string]string
+		want    string
+	}{
+		"from a trusted proxy: the client it forwarded":          {"10.1.2.3:5000", map[string]string{"X-Forwarded-For": "198.51.100.9"}, "198.51.100.9"},
+		"from anyone else: the connection, not a made-up header": {"203.0.113.7:5000", map[string]string{"X-Forwarded-For": "6.6.6.6"}, "203.0.113.7"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got = ""
+			r := httptest.NewRequest(http.MethodGet, "/x", nil)
+			r.RemoteAddr = tc.remote
+			for k, v := range tc.headers {
+				r.Header.Set(k, v)
+			}
+
+			handler.ServeHTTP(httptest.NewRecorder(), r)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
