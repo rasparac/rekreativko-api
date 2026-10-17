@@ -19,7 +19,7 @@ Unlike `identity`/`activity`, this service has **no `validate:` tags anywhere** 
 | GET | `/api/v1/my/settings` | Current user's settings |
 | PUT | `/api/v1/my/settings` | Update current user's settings |
 
-`GET /profiles` requires at least one query filter (`account_id`, `nickname`, `dob_gt`, `dob_lt`, `country`, `city`) or it 400s. No `/interests` or `/statistics` endpoints exist — interests are only editable as a full-replace array field on `PUT /my/profile`; statistics have no HTTP surface at all (dead feature, see below).
+`GET /profiles` requires at least one query filter (`account_id`, `nickname`, `dob_gt`, `dob_lt`, `country`, `city`) or it 400s; `limit`, `page_token`, `sort_by`, `sort_order` and `include_deleted` only shape the answer and do not count as a filter. With `account_id` and/or `nickname` it is a **lookup**: every match is returned in one response (`limit`/`page_token` ignored, no `next_page_token`), at most 100 `account_id` + `nickname` values together (400 above that - about 49 characters per id, and proxies refuse a request line past ~8 KB, so a client with a longer roster sends it in chunks). The other filters are a paged search (default 20). The mobile app only uses the lookup (`account_id` for rosters and single profiles, one `nickname` for invites). No `/interests` or `/statistics` endpoints exist — interests are only editable as a full-replace array field on `PUT /my/profile`; statistics have no HTTP surface at all (dead feature, see below).
 
 ### Profile fields
 

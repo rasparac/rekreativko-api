@@ -12,8 +12,21 @@ import (
 	"github.com/rasparac/rekreativko-api/shared/api"
 )
 
-var ErrMissingAccountProfilesFilter = errors.New("missing account profile filter")
+var (
+	ErrMissingAccountProfilesFilter = errors.New("missing account profile filter")
+	ErrTooManyProfileLookups        = fmt.Errorf("too many account_id and nickname values, at most %d per request", MaxProfileLookups)
+)
 
+// MaxProfileLookups is how many account_id and nickname values one request may
+// carry. A request with any of them is a lookup: every match is returned, not
+// a page. The cap bounds the answer and the URL (about 49 characters per id,
+// and proxies refuse a request line past about 8 KB).
+const MaxProfileLookups = 100
+
+// QueryToProfilesFilter reads GET /profiles. Only the criteria that select
+// profiles (account_id, nickname, dob_gt, dob_lt, country, city) count as a
+// filter; limit, page_token, sort_by, sort_order and include_deleted only shape
+// the answer, so on their own they must not list everyone.
 func QueryToProfilesFilter(q url.Values) (application.ProfilesFilter, error) {
 	var filter application.ProfilesFilter
 	var hasFilter bool
@@ -61,18 +74,15 @@ func QueryToProfilesFilter(q url.Values) (application.ProfilesFilter, error) {
 			return filter, fmt.Errorf("invalid include_deleted")
 		}
 		filter.IncludeDeleted = &b
-		hasFilter = true
 	}
 
 	// Sorting
 	if v := q.Get("sort_by"); v != "" {
 		filter.SortBy = &v
-		hasFilter = true
 	}
 
 	if v := q.Get("sort_order"); v != "" {
 		filter.SortOrder = &v
-		hasFilter = true
 	}
 
 	// Location
@@ -91,14 +101,22 @@ func QueryToProfilesFilter(q url.Values) (application.ProfilesFilter, error) {
 	if err != nil {
 		return filter, fmt.Errorf("invalid limit")
 	}
-	if v := q.Get("limit"); v != "" {
-		hasFilter = true
-	}
 	filter.Limit = limit
 	filter.PageToken = pageToken
 
 	if !hasFilter {
 		return filter, ErrMissingAccountProfilesFilter
+	}
+
+	// Asking for given accounts is a lookup, not a search: the caller wants all
+	// of them, so it is not paged (a roster over the page size would lose
+	// profiles the client never learns about). The cap keeps it bounded.
+	if lookups := len(filter.AccountIDs) + len(filter.Nicknames); lookups > 0 {
+		if lookups > MaxProfileLookups {
+			return filter, ErrTooManyProfileLookups
+		}
+		filter.Limit = MaxProfileLookups
+		filter.PageToken = ""
 	}
 
 	return filter, nil
