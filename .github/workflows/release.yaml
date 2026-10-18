@@ -15,6 +15,7 @@ on:
         type: choice
         options:
           - dev
+          - prod
       service:
         description: "Service to release"
         required: true
