@@ -130,18 +130,65 @@ jobs:
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}-migrations:${{ env.VERSION }}
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}-migrations:latest
 
+      # The matrix jobs only build. Bumping infra from each of them made eight jobs push to
+      # infra main at once, so one always lost the race: deploy-dev bumps one service at a time
+      - name: Record the built tag
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          mkdir built
+          echo "${{ env.VERSION }}" > "built/${{ matrix.service }}"
+
+      - name: Upload the built tag
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: built-${{ matrix.service }}
+          path: built/${{ matrix.service }}
+
+  # Every merge to main goes to dev; other environments only get an image through release.yaml.
+  # Runs even if some matrix builds failed, and deploys the ones that were built (a failed build
+  # uploads nothing, so it is never pointed at an image that doesn't exist).
+  deploy-dev:
+    needs: build-and-push
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      # Full history so the script can tell whether migrations changed since the running tag
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: built-*
+          path: built
+          merge-multiple: true
+
       # Pinned so a runner image change (or a new yq release) can't break the bump step
       - name: Install yq
-        if: steps.gate.outputs.run == 'true'
         run: |
           sudo wget -q https://github.com/mikefarah/yq/releases/download/v4.54.1/yq_linux_amd64 -O /usr/local/bin/yq
           sudo chmod +x /usr/local/bin/yq
           yq --version
 
-      # Every merge to main goes to dev; other environments only get an image through release.yaml
       - name: Deploy to dev
-        if: steps.gate.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ secrets.INFRA_REPO_TOKEN }}
           SKIP_IF_MISSING: "true"
-        run: .github/scripts/bump-infra-image.sh dev "${{ matrix.service }}" "${{ env.VERSION }}"
+        run: |
+          shopt -s nullglob
+          builds=(built/*)
+          if [ ${#builds[@]} -eq 0 ]; then
+            echo "::warning::no image was built, nothing to deploy"
+            exit 0
+          fi
+
+          # One after the other, so the pushes to infra main never race each other
+          failed=0
+          for build in "${builds[@]}"; do
+            service=$(basename "$build")
+            if ! .github/scripts/bump-infra-image.sh dev "$service" "$(cat "$build")"; then
+              failed=1
+            fi
+          done
+          exit $failed

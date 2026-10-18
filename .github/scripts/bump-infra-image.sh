@@ -32,6 +32,7 @@ if [ "$SVC" = "activity-cron" ]; then
 fi
 FILE="k8s/overlays/${ENV}/${OVERLAY}/kustomization.yaml"
 
+rm -rf infra-repo
 git clone -q "https://x-access-token:${GH_TOKEN}@github.com/rasparac/rekreativko-infra.git" infra-repo
 cd infra-repo
 git config user.name "rekreativko-ci"
