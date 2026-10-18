@@ -116,3 +116,29 @@ func TestEventHandlers_RouteByDeliveryType(t *testing.T) {
 		}
 	}
 }
+
+// An account activated without verification (identity's flag off) never proved
+// the address is theirs: no welcome email, and the event is acked.
+func TestHandleAccountVerified_UnconfirmedSendsNothing(t *testing.T) {
+	var (
+		sender  recordingSender
+		logs    bytes.Buffer
+		metrics = newFakeMetrics()
+		h       = newTestHandlers(t, &sender, metrics, logger.NewWithWriter("error", "json", &logs))
+	)
+
+	payload, err := json.Marshal(map[string]any{
+		"event_id":    uuid.New(),
+		"account_id":  uuid.New(),
+		"code_type":   "email",
+		"email":       secretEmail,
+		"unconfirmed": true,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, h.HandleAccountVerified(context.Background(), payload))
+
+	assert.Empty(t, sender.emails)
+	assert.Empty(t, sender.sms)
+	assert.Empty(t, logs.String())
+}

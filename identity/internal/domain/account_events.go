@@ -56,6 +56,10 @@ type AccountVerifiedEvent struct {
 	CodeType   CodeType  `json:"code_type"`
 	Email      string    `json:"email"`
 	Phone      string    `json:"phone"`
+	// Unconfirmed is set when the account was activated without proving it owns
+	// the email or phone (verification switched off). Consumers must not treat
+	// the address as theirs, e.g. by mailing it.
+	Unconfirmed bool `json:"unconfirmed,omitempty"`
 }
 
 func NewAccountVerifiedEvent(account *Account, code *VerificationCode) *AccountVerifiedEvent {
@@ -71,6 +75,26 @@ func NewAccountVerifiedEvent(account *Account, code *VerificationCode) *AccountV
 		CodeType:   code.CodeType(),
 		Email:      account.Email().String(),
 		Phone:      account.PhoneNumber().String(),
+	}
+}
+
+// NewUnconfirmedAccountVerifiedEvent is the verified event of an account that
+// was activated at registration, without a code: via is the channel it
+// registered with.
+func NewUnconfirmedAccountVerifiedEvent(account *Account, via CodeType) *AccountVerifiedEvent {
+	return &AccountVerifiedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   IdentityAccountVerifiedEvent,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: account.ID(),
+		},
+		VerifiedBy:  via,
+		AccountID:   account.ID(),
+		CodeType:    via,
+		Email:       account.Email().String(),
+		Phone:       account.PhoneNumber().String(),
+		Unconfirmed: true,
 	}
 }
 

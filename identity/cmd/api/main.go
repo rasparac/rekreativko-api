@@ -150,6 +150,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		passwordHasher,
 		appMetrics,
 		cfg.Features.PhoneRegistrationEnabled,
+		cfg.Features.AccountVerificationRequired,
 	)
 
 	mux := http.NewServeMux()

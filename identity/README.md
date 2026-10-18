@@ -20,6 +20,7 @@ Beyond the shared config (`shared/config/config.go`), this service reads:
 | `JWT_ACCESS_TOKEN_DURATION` | `15m` | |
 | `JWT_REFRESH_TOKEN_DURATION` | `360h` (15 days) | |
 | `GATEWAY_API_KEY` | — (required) | Validated by `middleware.CheckGatewayKey` |
+| `ACCOUNT_VERIFICATION_REQUIRED` | `true` | Whether a new account must confirm its email/phone with a code before it can log in. `false` activates the account at `POST /register` (no code, no `verification_code.created` event); the client logs in right after. The verified event carries `unconfirmed: true`, so account-profile still creates the profile but notifications sends no welcome email to an address nobody proved. Only affects registrations made while it is off: those accounts stay unverified when it is turned back on. |
 | `PHONE_REGISTRATION_ENABLED` | `false` | Feature flag. While off, `POST /register` rejects any request with a non-empty `phone_number` (`400 phone_registration_disabled`). Only gates registration — login and resend-verification-code still accept a phone identifier if an account already has one. |
 | `PORT` | `8080` (compose overrides to `8081`) | |
 | `OUTBOX_SCHEMAS` | — (required, shared) | Must include `identity` for the outbox publisher to pick up this service's events |
@@ -48,7 +49,7 @@ Public/auth split is enforced at the gateway (`gateway/internal/router.go`), not
 ```
 Email or phone is required (not both); phone requires `PHONE_REGISTRATION_ENABLED=true`. Password: min 8 chars at the DTO layer, then full complexity checked in the service layer (`identity_weak_password` on failure) — at least one uppercase, one lowercase, one digit, one of `` !@#$%^&*()-_=+[]{}|;:',.<>?/ ``.
 
-→ `201` `{ "account_id": "<uuid>" }`. Account starts `pending`; a verification code is generated and an `identity.verification_code.created` event fires (consumed by `notifications` to send it out).
+→ `201` `{ "account_id": "<uuid>" }`. With `ACCOUNT_VERIFICATION_REQUIRED=false` the account is created `active` and nothing below applies. Otherwise the account starts `pending`; a verification code is generated and an `identity.verification_code.created` event fires (consumed by `notifications` to send it out).
 
 ### Verify account — `POST /verify-account`
 
@@ -124,7 +125,7 @@ Published to `identity.event_outbox`, relayed to NATS by the outbox publisher. S
 | Event | Fires on | Consumed by |
 |---|---|---|
 | `identity.account.registered` | registration | — |
-| `identity.account.verified` | verify-account success | `notifications` (sends welcome / unblocks feature access) |
+| `identity.account.verified` | verify-account success, or registration when verification is switched off (`unconfirmed: true`) | `notifications` (sends welcome / unblocks feature access) |
 | `identity.account.activated` | verify-account success (paired with `verified`) | — |
 | `identity.account.suspended` | `Account.Suspend` | — |
 | `identity.account.locked` | failed-login threshold hit | — (no consumer; no lockout email/SMS) |

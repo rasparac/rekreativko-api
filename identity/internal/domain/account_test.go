@@ -125,3 +125,44 @@ func Test_Account_ChangePassword(t *testing.T) {
 		})
 	}
 }
+
+func TestAccount_ActivateUnverified(t *testing.T) {
+	newPending := func(t *testing.T) *Account {
+		t.Helper()
+
+		email, err := NewEmail("player@example.com")
+		require.NoError(t, err)
+		phone, err := NewPhoneNumber("")
+		require.NoError(t, err)
+
+		account, err := NewAccount(email, phone, NewPasswordFromHash("hash"))
+		require.NoError(t, err)
+		return account
+	}
+
+	t.Run("activates and raises an unconfirmed verified event", func(t *testing.T) {
+		account := newPending(t)
+
+		require.NoError(t, account.ActivateUnverified(CodeTypeEmail))
+
+		assert.True(t, account.IsActive())
+
+		var verified *AccountVerifiedEvent
+		for _, event := range account.Events() {
+			if e, ok := event.(*AccountVerifiedEvent); ok {
+				verified = e
+			}
+		}
+		require.NotNil(t, verified)
+		assert.True(t, verified.Unconfirmed)
+		assert.Equal(t, CodeTypeEmail, verified.CodeType)
+		assert.Equal(t, "player@example.com", verified.Email)
+	})
+
+	t.Run("an active account cannot be activated again", func(t *testing.T) {
+		account := newPending(t)
+		require.NoError(t, account.ActivateUnverified(CodeTypeEmail))
+
+		assert.ErrorIs(t, account.ActivateUnverified(CodeTypeEmail), ErrAccountNotVerified)
+	})
+}

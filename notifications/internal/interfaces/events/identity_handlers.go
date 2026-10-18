@@ -39,6 +39,9 @@ type (
 		Email        string    `json:"email"`
 		Phone        string    `json:"phone"`
 		DeliveryType string    `json:"code_type"`
+		// Unconfirmed: identity activated the account without verifying the
+		// address (ACCOUNT_VERIFICATION_REQUIRED=false).
+		Unconfirmed bool `json:"unconfirmed"`
 	}
 
 	passwordChangedEvent struct {
@@ -128,6 +131,13 @@ func (h *IdentityHandlers) HandleAccountVerified(ctx context.Context, payload []
 		attribute.String("event.delivery_type", event.DeliveryType),
 		attribute.String("event.account_id", event.AccountID.String()),
 	)
+
+	// Nobody proved the address is theirs, so don't mail it.
+	if event.Unconfirmed {
+		h.logger.Debug(ctx, "no welcome message for an unconfirmed address")
+		span.SetStatus(codes.Ok, "skipped: unconfirmed address")
+		return nil
+	}
 
 	switch event.DeliveryType {
 	case DeliveryTypeEmail:

@@ -76,7 +76,8 @@ type Service struct {
 	tracer  trace.Tracer
 	metrics *metrics.Metrics
 
-	phoneRegistrationEnabled bool
+	phoneRegistrationEnabled    bool
+	accountVerificationRequired bool
 }
 
 func NewService(
@@ -91,6 +92,7 @@ func NewService(
 	passwordHasher *token.PasswordHasher,
 	metrics *metrics.Metrics,
 	phoneRegistrationEnabled bool,
+	accountVerificationRequired bool,
 ) *Service {
 	return &Service{
 		accountRepository:          accountRepository,
@@ -105,6 +107,8 @@ func NewService(
 		tracer:                     telemetry.Tracer(telemetry.TracerIdentityService),
 		metrics:                    metrics,
 		phoneRegistrationEnabled:   phoneRegistrationEnabled,
+
+		accountVerificationRequired: accountVerificationRequired,
 	}
 }
 
@@ -256,6 +260,24 @@ func (s *Service) Register(ctx context.Context, req RegistrationParams) (uuid.UU
 			return err
 		}
 
+		registrationMethod = "email"
+		codeType := domain.CodeTypeEmail
+		if req.PhoneNumber != "" {
+			registrationMethod = "phone"
+			codeType = domain.CodeTypePhone
+		}
+
+		log = log.WithValues(
+			"code_type", codeType,
+		)
+
+		if !s.accountVerificationRequired {
+			// Active from the start: no code to send or to enter.
+			if err = account.ActivateUnverified(codeType); err != nil {
+				return err
+			}
+		}
+
 		span.AddEvent("insert new account")
 
 		err = s.accountRepository.CreateAccount(tCtx, account)
@@ -269,47 +291,35 @@ func (s *Service) Register(ctx context.Context, req RegistrationParams) (uuid.UU
 			"account_id", accountID,
 		)
 
-		code, err := s.codeGenerator.Generate()
-		if err != nil {
-			return fmt.Errorf("generate verification code: %w", err)
+		var verificationCode *domain.VerificationCode
+		if s.accountVerificationRequired {
+			code, err := s.codeGenerator.Generate()
+			if err != nil {
+				return fmt.Errorf("generate verification code: %w", err)
+			}
+
+			verificationCode, err = domain.NewVerificationCode(
+				account,
+				code,
+				codeType,
+				time.Now().Add(time.Hour),
+			)
+			if err != nil {
+				return err
+			}
+
+			span.AddEvent("insert new verification code")
+
+			err = s.verificationCodeRepository.CreateVerificationCode(tCtx, verificationCode)
+			if err != nil {
+				return fmt.Errorf("persist verification code: %w", err)
+			}
 		}
 
-		registrationMethod = "email"
-		codeType := domain.CodeTypeEmail
-		if req.PhoneNumber != "" {
-			registrationMethod = "phone"
-			codeType = domain.CodeTypePhone
+		allEvents := append([]domainevent.Event(nil), account.Events()...)
+		if verificationCode != nil {
+			allEvents = append(allEvents, verificationCode.Events()...)
 		}
-
-		log = log.WithValues(
-			"code_type", codeType,
-		)
-
-		verificationCode, err := domain.NewVerificationCode(
-			account,
-			code,
-			codeType,
-			time.Now().Add(time.Hour),
-		)
-		if err != nil {
-			return err
-		}
-
-		span.AddEvent("insert new verification code")
-
-		err = s.verificationCodeRepository.CreateVerificationCode(tCtx, verificationCode)
-		if err != nil {
-			return fmt.Errorf("persist verification code: %w", err)
-		}
-
-		allEvents := make(
-			[]domainevent.Event,
-			0,
-			len(account.Events())+len(verificationCode.Events()),
-		)
-
-		allEvents = append(allEvents, account.Events()...)
-		allEvents = append(allEvents, verificationCode.Events()...)
 
 		err = s.domainWriter.InsertEvents(
 			tCtx,
@@ -321,7 +331,9 @@ func (s *Service) Register(ctx context.Context, req RegistrationParams) (uuid.UU
 		}
 
 		account.ClearEvents()
-		verificationCode.ClearEvents()
+		if verificationCode != nil {
+			verificationCode.ClearEvents()
+		}
 
 		return nil
 	})

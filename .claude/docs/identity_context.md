@@ -90,7 +90,7 @@ Business Rules:
 
 4. Verification Flow
 ```
-User registers  -> Account Created (status pending)
+User registers  -> Account Created (status pending; active at once when ACCOUNT_VERIFICATION_REQUIRED=false)
                 -> Verification code sent
                 -> User enters verification code
                 -> Account Activated (status active)

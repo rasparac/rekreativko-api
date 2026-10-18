@@ -221,7 +221,7 @@ The gateway uses custom routing logic in `internal/gateway/router.go`:
 
 1. User registers via `/identity/api/v1/register`
 2. Verification code is generated and event published
-3. User verifies account via `/identity/api/v1/verify-account`
+3. User verifies account via `/identity/api/v1/verify-account` (skipped when `ACCOUNT_VERIFICATION_REQUIRED=false`: the account is active at registration)
 4. User logs in via `/identity/api/v1/login` receiving access + refresh tokens
 5. Gateway validates JWT on protected routes using `middleware.RequireAuth`
 6. User context is extracted and propagated via headers to backend services

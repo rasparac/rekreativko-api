@@ -70,6 +70,7 @@ func setupLoginTest(t *testing.T) *loginTestEnv {
 		hasher,
 		testMetrics(),
 		false,
+		true,
 	)
 
 	hash, err := hasher.Hash(correctPassword)

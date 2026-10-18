@@ -38,6 +38,12 @@ type (
 		// Phone/SMS registration and verification are built but not launched -
 		// no SMS provider is wired up yet. Keep this false until one is.
 		PhoneRegistrationEnabled bool `envconfig:"PHONE_REGISTRATION_ENABLED" default:"false"`
+
+		// AccountVerificationRequired makes a new account confirm its email (or
+		// phone) with a code before it can log in. False activates the account
+		// at registration: fewer users lost at sign-up, but nothing proves the
+		// address is theirs. Only affects registrations made while it is false.
+		AccountVerificationRequired bool `envconfig:"ACCOUNT_VERIFICATION_REQUIRED" default:"true"`
 	}
 
 	Logger struct {

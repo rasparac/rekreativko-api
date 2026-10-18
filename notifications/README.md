@@ -97,7 +97,7 @@ Each subscription creates its own durable JetStream consumer (`<service>+<subjec
 | Topic | Action |
 |---|---|
 | `identity.verification_code.created` | send the actual code (email, or SMS for `phone`) |
-| `identity.account.verified` | send welcome email — email accounts only; a phone account sends nothing |
+| `identity.account.verified` | send welcome email — email accounts only; a phone account sends nothing, and neither does an event with `unconfirmed: true` (identity's `ACCOUNT_VERIFICATION_REQUIRED=false`: the address was never proven) |
 | `identity.account.password.changed` | send alert — **dead today**, identity has no route that changes passwords yet |
 
 Each handler picks the channel from the event's `code_type` (`DeliveryTypeEmail` / `DeliveryTypePhone`). Anything else is acked but dropped loudly: an error log (`dropping event with unknown delivery type`), `NotificationSendFailures{channel="unknown", reason="unknown_delivery_type"}`, and an error on the span - retrying can't fix a bad payload. There is deliberately **no lockout email/SMS** (`identity.account.locked` is not subscribed); whether to alert users about a lockout is a separate decision.

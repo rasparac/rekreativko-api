@@ -144,6 +144,24 @@ func (a *Account) Activate(code *VerificationCode) error {
 	return nil
 }
 
+// ActivateUnverified activates a pending account at registration without a
+// verification code, for when verification is switched off. via is the
+// channel the account registered with. The raised verified event is marked
+// unconfirmed: account-profile still creates the profile from it, but nobody
+// mails an address that was never proven.
+func (a *Account) ActivateUnverified(via CodeType) error {
+	if a.status != AccountStatusPending {
+		return ErrAccountNotVerified
+	}
+
+	a.status = AccountStatusActive
+	a.touch()
+	a.addEvent(NewAccountActivatedEvent(a))
+	a.addEvent(NewUnconfirmedAccountVerifiedEvent(a, via))
+
+	return nil
+}
+
 func (a *Account) IsActive() bool {
 	return a.status == AccountStatusActive
 }
