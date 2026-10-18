@@ -34,8 +34,20 @@ Latency from commit to NATS is therefore milliseconds in the normal case; `OUTBO
 | `OUTBOX_LISTEN` | Default `true` — publish on `NOTIFY` instead of waiting for the next poll; `false` = polling only |
 | `OUTBOX_MAX_RETRIES` | Default `5` — failed publishes before an event is dead-lettered |
 | `OUTBOX_READ_LIMIT` | Default `100` — rows fetched per schema per poll |
+| `OUTBOX_PUBLISHED_RETENTION` | Default `168h` (7 days, the NATS stream's `MaxAge`) - published rows older than this are deleted, see [Purging published rows](#purging-published-rows) |
+| `OUTBOX_PURGE_INTERVAL` | Default `1h` - how often the purge runs (and once at start-up); `0` turns it off, published rows are then kept forever |
+| `OUTBOX_PURGE_BATCH` | Default `1000` - rows deleted per statement, so one delete never holds many locks |
 | `NATS_URL` | Broker connection |
 | `PORT` | `8085` in docker-compose |
+
+## Purging published rows
+
+Published rows are not an event history (the NATS stream keeps the messages for the same 7 days, and the analytics sink in epic `1uo` is for history), so they would only make the tables grow. The same process deletes them: at start-up and then every `OUTBOX_PURGE_INTERVAL`, for each schema in `OUTBOX_SCHEMAS`, `domainevent.DeletePublishedEvents` removes rows with `published_at` older than `OUTBOX_PUBLISHED_RETENTION`, oldest first, `OUTBOX_PURGE_BATCH` at a time, until a batch comes back short.
+
+- **Kept**: pending rows (`published_at` NULL, however old), dead-lettered rows (`failed_at` set - they stay until someone handles them) and anything published inside the window.
+- Several replicas are safe: the delete is idempotent and uses `FOR UPDATE SKIP LOCKED`. It uses the existing `published_at` index.
+- A failing schema is logged and does not stop the others; the next run retries.
+- Metric `events_outbox_purged_total{schema}`; an Info line `purged published outbox rows` per schema that deleted anything.
 
 ## Metrics (Prometheus, subsystem `events`)
 

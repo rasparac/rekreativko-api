@@ -10,6 +10,7 @@ type Metrics struct {
 	EventsPublishedTotal *prometheus.CounterVec
 	EventPublishDuration *prometheus.HistogramVec
 	EventProcessedTotal  *prometheus.CounterVec
+	OutboxPurgedTotal    *prometheus.CounterVec
 
 	// Database metrics
 	DBQueryTotal    *prometheus.CounterVec
@@ -43,6 +44,15 @@ func New() *Metrics {
 				Help:      "Total number of events processed",
 			},
 			[]string{"event_type", "schema", "status"},
+		),
+
+		OutboxPurgedTotal: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Subsystem: "events",
+				Name:      "outbox_purged_total",
+				Help:      "Published outbox rows deleted after the retention window",
+			},
+			[]string{"schema"},
 		),
 
 		// Database query

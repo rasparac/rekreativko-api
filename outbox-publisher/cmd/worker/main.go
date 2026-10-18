@@ -105,6 +105,26 @@ func main() {
 		}
 	}()
 
+	if cfg.Outbox.PurgeInterval > 0 {
+		purger, err := events.NewOutboxPurger(
+			domainEventMgr,
+			log,
+			appMetrics,
+			schemas,
+			cfg.Outbox.PublishedRetention,
+			cfg.Outbox.PurgeInterval,
+			cfg.Outbox.PurgeBatch,
+		)
+		if err != nil {
+			log.Error(ctx, "invalid outbox purge configuration", "error", err)
+			os.Exit(1)
+		}
+
+		go purger.Run(ctx)
+	} else {
+		log.Warn(ctx, "outbox purge disabled: OUTBOX_PURGE_INTERVAL is not positive, published rows are kept forever")
+	}
+
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /metrics", promhttp.Handler())

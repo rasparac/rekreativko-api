@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/shared/api"
@@ -197,4 +198,37 @@ func (dem *domainEventManager) MarkEventAsFailed(
 		QueryRow(ctx, query, eventID, publishErr.Error(), maxRetries).
 		Scan(&deadLettered)
 	return deadLettered, err
+}
+
+// DeletePublishedEvents deletes up to limit events that were published before
+// the given time, oldest first, and returns how many it deleted. Pending
+// events and dead-lettered ones (failed_at set, never published) are kept. Rows
+// another purger holds are skipped, so several publishers can run it together.
+func (dem *domainEventManager) DeletePublishedEvents(
+	ctx context.Context,
+	schema string,
+	publishedBefore time.Time,
+	limit int,
+) (int64, error) {
+	query := fmt.Sprintf(`
+		DELETE FROM %[1]s.event_outbox
+		WHERE event_id IN (
+			SELECT event_id
+			FROM %[1]s.event_outbox
+			WHERE
+				published_at IS NOT NULL
+				AND failed_at IS NULL
+				AND published_at < $1
+			ORDER BY published_at ASC
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+	`, schema)
+
+	tag, err := dem.txManager.Querier(ctx).Exec(ctx, query, publishedBefore, limit)
+	if err != nil {
+		return 0, err
+	}
+
+	return tag.RowsAffected(), nil
 }
