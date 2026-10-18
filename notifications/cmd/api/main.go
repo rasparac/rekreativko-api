@@ -18,7 +18,6 @@ import (
 	"github.com/rasparac/rekreativko-api/shared/events"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/middleware"
-	"github.com/rasparac/rekreativko-api/shared/notification"
 	metricstracer "github.com/rasparac/rekreativko-api/shared/store/metrics_tracer"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
 	"github.com/rasparac/rekreativko-api/shared/telemetry"
@@ -26,7 +25,9 @@ import (
 	notificationsEvents "github.com/rasparac/rekreativko-api/notifications/internal/interfaces/events"
 
 	"github.com/rasparac/rekreativko-api/notifications/internal/application"
+	"github.com/rasparac/rekreativko-api/notifications/internal/infrastructure/delivery"
 	"github.com/rasparac/rekreativko-api/notifications/internal/infrastructure/persistence"
+	"github.com/rasparac/rekreativko-api/notifications/internal/infrastructure/templates"
 	notificationsHTTP "github.com/rasparac/rekreativko-api/notifications/internal/interfaces/http"
 )
 
@@ -155,24 +156,23 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	}
 	defer messageBroker.Close(ctx)
 
-	// Delivery channels for identity's account lifecycle events (verification
-	// emails/SMS, password-changed/account-locked alerts) - moved here from
-	// gateway, which had no business owning this. In dev mode these just log
-	// instead of actually sending. There is no real SMTP/SMS provider
-	// implementation yet - failing fast here instead of letting a nil sender
-	// panic later, mid-flight, the first time a real event arrives.
+	// Delivery layer for identity's account lifecycle events (verification
+	// emails/SMS, welcome and password-changed messages). In dev mode the
+	// senders just log instead of actually sending. There is no real SMTP/SMS
+	// provider implementation yet - failing fast here instead of letting a nil
+	// sender panic later, mid-flight, the first time a real event arrives.
 	var (
-		emailSender notification.EmailSender
-		smsSender   notification.SMSSender
+		emailSender application.EmailSender
+		smsSender   application.SMSSender
 	)
 	if cfg.IsDevMode() {
-		emailSender = notification.NewInMemoryEmailSender(log)
-		smsSender = notification.NewInMemorySMSSender(log)
+		emailSender = delivery.NewInMemoryEmailSender(log)
+		smsSender = delivery.NewInMemorySMSSender(log)
 	} else if !cfg.Features.PhoneRegistrationEnabled {
 		// Phone registration is off, so this path is unreachable - wire a
 		// sender that fails loudly instead of leaving it nil, in case it's
 		// ever invoked unexpectedly.
-		smsSender = notification.NewDisabledSMSSender(log)
+		smsSender = delivery.NewDisabledSMSSender(log)
 	}
 	if emailSender == nil {
 		return fmt.Errorf("no email sender configured - required outside dev mode, and no real SMTP sender is implemented yet")
@@ -180,7 +180,14 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	if smsSender == nil {
 		return fmt.Errorf("no SMS sender configured - required outside dev mode when phone registration is enabled, and no real SMS provider is implemented yet")
 	}
-	identityNotifier := notification.NewService(smsSender, emailSender, appMetrics, log)
+
+	renderer, err := templates.NewRenderer()
+	if err != nil {
+		return fmt.Errorf("load message templates: %w", err)
+	}
+
+	deliveryService := application.NewDeliveryService(emailSender, smsSender, renderer, appMetrics, log)
+	identityNotifier := notificationsEvents.NewIdentityHandlers(deliveryService, appMetrics, log)
 
 	subscriber := notificationsEvents.NewSubscriber(
 		messageBroker,

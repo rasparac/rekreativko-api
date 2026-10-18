@@ -1,47 +1,66 @@
 # Notifications Service
 
-Two responsibilities bundled into one service (name is a bit narrow for what it does — see [Known issues](#known-issues)):
+One bounded context with two layers (name is a bit narrow for what it does — see [Known issues](#known-issues)):
 
-1. **In-app notification feed** — list/mark-read for notifications generated from activity-domain events (member joins, invites, attendee approvals/removals).
-2. **Identity account-lifecycle delivery** — sends the actual email/SMS for verification codes, the welcome email, and password-changed alerts. Moved here from `gateway`, since gateway had no business owning delivery-channel concerns.
+1. **In-app feed** — list/mark-read for notifications generated from activity-domain events (member joins, invites, attendee approvals/removals).
+2. **Message delivery** — the actual email/SMS for identity account-lifecycle events: verification codes, the welcome email and password-changed alerts. Moved here from `gateway`, since gateway had no business owning delivery-channel concerns.
 
-## How it works today
+## How it works
 
-The two jobs share a container and nothing else:
+The two layers share a container and the code layout, nothing else:
 
 ```
                           NATS
 identity events ──────────────────────┐
  (code created, verified,             ▼
-  locked, password changed)   ┌───────────────────────────────┐
-                              │ notifications container       │
-                              │                               │
-                              │ ① Message delivery            │──► email / SMS
-                              │    shared/notification/*      │    (dev mode: only logged,
-                              │    no DB, no API              │     no real sender yet)
-                              │                               │
-activity events ─────────────►│ ② In-app feed                 │
- (invites, join requests,     │    notifications/internal/*   │──► notifications.notification
-  draft, voting…)             │    1 table, 2 endpoints       │    table
-                              └───────────────────────────────┘
+  password changed)           ┌───────────────────────────────────┐
+                              │ notifications container           │
+                              │                                   │
+                              │ ① Delivery layer                  │──► email / SMS
+                              │    interfaces/events/identity_*   │    (dev mode: only logged,
+                              │    application/DeliveryService    │     no real sender yet)
+                              │    infrastructure/{delivery,      │
+                              │      templates}                   │
+activity events ─────────────►│ ② In-app feed                     │
+ (invites, join requests,     │    application/NotificationService│──► notifications.notification
+  draft, voting…)             │    infrastructure/persistence     │    table
+                              └───────────────────────────────────┘
                                           ▲
            mobile app ── GET /notifications, POST /notifications/{id}/read
+```
+
+```
+notifications/internal/
+  domain/          Notification (feed item); Message (kind, channel, recipient, locale, data)
+  application/     NotificationService (feed); DeliveryService: render -> send, with metrics
+  infrastructure/  persistence (feed repo); delivery (email/SMS senders); templates/<locale>/ (embedded)
+  interfaces/      http (feed); events: activity events -> feed, identity events -> delivery
 ```
 
 | | ① Message delivery | ② In-app feed |
 |---|---|---|
 | Purpose | Reach the user **outside** the app | A list the app shows **inside** the app |
 | Triggered by | identity events | activity events |
-| Code | `shared/notification` (only imported here, despite the `shared/` path) | `notifications/internal` (DDD layers) |
+| Code | `DeliveryService`, `IdentityHandlers`, `infrastructure/delivery`, `infrastructure/templates` | `NotificationService`, `infrastructure/persistence` |
 | State | none | `notifications.notification` table |
-| Text | written here, hardcoded English (`shared/notification/service.go`) | **not** written here: a row stores `type` + `data`, the app turns it into a sentence |
+| Text | `infrastructure/templates/<locale>/<kind>.<channel>.tmpl` (English only for now) | **not** written here: a row stores `type` + `data`, the app turns it into a sentence |
 | API | none | `GET /notifications`, `POST /notifications/{id}/read` |
 
 - **Isolation:** every topic has its own durable JetStream consumer, so a failing email send is retried with a delay on its own consumer (and dead-lettered after the max deliveries) and never blocks the feed.
 - **No push yet:** a feed item reaches the app only when the app next fetches `GET /notifications`. Live updates on an open team screen come from activity's SSE stream, not from here.
 - **User settings aren't consulted:** nothing reads account-profile's `notification.email.enabled` or `preference.language`; every message goes out, in English.
 
-**Planned direction** (decided 2026-10-14, ticket `rekreativko-api-me3`): no split into separate services — one bounded context with a *feed* layer and a *delivery* layer (channels: email, SMS, later push), with `shared/notification` moved into `notifications/internal` and message text moved into per-language templates. Push (`rekreativko-api-79p`), localized emails (`rekreativko-api-nvr.4`) and the email setting (`rekreativko-api-22a`) build on it.
+**Direction** (decided 2026-10-14, ticket `rekreativko-api-me3`, done): no split into separate services. Push (`rekreativko-api-79p`), localized emails (`rekreativko-api-nvr.4`) and the email setting (`rekreativko-api-22a`) build on the delivery layer. Splitting it out later, if volume ever needs separate scaling, means copying that layer out.
+
+### Message templates
+
+One file per message and channel: `internal/infrastructure/templates/<locale>/<kind>.<channel>.tmpl`, for example `en/verification.email.tmpl`. It defines `body` and, for email, `subject`, and reads its values from `.` (`{{.code}}`). They are embedded in the binary and parsed at startup, so a broken template stops the service from starting. A missing value fails the render (`missingkey=error`) instead of sending a blank. `Message.Locale` picks the directory; an empty or unknown locale uses `en`. Adding a language is adding a directory (`rekreativko-api-nvr.4` wires the locale through).
+
+| Kind (metric `type`) | Email | SMS |
+|---|---|---|
+| `verification` | yes (`code`) | yes (`code`) |
+| `welcome_message` | yes | — |
+| `password_changed` | yes | yes |
 
 ## Running it
 
@@ -73,7 +92,7 @@ There is **no `POST /notifications`** — creation only happens internally, via 
 
 Each subscription creates its own durable JetStream consumer (`<service>+<subject>`), independent of any other service subscribed to the same topic.
 
-**Identity account-lifecycle** (delivered to `shared/notification.Service`, not the in-app feed):
+**Identity account-lifecycle** (delivered by `IdentityHandlers` through `DeliveryService`, not the in-app feed):
 
 | Topic | Action |
 |---|---|
@@ -81,7 +100,7 @@ Each subscription creates its own durable JetStream consumer (`<service>+<subjec
 | `identity.account.verified` | send welcome email — email accounts only; a phone account sends nothing |
 | `identity.account.password.changed` | send alert — **dead today**, identity has no route that changes passwords yet |
 
-Each handler picks the channel from the event's `code_type` (`notification.DeliveryTypeEmail` / `DeliveryTypePhone`). Anything else is acked but dropped loudly: an error log (`dropping event with unknown delivery type`), `NotificationSendFailures{channel="unknown", reason="unknown_delivery_type"}`, and an error on the span - retrying can't fix a bad payload. There is deliberately **no lockout email/SMS** (`identity.account.locked` is not subscribed); whether to alert users about a lockout is a separate decision.
+Each handler picks the channel from the event's `code_type` (`DeliveryTypeEmail` / `DeliveryTypePhone`). Anything else is acked but dropped loudly: an error log (`dropping event with unknown delivery type`), `NotificationSendFailures{channel="unknown", reason="unknown_delivery_type"}`, and an error on the span - retrying can't fix a bad payload. There is deliberately **no lockout email/SMS** (`identity.account.locked` is not subscribed); whether to alert users about a lockout is a separate decision.
 
 **Activity-domain** (create an in-app `Notification` row via `CreateNotification`):
 
@@ -138,10 +157,10 @@ Notification
 `notifications/cmd/api/main.go`:
 ```go
 if cfg.IsDevMode() {
-    emailSender = notification.NewInMemoryEmailSender(log)  // logs only
-    smsSender = notification.NewInMemorySMSSender(log)       // logs only
+    emailSender = delivery.NewInMemoryEmailSender(log)  // logs only
+    smsSender = delivery.NewInMemorySMSSender(log)       // logs only
 } else if !cfg.Features.PhoneRegistrationEnabled {
-    smsSender = notification.NewDisabledSMSSender(log)        // errors loudly if ever called
+    smsSender = delivery.NewDisabledSMSSender(log)        // errors loudly if ever called
 }
 if emailSender == nil {
     return fmt.Errorf("no email sender configured - required outside dev mode, and no real SMTP sender is implemented yet")
@@ -152,7 +171,7 @@ if smsSender == nil {
 ```
 Deliberate fail-fast: a nil sender would otherwise panic mid-flight on the first real event, instead of failing loudly at startup. `DisabledSMSSender` exists so a *deployment* choosing not to support phone registration doesn't need a real SMS provider just to boot — it only errors if the (supposedly unreachable) SMS path is actually hit.
 
-`SMTPEmailSender` exists in `shared/notification/` but is a non-functional stub (`SendEmail` just `return nil`s) — it's never constructed by `main.go`. No real SMS provider implementation exists at all.
+`SMTPEmailSender` exists in `infrastructure/delivery/` but is a non-functional stub (`SendEmail` just `return nil`s) — it's never constructed by `main.go`. No real SMS provider implementation exists at all.
 
 ## Configuration
 

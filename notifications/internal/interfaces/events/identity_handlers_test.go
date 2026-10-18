@@ -1,4 +1,4 @@
-package notification
+package events
 
 import (
 	"bytes"
@@ -11,7 +11,6 @@ import (
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 // recordingSender remembers where each message went.
@@ -54,22 +53,24 @@ func TestEventHandlers_RouteByDeliveryType(t *testing.T) {
 
 	for name, tc := range map[string]struct {
 		notificationType string
-		handle           func(*service) func(context.Context, []byte) error
+		handle           func(*IdentityHandlers) func(context.Context, []byte) error
 		want             map[string]outcome // by code_type
 	}{
 		"verification code": {
 			notificationType: "verification",
-			handle:           func(s *service) func(context.Context, []byte) error { return s.HandleVerificationCodeGenerated },
-			want:             map[string]outcome{"email": emailed, "phone": texted, "sms": dropped, "": dropped},
+			handle: func(h *IdentityHandlers) func(context.Context, []byte) error {
+				return h.HandleVerificationCodeGenerated
+			},
+			want: map[string]outcome{"email": emailed, "phone": texted, "sms": dropped, "": dropped},
 		},
 		"account verified": {
 			notificationType: "welcome_message",
-			handle:           func(s *service) func(context.Context, []byte) error { return s.HandleAccountVerified },
+			handle:           func(h *IdentityHandlers) func(context.Context, []byte) error { return h.HandleAccountVerified },
 			want:             map[string]outcome{"email": emailed, "phone": nobody, "sms": dropped, "": dropped},
 		},
 		"password changed": {
 			notificationType: "password_changed",
-			handle:           func(s *service) func(context.Context, []byte) error { return s.HandlePasswordChanged },
+			handle:           func(h *IdentityHandlers) func(context.Context, []byte) error { return h.HandlePasswordChanged },
 			want:             map[string]outcome{"email": emailed, "phone": texted, "sms": dropped, "": dropped},
 		},
 	} {
@@ -79,13 +80,8 @@ func TestEventHandlers_RouteByDeliveryType(t *testing.T) {
 					sender  recordingSender
 					logs    bytes.Buffer
 					metrics = newFakeMetrics()
-					svc     = &service{
-						SMSSender:   &sender,
-						EmailSender: &sender,
-						tracer:      sdktrace.NewTracerProvider().Tracer("test"),
-						metrics:     metrics,
-						logger:      logger.NewWithWriter("error", "json", &logs),
-					}
+					log     = logger.NewWithWriter("error", "json", &logs)
+					h       = newTestHandlers(t, &sender, metrics, log)
 				)
 
 				payload, err := json.Marshal(map[string]any{
@@ -99,7 +95,7 @@ func TestEventHandlers_RouteByDeliveryType(t *testing.T) {
 				require.NoError(t, err)
 
 				// Even a dropped event is acked: a retry can't fix a bad payload.
-				require.NoError(t, tc.handle(svc)(context.Background(), payload))
+				require.NoError(t, tc.handle(h)(context.Background(), payload))
 
 				assert.Equal(t, want.emailsTo, sender.emails)
 				assert.Equal(t, want.smsTo, sender.sms)

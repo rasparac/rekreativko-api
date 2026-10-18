@@ -1,4 +1,4 @@
-package notification
+package events
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rasparac/rekreativko-api/notifications/internal/application"
+	"github.com/rasparac/rekreativko-api/notifications/internal/infrastructure/templates"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,6 +42,21 @@ func (m *fakeMetrics) NotificationSendTotal() *prometheus.CounterVec      { retu
 func (m *fakeMetrics) NotificationSendFailures() *prometheus.CounterVec   { return m.failures }
 func (m *fakeMetrics) NotificationSendDuration() *prometheus.HistogramVec { return m.duration }
 
+// newTestHandlers wires the real delivery layer (and templates) to a fake sender.
+func newTestHandlers(t *testing.T, sender interface {
+	application.EmailSender
+	application.SMSSender
+}, metrics *fakeMetrics, log *logger.Logger) *IdentityHandlers {
+	t.Helper()
+
+	renderer, err := templates.NewRenderer()
+	require.NoError(t, err)
+
+	delivery := application.NewDeliveryService(sender, sender, renderer, metrics, log)
+
+	return NewIdentityHandlers(delivery, metrics, log)
+}
+
 type okSender struct{}
 
 func (okSender) SendEmail(context.Context, string, string, string) error { return nil }
@@ -48,10 +65,12 @@ func (okSender) SendSMS(context.Context, string, string) error           { retur
 // A span is exported to Jaeger, readable by anyone who can read traces, so no
 // handler may put a verification code or the recipient's email/phone on one.
 func TestEventHandlers_SpansCarryNoCodeEmailOrPhone(t *testing.T) {
-	handlers := map[string]func(*service) func(context.Context, []byte) error{
-		"verification code": func(s *service) func(context.Context, []byte) error { return s.HandleVerificationCodeGenerated },
-		"account verified":  func(s *service) func(context.Context, []byte) error { return s.HandleAccountVerified },
-		"password changed":  func(s *service) func(context.Context, []byte) error { return s.HandlePasswordChanged },
+	handlers := map[string]func(*IdentityHandlers) func(context.Context, []byte) error{
+		"verification code": func(h *IdentityHandlers) func(context.Context, []byte) error {
+			return h.HandleVerificationCodeGenerated
+		},
+		"account verified": func(h *IdentityHandlers) func(context.Context, []byte) error { return h.HandleAccountVerified },
+		"password changed": func(h *IdentityHandlers) func(context.Context, []byte) error { return h.HandlePasswordChanged },
 	}
 
 	// "sms" is no delivery type (identity sends "email" or "phone"), so it takes
@@ -61,13 +80,8 @@ func TestEventHandlers_SpansCarryNoCodeEmailOrPhone(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%s", name, deliveryType), func(t *testing.T) {
 				recorder := tracetest.NewSpanRecorder()
 				provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
-				svc := &service{
-					SMSSender:   okSender{},
-					EmailSender: okSender{},
-					tracer:      provider.Tracer("test"),
-					metrics:     newFakeMetrics(),
-					logger:      logger.New("error", "json"),
-				}
+				h := newTestHandlers(t, okSender{}, newFakeMetrics(), logger.New("error", "json"))
+				h.tracer = provider.Tracer("test")
 
 				eventID, accountID := uuid.New(), uuid.New()
 				payload, err := json.Marshal(map[string]any{
@@ -81,7 +95,7 @@ func TestEventHandlers_SpansCarryNoCodeEmailOrPhone(t *testing.T) {
 				})
 				require.NoError(t, err)
 
-				require.NoError(t, handler(svc)(context.Background(), payload))
+				require.NoError(t, handler(h)(context.Background(), payload))
 
 				spans := recorder.Ended()
 				require.NotEmpty(t, spans)

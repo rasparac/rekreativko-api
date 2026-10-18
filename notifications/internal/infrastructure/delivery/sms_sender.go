@@ -1,15 +1,12 @@
-package notification
+package delivery
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/rasparac/rekreativko-api/notifications/internal/application"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 )
-
-type SMSSender interface {
-	SendSMS(ctx context.Context, to, message string) error
-}
 
 // DisabledSMSSender is wired in when phone registration is turned off (see
 // config.FeaturesConfig.PhoneRegistrationEnabled) and no real SMS provider is
@@ -45,5 +42,10 @@ func (isms *InMemorySMSSender) SendSMS(ctx context.Context, to, message string) 
 	isms.logger.Info(ctx, "sending sms", "to", to, "message", message)
 	return nil
 }
+
+var (
+	_ application.SMSSender = (*DisabledSMSSender)(nil)
+	_ application.SMSSender = (*InMemorySMSSender)(nil)
+)
 
 // TODO add real sms sender implementation

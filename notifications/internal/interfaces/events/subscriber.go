@@ -8,8 +8,7 @@ import (
 )
 
 // identityNotifier sends the actual email/SMS for an identity account
-// lifecycle event - implemented by shared/notification.Service. Moved here
-// from gateway, which had no business owning delivery-channel concerns.
+// lifecycle event - implemented by IdentityHandlers, through the delivery layer.
 type identityNotifier interface {
 	HandleAccountVerified(ctx context.Context, payload []byte) error
 	HandlePasswordChanged(ctx context.Context, payload []byte) error

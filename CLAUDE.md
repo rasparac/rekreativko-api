@@ -16,6 +16,9 @@ The application is organized as a modular monolith with separate bounded context
 - **Identity Service** (port 8081): User authentication, registration, and account management
 - **Account Profile Service** (port 8082): User profiles, settings, and statistics
 - **Outbox Publisher**: Background service publishing domain events to NATS message broker
+- **Notifications Service** (port 8083): one bounded context with two layers - the in-app *feed* (activity events
+  -> `notification` rows, `GET /notifications`) and *delivery* (identity events -> email/SMS rendered from
+  `notifications/internal/infrastructure/templates/<locale>/`, sent through `DeliveryService`). See `notifications/README.md`
 
 Each service can run independently but shares the same PostgreSQL database.
 

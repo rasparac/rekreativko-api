@@ -1,14 +1,11 @@
-package notification
+package delivery
 
 import (
 	"context"
 
+	"github.com/rasparac/rekreativko-api/notifications/internal/application"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 )
-
-type EmailSender interface {
-	SendEmail(ctx context.Context, to, subject, body string) error
-}
 
 type SMTPEmailSender struct {
 	SMTPHost string
@@ -50,6 +47,6 @@ func (imes *InMemoryEmailSender) SendEmail(ctx context.Context, to, subject, bod
 	return nil
 }
 
-var _ EmailSender = (*InMemoryEmailSender)(nil)
+var _ application.EmailSender = (*InMemoryEmailSender)(nil)
 
-var _ EmailSender = (*SMTPEmailSender)(nil)
+var _ application.EmailSender = (*SMTPEmailSender)(nil)
