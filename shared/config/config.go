@@ -160,12 +160,15 @@ type (
 		MaxRetries int    `envconfig:"OUTBOX_MAX_RETRIES" default:"5"`
 
 		// Published rows are kept for PublishedRetention (as long as the NATS
-		// stream keeps its messages), then deleted in batches of PurgeBatch
-		// every PurgeInterval. A PurgeInterval of 0 turns the purge off.
-		// Dead-lettered rows are never purged.
-		PublishedRetention time.Duration `envconfig:"OUTBOX_PUBLISHED_RETENTION" default:"168h"`
-		PurgeInterval      time.Duration `envconfig:"OUTBOX_PURGE_INTERVAL" default:"1h"`
-		PurgeBatch         int           `envconfig:"OUTBOX_PURGE_BATCH" default:"1000"`
+		// stream keeps its messages) and dead-lettered rows for
+		// DeadLetterRetention (as long as the NATS DLQ stream keeps its
+		// messages; payloads can carry personal data, so not forever), then
+		// deleted in batches of PurgeBatch every PurgeInterval. A PurgeInterval
+		// of 0 turns the purge off.
+		PublishedRetention  time.Duration `envconfig:"OUTBOX_PUBLISHED_RETENTION" default:"168h"`
+		DeadLetterRetention time.Duration `envconfig:"OUTBOX_DEAD_LETTER_RETENTION" default:"336h"`
+		PurgeInterval       time.Duration `envconfig:"OUTBOX_PURGE_INTERVAL" default:"1h"`
+		PurgeBatch          int           `envconfig:"OUTBOX_PURGE_BATCH" default:"1000"`
 	}
 
 	NatsConfig struct {

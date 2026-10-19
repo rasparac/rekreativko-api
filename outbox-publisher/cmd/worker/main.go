@@ -112,6 +112,7 @@ func main() {
 			appMetrics,
 			schemas,
 			cfg.Outbox.PublishedRetention,
+			cfg.Outbox.DeadLetterRetention,
 			cfg.Outbox.PurgeInterval,
 			cfg.Outbox.PurgeBatch,
 		)
@@ -122,7 +123,7 @@ func main() {
 
 		go purger.Run(ctx)
 	} else {
-		log.Warn(ctx, "outbox purge disabled: OUTBOX_PURGE_INTERVAL is not positive, published rows are kept forever")
+		log.Warn(ctx, "outbox purge disabled: OUTBOX_PURGE_INTERVAL is not positive, published and dead-lettered rows are kept forever")
 	}
 
 	mux := http.NewServeMux()

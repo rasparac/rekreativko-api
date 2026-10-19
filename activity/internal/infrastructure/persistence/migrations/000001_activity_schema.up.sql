@@ -515,6 +515,10 @@ CREATE INDEX idx_event_outbox_published_at ON activity.event_outbox(published_at
 CREATE INDEX idx_event_outbox_pending ON activity.event_outbox(created_at)
     WHERE published_at IS NULL AND failed_at IS NULL;
 
+-- Dead-lettered events, for the purge of those past their retention window.
+CREATE INDEX idx_activity_event_outbox_failed_at ON activity.event_outbox(failed_at)
+    WHERE failed_at IS NOT NULL;
+
 -- Wake the outbox publisher as soon as a transaction that wrote events
 -- commits (NOTIFY is delivered on commit) instead of on its next poll. The
 -- payload is the schema; the publisher's poll stays as the fallback.

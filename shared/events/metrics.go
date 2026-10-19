@@ -50,9 +50,9 @@ func New() *Metrics {
 			prometheus.CounterOpts{
 				Subsystem: "events",
 				Name:      "outbox_purged_total",
-				Help:      "Published outbox rows deleted after the retention window",
+				Help:      "Outbox rows deleted after their retention window, by kind (published, dead_lettered)",
 			},
-			[]string{"schema"},
+			[]string{"schema", "kind"},
 		),
 
 		// Database query

@@ -232,3 +232,37 @@ func (dem *domainEventManager) DeletePublishedEvents(
 
 	return tag.RowsAffected(), nil
 }
+
+// DeleteDeadLetteredEvents deletes up to limit events that were dead-lettered
+// (failed_at set) before the given time, oldest first, and returns how many it
+// deleted. Payloads can carry personal data (identity events hold email, phone
+// and verification codes), so a dead-lettered row may not stay forever; it is
+// kept long enough to be inspected and replayed. Rows another purger holds are
+// skipped, so several publishers can run it together.
+func (dem *domainEventManager) DeleteDeadLetteredEvents(
+	ctx context.Context,
+	schema string,
+	failedBefore time.Time,
+	limit int,
+) (int64, error) {
+	query := fmt.Sprintf(`
+		DELETE FROM %[1]s.event_outbox
+		WHERE event_id IN (
+			SELECT event_id
+			FROM %[1]s.event_outbox
+			WHERE
+				failed_at IS NOT NULL
+				AND failed_at < $1
+			ORDER BY failed_at ASC
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+	`, schema)
+
+	tag, err := dem.txManager.Querier(ctx).Exec(ctx, query, failedBefore, limit)
+	if err != nil {
+		return 0, err
+	}
+
+	return tag.RowsAffected(), nil
+}

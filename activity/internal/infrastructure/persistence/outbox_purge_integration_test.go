@@ -19,3 +19,14 @@ func TestOutboxPurge_Activity(t *testing.T) {
 
 	testutil.VerifyOutboxPurge(t, db, "activity", events.DeletePublishedEvents)
 }
+
+// Dead-lettered outbox rows older than their retention window are purged;
+// pending and published ones are not.
+func TestDeadLetterPurge_Activity(t *testing.T) {
+	db := testutil.NewTestDatabase(t)
+	db.RunMigrationsForService()
+
+	events := domainevent.NewDomainEventManager(db.CreateTransactionManager(), testutil.CreateLogger())
+
+	testutil.VerifyDeadLetterPurge(t, db, "activity", events.DeleteDeadLetteredEvents)
+}

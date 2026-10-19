@@ -23,19 +23,7 @@ func VerifyOutboxPurge(
 ) {
 	t.Helper()
 
-	insert := func(publishedAgo, failedAgo, createdAgo time.Duration, retries int) uuid.UUID {
-		id := uuid.New()
-		db.RunSQL(fmt.Sprintf(`
-			INSERT INTO %s.event_outbox (event_id, event_type, aggregate_id, payload, created_at, published_at, failed_at, retry_count)
-			VALUES ($1, 'test.event', $2, '{}', NOW() - make_interval(secs => $3),
-				CASE WHEN $4::float8 >= 0 THEN NOW() - make_interval(secs => $4) END,
-				CASE WHEN $5::float8 >= 0 THEN NOW() - make_interval(secs => $5) END, $6)`, schema),
-			id, uuid.New(), createdAgo.Seconds(), publishedAgo.Seconds(), failedAgo.Seconds(), retries,
-		)
-		return id
-	}
-	const never = -time.Second // a negative age means "NULL"
-
+	insert := outboxInserter(db, schema)
 	day := 24 * time.Hour
 
 	var expired []uuid.UUID
@@ -48,20 +36,7 @@ func VerifyOutboxPurge(
 	pending := insert(never, never, 10*day, 0)
 	deadLettered := insert(never, 9*day, 10*day, 5)
 
-	remaining := func() map[uuid.UUID]bool {
-		rows, err := db.Pool.Query(context.Background(), fmt.Sprintf(`SELECT event_id FROM %s.event_outbox`, schema))
-		require.NoError(t, err)
-		defer rows.Close()
-
-		ids := map[uuid.UUID]bool{}
-		for rows.Next() {
-			var id uuid.UUID
-			require.NoError(t, rows.Scan(&id))
-			ids[id] = true
-		}
-		require.NoError(t, rows.Err())
-		return ids
-	}
+	remaining := func() map[uuid.UUID]bool { return outboxEventIDs(t, db, schema) }
 
 	ctx := context.Background()
 	cutoff := time.Now().Add(-7 * day)
@@ -95,5 +70,99 @@ func VerifyOutboxPurge(
 	assert.True(t, left[recent], "published inside the window")
 	assert.True(t, left[justInside], "published 6 days ago")
 	assert.True(t, left[pending], "pending rows are never purged, however old")
-	assert.True(t, left[deadLettered], "dead-lettered rows are kept until handled")
+	assert.True(t, left[deadLettered], "dead-lettered rows have their own purge")
+}
+
+// VerifyDeadLetterPurge checks a schema's dead-lettered-row purge against its
+// real event_outbox table: rows dead-lettered before the cutoff go, oldest
+// first and a batch at a time, while recently dead-lettered, pending and
+// published rows stay. purge is the DeleteDeadLetteredEvents of the code
+// under test.
+func VerifyDeadLetterPurge(
+	t *testing.T,
+	db *TestDatabase,
+	schema string,
+	purge func(ctx context.Context, schema string, failedBefore time.Time, limit int) (int64, error),
+) {
+	t.Helper()
+
+	insert := outboxInserter(db, schema)
+	day := 24 * time.Hour
+
+	var expired []uuid.UUID
+	for i := range 3 {
+		// 15 to 17 days ago: past the 14-day window
+		expired = append(expired, insert(never, time.Duration(15+i)*day, time.Duration(16+i)*day, 5))
+	}
+	recent := insert(never, 13*day, 14*day, 5)
+	pending := insert(never, never, 30*day, 2)
+	published := insert(20*day, never, 21*day, 0)
+
+	remaining := func() map[uuid.UUID]bool { return outboxEventIDs(t, db, schema) }
+
+	ctx := context.Background()
+	cutoff := time.Now().Add(-14 * day)
+
+	deleted, err := purge(ctx, schema, cutoff, 2)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, deleted)
+	left := remaining()
+	assert.False(t, left[expired[2]], "the oldest goes first")
+	assert.False(t, left[expired[1]])
+	assert.True(t, left[expired[0]])
+
+	deleted, err = purge(ctx, schema, cutoff, 2)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, deleted, "a short batch: nothing more to delete")
+
+	deleted, err = purge(ctx, schema, cutoff, 2)
+	require.NoError(t, err)
+	assert.Zero(t, deleted, "idempotent")
+
+	left = remaining()
+	assert.Len(t, left, 3)
+	for _, id := range expired {
+		assert.False(t, left[id], "expired dead-lettered row %s", id)
+	}
+	assert.True(t, left[recent], "dead-lettered inside the window")
+	assert.True(t, left[pending], "pending rows are never purged, however old")
+	assert.True(t, left[published], "published rows have their own purge")
+}
+
+// never as an age passed to an outboxInserter means "NULL".
+const never = -time.Second
+
+// outboxInserter returns a func that inserts an event_outbox row whose
+// published_at, failed_at and created_at lie the given ages in the past, and
+// returns its event_id.
+func outboxInserter(db *TestDatabase, schema string) func(publishedAgo, failedAgo, createdAgo time.Duration, retries int) uuid.UUID {
+	return func(publishedAgo, failedAgo, createdAgo time.Duration, retries int) uuid.UUID {
+		id := uuid.New()
+		db.RunSQL(fmt.Sprintf(`
+			INSERT INTO %s.event_outbox (event_id, event_type, aggregate_id, payload, created_at, published_at, failed_at, retry_count)
+			VALUES ($1, 'test.event', $2, '{}', NOW() - make_interval(secs => $3),
+				CASE WHEN $4::float8 >= 0 THEN NOW() - make_interval(secs => $4) END,
+				CASE WHEN $5::float8 >= 0 THEN NOW() - make_interval(secs => $5) END, $6)`, schema),
+			id, uuid.New(), createdAgo.Seconds(), publishedAgo.Seconds(), failedAgo.Seconds(), retries,
+		)
+		return id
+	}
+}
+
+// outboxEventIDs returns the event_ids left in the schema's event_outbox.
+func outboxEventIDs(t *testing.T, db *TestDatabase, schema string) map[uuid.UUID]bool {
+	t.Helper()
+
+	rows, err := db.Pool.Query(context.Background(), fmt.Sprintf(`SELECT event_id FROM %s.event_outbox`, schema))
+	require.NoError(t, err)
+	defer rows.Close()
+
+	ids := map[uuid.UUID]bool{}
+	for rows.Next() {
+		var id uuid.UUID
+		require.NoError(t, rows.Scan(&id))
+		ids[id] = true
+	}
+	require.NoError(t, rows.Err())
+	return ids
 }
