@@ -21,6 +21,7 @@ type (
 		CreateAccount(ctx context.Context, account *domain.Account) error
 		GetBy(ctx context.Context, filter AccountFilter) (*domain.Account, error)
 		UpdateAccount(ctx context.Context, account *domain.Account) error
+		ListDueForErasure(ctx context.Context, now time.Time, limit int) ([]*domain.Account, error)
 	}
 
 	AccountFilter struct {
@@ -52,8 +53,25 @@ type (
 		CreatedAt           time.Time
 		UpdatedAt           time.Time
 		DeletedAt           sql.NullTime
+		EraseAfter          sql.NullTime
+		ErasedAt            sql.NullTime
 	}
 )
+
+// accountColumns are the columns scanAccount reads, in its order.
+const accountColumns = `
+		id,
+		email,
+		phone_number,
+		password,
+		status,
+		failed_login_attempts,
+		locked_until,
+		created_at,
+		updated_at,
+		deleted_at,
+		erase_after,
+		erased_at`
 
 func (f AccountFilter) Validate() error {
 	if f.PhoneNumber == nil && f.Email == nil && f.UUID == nil {
@@ -82,17 +100,7 @@ func (am *AccountManager) GetBy(ctx context.Context, filter AccountFilter) (*dom
 	}
 
 	var (
-		baseQuery = `SELECT
-		id,
-		email,
-		phone_number,
-		password,
-		status,
-		failed_login_attempts,
-		locked_until,
-		created_at,
-		updated_at,
-		deleted_at
+		baseQuery = `SELECT` + accountColumns + `
 	FROM identity.accounts WHERE %s`
 		args    = []any{}
 		filters = []string{}
@@ -130,8 +138,58 @@ func (am *AccountManager) GetBy(ctx context.Context, filter AccountFilter) (*dom
 
 	// The transaction's querier when there is one, so a ForUpdate lock is taken
 	// in (and held by) the caller's transaction, not on a separate connection.
+	model, err := scanAccount(am.tx.Querier(ctx).QueryRow(ctx, baseQuery, args...))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrAccountNotFound
+	} else if err != nil {
+		return nil, err
+	}
+
+	return toDomainAccount(model)
+}
+
+// ListDueForErasure returns up to limit deleted accounts whose erase_after has
+// passed and that are not erased yet, longest due first. The rows are locked
+// with FOR UPDATE SKIP LOCKED, so instances erasing at the same time never
+// pick the same account; it MUST be called within a transaction, which holds
+// the locks until it ends.
+func (am *AccountManager) ListDueForErasure(ctx context.Context, now time.Time, limit int) ([]*domain.Account, error) {
+	query := `SELECT` + accountColumns + `
+	FROM identity.accounts
+	WHERE
+		erase_after IS NOT NULL
+		AND erased_at IS NULL
+		AND erase_after <= $1
+	ORDER BY erase_after ASC
+	LIMIT $2
+	FOR UPDATE SKIP LOCKED`
+
+	rows, err := am.tx.Querier(ctx).Query(ctx, query, now, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var accounts []*domain.Account
+	for rows.Next() {
+		model, err := scanAccount(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		account, err := toDomainAccount(model)
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, account)
+	}
+
+	return accounts, rows.Err()
+}
+
+func scanAccount(row pgx.Row) (accoutModel, error) {
 	var model accoutModel
-	err = am.tx.Querier(ctx).QueryRow(ctx, baseQuery, args...).Scan(
+	err := row.Scan(
 		&model.ID,
 		&model.Email,
 		&model.PhoneNumber,
@@ -142,14 +200,10 @@ func (am *AccountManager) GetBy(ctx context.Context, filter AccountFilter) (*dom
 		&model.CreatedAt,
 		&model.UpdatedAt,
 		&model.DeletedAt,
+		&model.EraseAfter,
+		&model.ErasedAt,
 	)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, domain.ErrAccountNotFound
-	} else if err != nil {
-		return nil, err
-	}
-
-	return toDomainAccount(model)
+	return model, err
 }
 
 func (am *AccountManager) CreateAccount(ctx context.Context, account *domain.Account) error {
@@ -196,7 +250,10 @@ func (am *AccountManager) UpdateAccount(ctx context.Context, account *domain.Acc
 				failed_login_attempts = $5,
 				locked_until = $6,
 				updated_at = $7,
-				deleted_at = $8
+				deleted_at = $8,
+				password = $9,
+				erase_after = $10,
+				erased_at = $11
 			WHERE id = $1
 		`
 	)
@@ -214,6 +271,9 @@ func (am *AccountManager) UpdateAccount(ctx context.Context, account *domain.Acc
 		model.LockedUntil,
 		model.UpdatedAt,
 		model.DeletedAt,
+		model.PasswordHash,
+		model.EraseAfter,
+		model.ErasedAt,
 	)
 	if err != nil {
 		return err
@@ -260,7 +320,23 @@ func toAccountModel(account *domain.Account) *accoutModel {
 			Time:  deletedAt,
 			Valid: !deletedAt.IsZero(),
 		},
+		EraseAfter: toNullTime(account.EraseAfter()),
+		ErasedAt:   toNullTime(account.ErasedAt()),
 	}
+}
+
+func toNullTime(t *time.Time) sql.NullTime {
+	if t == nil {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: *t, Valid: true}
+}
+
+func fromNullTime(t sql.NullTime) *time.Time {
+	if !t.Valid {
+		return nil
+	}
+	return &t.Time
 }
 
 func toDomainAccount(account accoutModel) (*domain.Account, error) {
@@ -292,6 +368,8 @@ func toDomainAccount(account accoutModel) (*domain.Account, error) {
 		account.CreatedAt,
 		account.UpdatedAt,
 		deletedAt,
+		fromNullTime(account.EraseAfter),
+		fromNullTime(account.ErasedAt),
 	), nil
 }
 

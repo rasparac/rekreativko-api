@@ -24,6 +24,12 @@ Beyond the shared config (`shared/config/config.go`), this service reads:
 | `PHONE_REGISTRATION_ENABLED` | `false` | Feature flag. While off, `POST /register` rejects any request with a non-empty `phone_number` (`400 phone_registration_disabled`). Only gates registration — login and resend-verification-code still accept a phone identifier if an account already has one. |
 | `PORT` | `8080` (compose overrides to `8081`) | |
 | `OUTBOX_SCHEMAS` | — (required, shared) | Must include `identity` for the outbox publisher to pick up this service's events |
+| `NATS_URL` | `nats://localhost:4222` (shared) | Required since the service consumes the erasure confirmations; it does not start without NATS |
+| `ACCOUNT_ERASURE_GRACE` | `720h` (30 days) | How long a deleted account is kept before it is erased, see [Account erasure](#account-erasure). `0` erases it on the next run; negative refuses to start |
+| `ACCOUNT_ERASURE_INTERVAL` | `1h` | How often the erase job runs (and once at start-up); `0` turns it off - deleted accounts are then never erased |
+| `ACCOUNT_ERASURE_BATCH` | `100` | Accounts erased per transaction |
+| `ACCOUNT_ERASURE_CONTEXTS` | `account_profile,activity,notifications` | Contexts that must confirm each erasure with `<context>.account.erased` |
+| `ACCOUNT_ERASURE_INCOMPLETE_AFTER` | `168h` (7 days) | An erasure some context has not confirmed by then is counted in `identity_account_erasures_incomplete` |
 
 Verification codes are 6 digits; bcrypt cost is 10. Both are hardcoded, not configurable.
 
@@ -89,7 +95,7 @@ Single-use rotation: the old refresh token is looked up by hash, validated (not 
 
 ### Delete current account — `DELETE /me`
 
-Soft-deletes the account and revokes **all** of its refresh tokens. Fires `identity.account.deleted`.
+Soft-deletes the account (status `deleted`, can no longer log in), revokes **all** of its refresh tokens and schedules its erasure `ACCOUNT_ERASURE_GRACE` later (`erase_after`). Fires `identity.account.deleted`. The personal data is removed only when the grace period has passed, see [Account erasure](#account-erasure).
 
 ### Logout — `POST /logout`
 
@@ -106,6 +112,7 @@ Account
   status AccountStatus  // pending | active | suspended | deleted
   failedLoginAttempts int, lockedUntil *time.Time
   createdAt, updatedAt, deletedAt *time.Time
+  eraseAfter, erasedAt *time.Time   // set by Delete / Erase
 
 RefreshToken
   id, accountID, tokenHash (sha256 hex, plaintext never persisted)
@@ -133,11 +140,28 @@ Published to `identity.event_outbox`, relayed to NATS by the outbox publisher. S
 | `identity.account.login.succeeded` | successful login | — |
 | `identity.account.login.failed` | failed login attempt | — |
 | `identity.account.password.changed` | `Account.ChangePassword` | `notifications` — **currently unreachable**, no route calls this (see below) |
-| `identity.account.deleted` | `DELETE /me` | — |
+| `identity.account.deleted` | `DELETE /me` | — (consumers will only deactivate, epic `dh7`) |
+| `identity.account.erased` | erase job, `ACCOUNT_ERASURE_GRACE` after the deletion. Payload: `account_id` only | every context in `ACCOUNT_ERASURE_CONTEXTS` (being added, epic `dh7`) |
 | `identity.refresh_token.created` | any token issuance | — |
 | `identity.refresh_token.revoked` | logout / rotation / account deletion | — |
 | `identity.verification_code.created` | register / resend | `notifications` (sends the actual code via email/SMS) |
 | `identity.verification_code.used` | verify-account success | — |
+
+## Account erasure
+
+GDPR Art. 17: a deleted account's personal data is erased, in every context, within a month. The grace period lives only here; every other context erases immediately on the event.
+
+1. `DELETE /me` sets `deleted_at` and `erase_after = now + ACCOUNT_ERASURE_GRACE`. The data stays until then.
+2. The erase job (`application.ErasureService`, every `ACCOUNT_ERASURE_INTERVAL`) takes accounts with `erase_after` passed and `erased_at` NULL, `ACCOUNT_ERASURE_BATCH` at a time with `FOR UPDATE SKIP LOCKED` (several instances are safe), and in one transaction per batch: NULLs `email` and `phone_number`, replaces `password` with `domain.ErasedPasswordHash` (`!erased` - not a bcrypt hash, nothing matches it), sets `erased_at`, deletes the account's `verification_codes` and `refresh_tokens`, and raises `identity.account.erased`. The account row and its id stay, so other contexts can show a "deleted user"; the email and phone are free for a new account.
+3. Each context erases its own data on `identity.account.erased` and confirms with `<context>.account.erased` (payload `{"event_id", "account_id"}`). Identity records each confirmation in `identity.account_erasure(account_id, context, completed_at)`; a repeated one is a no-op, one for an unknown account is dead-lettered.
+4. Each run also sets the gauge `identity_account_erasures_incomplete`: accounts erased more than `ACCOUNT_ERASURE_INCOMPLETE_AFTER` ago that some context in `ACCOUNT_ERASURE_CONTEXTS` has not confirmed. The `AccountErasureIncomplete` alert fires when it stays above 0 for an hour. Find the missing contexts with:
+   ```sql
+   SELECT a.id, a.erased_at, array_agg(e.context) AS confirmed
+   FROM identity.accounts a LEFT JOIN identity.account_erasure e ON e.account_id = a.id
+   WHERE a.erased_at IS NOT NULL GROUP BY a.id;
+   ```
+
+Metrics: `identity_accounts_erased_total`, `identity_account_erasures_incomplete`. Log lines: `erased deleted accounts` (Info), `account erasures not confirmed by every context` (Warn).
 
 ## Known issues
 

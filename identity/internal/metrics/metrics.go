@@ -19,6 +19,8 @@ type Metrics struct {
 	LoginFailuresTotal    *prometheus.CounterVec
 	VerificationTotal     *prometheus.CounterVec
 	ActiveRefreshesTokens prometheus.Gauge
+	AccountsErasedTotal   prometheus.Counter
+	ErasuresIncomplete    prometheus.Gauge
 
 	// Event metrics
 	EventsPublishedTotal *prometheus.CounterVec
@@ -108,6 +110,21 @@ func New() *Metrics {
 			prometheus.GaugeOpts{
 				Name: "refreshes_tokens",
 				Help: "Current number of active refreshes tokens",
+			},
+		),
+
+		AccountsErasedTotal: promauto.NewCounter(
+			prometheus.CounterOpts{
+				Subsystem: "identity",
+				Name:      "accounts_erased_total",
+				Help:      "Deleted accounts erased after the grace period",
+			},
+		),
+		ErasuresIncomplete: promauto.NewGauge(
+			prometheus.GaugeOpts{
+				Subsystem: "identity",
+				Name:      "account_erasures_incomplete",
+				Help:      "Erased accounts not yet confirmed by every bounded context after ACCOUNT_ERASURE_INCOMPLETE_AFTER",
 			},
 		),
 

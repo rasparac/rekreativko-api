@@ -18,6 +18,7 @@ const (
 	IdentityAccountLoginFailedEvent     = "identity.account.login.failed"
 	IdentityAccountPasswordChangedEvent = "identity.account.password.changed"
 	IdentityAccountDeletedEvent         = "identity.account.deleted"
+	IdentityAccountErasedEvent          = "identity.account.erased"
 )
 
 type AccountRegisteredEvent struct {
@@ -229,5 +230,24 @@ func NewAccountDeletedEvent(account *Account) *AccountDeletedEvent {
 			OccurredAt:  time.Now().UTC(),
 			AggregateID: account.ID(),
 		},
+	}
+}
+
+// AccountErasedEvent tells every context to erase its data of the account. It
+// carries the account id only: the account's personal data is gone.
+type AccountErasedEvent struct {
+	domainevent.BaseEvent
+	AccountID uuid.UUID `json:"account_id"`
+}
+
+func NewAccountErasedEvent(account *Account) *AccountErasedEvent {
+	return &AccountErasedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   IdentityAccountErasedEvent,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: account.ID(),
+		},
+		AccountID: account.ID(),
 	}
 }

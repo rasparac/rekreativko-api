@@ -18,9 +18,15 @@ type Account struct {
 	createdAt           time.Time
 	updatedAt           time.Time
 	deletedAt           *time.Time
+	eraseAfter          *time.Time
+	erasedAt            *time.Time
 
 	events []domainevent.Event
 }
+
+// ErasedPasswordHash replaces the password of an erased account. It is not a
+// bcrypt hash, so no password ever matches it.
+const ErasedPasswordHash = "!erased"
 
 func NewAccount(
 	email *Email,
@@ -62,6 +68,8 @@ func ReconstructAccount(
 	createdAt time.Time,
 	updatedAt time.Time,
 	deletedAt *time.Time,
+	eraseAfter *time.Time,
+	erasedAt *time.Time,
 ) *Account {
 	return &Account{
 		id:                  id,
@@ -74,6 +82,8 @@ func ReconstructAccount(
 		createdAt:           createdAt,
 		updatedAt:           updatedAt,
 		deletedAt:           deletedAt,
+		eraseAfter:          eraseAfter,
+		erasedAt:            erasedAt,
 	}
 }
 
@@ -111,6 +121,14 @@ func (a *Account) UpdatedAt() time.Time {
 
 func (a *Account) DeletedAt() *time.Time {
 	return a.deletedAt
+}
+
+func (a *Account) EraseAfter() *time.Time {
+	return a.eraseAfter
+}
+
+func (a *Account) ErasedAt() *time.Time {
+	return a.erasedAt
 }
 
 func (a *Account) FailedLoginAttempts() int {
@@ -178,17 +196,47 @@ func (a *Account) Suspend(reason string) error {
 	return nil
 }
 
-func (a *Account) Delete() error {
+// Delete deletes the account: it can no longer log in, and it is erased (see
+// Erase) once grace has passed. Until then the data is kept, so the deletion
+// can still be investigated or undone by support.
+func (a *Account) Delete(grace time.Duration) error {
 	if !a.status.CanBeDeleted() {
 		return ErrAccountDeleted
 	}
 
 	now := time.Now().UTC()
+	eraseAfter := now.Add(grace)
 
 	a.status = AccountStatusDeleted
 	a.deletedAt = &now
+	a.eraseAfter = &eraseAfter
 	a.touch()
 	a.addEvent(NewAccountDeletedEvent(a))
+
+	return nil
+}
+
+// Erase removes the personal data of a deleted account: email and phone are
+// cleared and the password replaced by ErasedPasswordHash. The id stays, so
+// other contexts can still show a reference to a "deleted user"; the raised
+// identity.account.erased tells them to erase their own data of it.
+func (a *Account) Erase() error {
+	if a.status != AccountStatusDeleted {
+		return ErrAccountNotDeleted
+	}
+
+	if a.erasedAt != nil {
+		return ErrAccountAlreadyErased
+	}
+
+	now := time.Now().UTC()
+
+	a.email = nil
+	a.phoneNumber = nil
+	a.password = NewPasswordFromHash(ErasedPasswordHash)
+	a.erasedAt = &now
+	a.touch()
+	a.addEvent(NewAccountErasedEvent(a))
 
 	return nil
 }

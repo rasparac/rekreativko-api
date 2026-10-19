@@ -35,3 +35,14 @@ groups:
         annotations:
           summary: "Outbox publisher is failing to publish events"
           description: "The outbox publisher has had a non-zero event failure rate for the last 5 minutes (current value: {{ $value | humanize }}/s)."
+
+  - name: rekreativko.erasure
+    rules:
+      - alert: AccountErasureIncomplete
+        expr: max(identity_account_erasures_incomplete) > 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Account erasures not confirmed by every bounded context"
+          description: "{{ $value | humanize }} erased account(s) are missing a <context>.account.erased confirmation past ACCOUNT_ERASURE_INCOMPLETE_AFTER (GDPR Art. 17 erasure must finish within a month). See identity.account_erasure for which contexts are missing."

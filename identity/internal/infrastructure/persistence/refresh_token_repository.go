@@ -22,6 +22,7 @@ type (
 		Revoke(ctx context.Context, uuid uuid.UUID) error
 		RevokeAll(ctx context.Context, accountID uuid.UUID) error
 		DeleteExpired(ctx context.Context) error
+		DeleteAllForAccount(ctx context.Context, accountID uuid.UUID) error
 	}
 
 	refreshTokenModel struct {
@@ -164,6 +165,20 @@ func (m *refreshTokenManager) RevokeAll(ctx context.Context, accountID uuid.UUID
 	SET
 		revoked_at = NOW()
 	WHERE account_id = $1 AND revoked_at IS NULL
+	`
+
+	_, err := m.tx.Querier(ctx).Exec(ctx, query, accountID)
+
+	return err
+}
+
+// DeleteAllForAccount deletes every refresh token of the account, revoked or
+// not, when the account is erased.
+func (m *refreshTokenManager) DeleteAllForAccount(ctx context.Context, accountID uuid.UUID) error {
+	query := `
+	DELETE FROM
+		identity.refresh_tokens
+	WHERE account_id = $1
 	`
 
 	_, err := m.tx.Querier(ctx).Exec(ctx, query, accountID)

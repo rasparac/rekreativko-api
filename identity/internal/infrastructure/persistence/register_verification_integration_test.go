@@ -44,6 +44,7 @@ func TestRegister_AccountVerificationRequired(t *testing.T) {
 				testMetrics(),
 				false,
 				required,
+				0,
 			)
 
 			const email = "new.player@example.com"

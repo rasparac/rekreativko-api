@@ -27,6 +27,8 @@ type Account struct {
     CreatedAt   time.Time
     UpdatedAt   time.Time
     DeletedAt   *time.Time  // soft delete
+    EraseAfter  *time.Time  // set on delete: DeletedAt + ACCOUNT_ERASURE_GRACE
+    ErasedAt    *time.Time  // personal data removed (see "Account erasure")
 }
 
 type AccountStatus string
@@ -96,13 +98,28 @@ User registers  -> Account Created (status pending; active at once when ACCOUNT_
                 -> Account Activated (status active)
 ```
 
+Account erasure (GDPR Art. 17):
+
+```
+DELETE /me      -> status deleted, deleted_at, erase_after = now + ACCOUNT_ERASURE_GRACE (30d)
+                -> refresh tokens revoked, identity.account.deleted
+erase job       -> erase_after passed: email/phone NULL, password = "!erased", erased_at
+                -> verification_codes + refresh_tokens deleted, identity.account.erased {account_id}
+each context    -> erases its own data, raises <context>.account.erased {account_id}
+identity        -> records it in identity.account_erasure; gauge identity_account_erasures_incomplete
+                   counts erasures a context in ACCOUNT_ERASURE_CONTEXTS has not confirmed after 7d
+```
+
+The grace period exists only in identity; other contexts erase immediately on the event.
+The account row and id stay. Details: identity/README.md "Account erasure".
+
 Login Rules:
 
 1. Login methods:
 - login with email
 - login with phone number
 - no login for suspended accounts
-- no login for deleted accounts
+- no login for deleted accounts (an erased one has no email/phone and an unmatchable password too)
 - no login with unverified accounts
 
 2. Token Generation
@@ -165,7 +182,17 @@ CREATE TABLE IF NOT EXISTS identity.accounts(
     locked_until timestamptz DEFAULT NULL,
     created_at timestamptz NOT NULL DEFAULT NOW(),
     updated_at timestamptz NOT NULL DEFAULT NOW(),
-    deleted_at timestamptz DEFAULT NULL
+    deleted_at timestamptz DEFAULT NULL,
+    erase_after timestamptz DEFAULT NULL,
+    erased_at timestamptz DEFAULT NULL
+);
+
+-- Each context that confirmed it erased its data of an erased account
+CREATE TABLE IF NOT EXISTS identity.account_erasure(
+    account_id uuid NOT NULL REFERENCES identity.accounts(id),
+    context varchar(50) NOT NULL,
+    completed_at timestamptz NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (account_id, context)
 );
 
 -- Unique constraints on email/phone only for non-deleted accounts

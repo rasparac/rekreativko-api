@@ -26,6 +26,7 @@ type (
 		GetVerificationCodesBy(ctx context.Context, filter VerificationCodeFilter) ([]*domain.VerificationCode, error)
 		MarkAsUsed(ctx context.Context, code string) error
 		DeleteExpiredVerificationCodes(ctx context.Context) error
+		DeleteAllForAccount(ctx context.Context, accountID uuid.UUID) error
 	}
 
 	verificationCodeManager struct {
@@ -164,6 +165,19 @@ func (m *verificationCodeManager) MarkAsUsed(ctx context.Context, code string) e
 	}
 
 	return nil
+}
+
+// DeleteAllForAccount deletes every verification code of the account, used
+// or not, when the account is erased.
+func (m *verificationCodeManager) DeleteAllForAccount(ctx context.Context, accountID uuid.UUID) error {
+	query := `
+	DELETE FROM
+		identity.verification_codes
+	WHERE account_id = $1
+	`
+
+	_, err := m.tx.Querier(ctx).Exec(ctx, query, accountID)
+	return err
 }
 
 func (m *verificationCodeManager) DeleteExpiredVerificationCodes(ctx context.Context) error {

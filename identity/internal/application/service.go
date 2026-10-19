@@ -78,6 +78,9 @@ type Service struct {
 
 	phoneRegistrationEnabled    bool
 	accountVerificationRequired bool
+
+	// erasureGrace is how long a deleted account is kept before it is erased.
+	erasureGrace time.Duration
 }
 
 func NewService(
@@ -93,6 +96,7 @@ func NewService(
 	metrics *metrics.Metrics,
 	phoneRegistrationEnabled bool,
 	accountVerificationRequired bool,
+	erasureGrace time.Duration,
 ) *Service {
 	return &Service{
 		accountRepository:          accountRepository,
@@ -109,6 +113,7 @@ func NewService(
 		phoneRegistrationEnabled:   phoneRegistrationEnabled,
 
 		accountVerificationRequired: accountVerificationRequired,
+		erasureGrace:                erasureGrace,
 	}
 }
 
@@ -168,7 +173,7 @@ func (s *Service) DeleteAccount(ctx context.Context, accountID uuid.UUID) error 
 			return fmt.Errorf("get account: %w", err)
 		}
 
-		err = account.Delete()
+		err = account.Delete(s.erasureGrace)
 		if err != nil {
 			return err
 		}

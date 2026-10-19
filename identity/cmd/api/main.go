@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/rasparac/rekreativko-api/identity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/config"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
+	"github.com/rasparac/rekreativko-api/shared/events"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/middleware"
 	metricstracer "github.com/rasparac/rekreativko-api/shared/store/metrics_tracer"
@@ -24,6 +26,7 @@ import (
 	"github.com/rasparac/rekreativko-api/shared/telemetry"
 	"github.com/rasparac/rekreativko-api/shared/token"
 
+	identityEvents "github.com/rasparac/rekreativko-api/identity/internal/interfaces/events"
 	identityHttp "github.com/rasparac/rekreativko-api/identity/internal/interfaces/http"
 )
 
@@ -138,6 +141,11 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		}
 	}()
 
+	erasureCfg := cfg.IdentityServiceConfig
+	if erasureCfg.ErasureGrace < 0 {
+		return fmt.Errorf("ACCOUNT_ERASURE_GRACE must not be negative, got %s", erasureCfg.ErasureGrace)
+	}
+
 	identityService := application.NewService(
 		identityAccountRepo,
 		verificationCodeRepo,
@@ -151,7 +159,49 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		appMetrics,
 		cfg.Features.PhoneRegistrationEnabled,
 		cfg.Features.AccountVerificationRequired,
+		erasureCfg.ErasureGrace,
 	)
+
+	erasureContexts := erasureCfg.GetErasureContexts()
+	erasureService, err := application.NewErasureService(
+		identityAccountRepo,
+		identityRefreshTokenRepo,
+		verificationCodeRepo,
+		persistence.NewAccountErasureManager(pg.Pool, txManager, log),
+		txManager,
+		domainEventMgr,
+		log,
+		appMetrics,
+		application.ErasurePolicy{
+			Batch:           erasureCfg.ErasureBatch,
+			Contexts:        erasureContexts,
+			IncompleteAfter: erasureCfg.ErasureIncompleteAfter,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("invalid account erasure configuration: %w", err)
+	}
+
+	messageBroker, err := events.NewNatsBroker(
+		cfg.NatsConfig.URL,
+		cfg.Service.Name,
+		log,
+	)
+	if err != nil {
+		return err
+	}
+	defer messageBroker.Close(ctx)
+
+	erasureSubscriber := identityEvents.NewSubscriber(messageBroker, erasureService, erasureContexts, log)
+	if err := erasureSubscriber.Subscribe(ctx); err != nil {
+		return fmt.Errorf("subscribe to erasure confirmations: %w", err)
+	}
+
+	if erasureCfg.ErasureInterval > 0 {
+		go erasureService.Run(ctx, erasureCfg.ErasureInterval)
+	} else {
+		log.Warn(ctx, "account erasure disabled: ACCOUNT_ERASURE_INTERVAL is not positive, deleted accounts are never erased")
+	}
 
 	mux := http.NewServeMux()
 

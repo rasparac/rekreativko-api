@@ -17,6 +17,8 @@ var (
 	ErrAccountLocked         = errors.New("account is locked")
 	ErrAccountNotVerified    = errors.New("account is not verified")
 	ErrAccountAlredyVerified = errors.New("account is already verified")
+	ErrAccountNotDeleted     = errors.New("account is not deleted")
+	ErrAccountAlreadyErased  = errors.New("account is already erased")
 
 	// Credential errors
 	ErrInvalidCredentials       = errors.New("invalid credentials")

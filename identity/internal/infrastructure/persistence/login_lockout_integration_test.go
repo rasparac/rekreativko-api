@@ -71,6 +71,7 @@ func setupLoginTest(t *testing.T) *loginTestEnv {
 		testMetrics(),
 		false,
 		true,
+		0,
 	)
 
 	hash, err := hasher.Hash(correctPassword)
@@ -85,7 +86,7 @@ func setupLoginTest(t *testing.T) *loginTestEnv {
 	now := time.Now().UTC()
 	account := domain.ReconstructAccount(
 		uuid.New(), emailVO, phoneVO, domain.NewPasswordFromHash(hash),
-		domain.AccountStatusActive, 0, nil, now, now, nil,
+		domain.AccountStatusActive, 0, nil, now, now, nil, nil, nil,
 	)
 	require.NoError(t, accountRepo.CreateAccount(context.Background(), account))
 

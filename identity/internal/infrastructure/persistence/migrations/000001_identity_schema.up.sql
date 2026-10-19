@@ -14,7 +14,11 @@ CREATE TABLE IF NOT EXISTS identity.accounts(
     locked_until timestamptz DEFAULT NULL,
     created_at timestamptz NOT NULL DEFAULT NOW(),
     updated_at timestamptz NOT NULL DEFAULT NOW(),
-    deleted_at timestamptz DEFAULT NULL
+    deleted_at timestamptz DEFAULT NULL,
+    -- set on deletion: the account is erased (email, phone, password removed)
+    -- once this has passed
+    erase_after timestamptz DEFAULT NULL,
+    erased_at timestamptz DEFAULT NULL
 );
 
 CREATE UNIQUE INDEX accounts_phonenumber_uq_idx ON identity.accounts(phone_number)
@@ -28,6 +32,22 @@ CREATE INDEX accounts_status_idx ON identity.accounts(status);
 CREATE INDEX accounts_updated_at_idx ON identity.accounts(updated_at);
 
 CREATE INDEX accounts_created_at_idx ON identity.accounts(created_at);
+
+-- Deleted accounts waiting to be erased, in erase order.
+CREATE INDEX accounts_erase_after_idx ON identity.accounts(erase_after)
+WHERE (erase_after IS NOT NULL AND erased_at IS NULL);
+
+CREATE INDEX accounts_erased_at_idx ON identity.accounts(erased_at)
+WHERE (erased_at IS NOT NULL);
+
+-- Each bounded context that confirmed (with <context>.account.erased) it has
+-- erased its data of an erased account.
+CREATE TABLE IF NOT EXISTS identity.account_erasure(
+    account_id uuid NOT NULL REFERENCES identity.accounts(id),
+    context varchar(50) NOT NULL,
+    completed_at timestamptz NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (account_id, context)
+);
 
 CREATE TABLE IF NOT EXISTS identity.refresh_tokens(
     id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),

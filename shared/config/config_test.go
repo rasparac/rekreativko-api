@@ -88,3 +88,14 @@ func Test_config_Load(t *testing.T) {
 		}
 	})
 }
+
+func TestIdentityServiceConfig_GetErasureContexts(t *testing.T) {
+	cfg := IdentityServiceConfig{ErasureContexts: " activity, ,notifications,activity ,"}
+
+	got := cfg.GetErasureContexts()
+
+	want := []string{"activity", "notifications"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("GetErasureContexts() = %v, want %v", got, want)
+	}
+}
