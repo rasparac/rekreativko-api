@@ -367,61 +367,6 @@ func (s *service) GetProfiles(ctx context.Context, filter ProfilesFilter) ([]*do
 	return profiles, nextPageToken, nil
 }
 
-func (s *service) DeleteProfile(ctx context.Context, accountID uuid.UUID) error {
-	ctx, span := s.tracer.Start(
-		ctx,
-		"account_profile.service.DeleteProfile",
-	)
-	defer span.End()
-
-	log := s.logger.WithValues(
-		"method", "DeleteProfile",
-		"account_id", accountID,
-	)
-
-	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		profile, err := s.accountProfile.FindBy(tCtx, persistence.AccountProfileFilter{
-			AccountID: &accountID,
-		})
-		if err != nil {
-			return fmt.Errorf("find profile: %w", err)
-		}
-
-		profile.Delete()
-
-		err = s.accountProfile.DeleteAccountProfile(tCtx, profile.ID())
-		if err != nil {
-			return fmt.Errorf("delete profile: %w", err)
-		}
-
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			accountProfileSchema,
-			profile.Events(),
-		)
-		if err != nil {
-			return fmt.Errorf("publish events: %w", err)
-		}
-
-		profile.ClearEvents()
-
-		return nil
-	})
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		log.Error(ctx, "delete profile", "error", err)
-		return mapToAppErr(err)
-	}
-
-	span.SetStatus(codes.Ok, "profile deleted")
-
-	s.metrics.ProfileDeleted.Inc()
-
-	log.Debug(ctx, "profile deleted")
-
-	return nil
-}
-
 func mapToAppErr(err error) *domainerror.AppError {
 	// Check for pgx.ErrNoRows first - it's handled in domain.MapErrToAppError
 	// because it's not a *pgconn.PgError

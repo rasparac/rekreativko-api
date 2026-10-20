@@ -69,7 +69,6 @@ type (
 	AccountProfileReaderWriter interface {
 		CreateAccountProfile(ctx context.Context, profile *domain.AccountProfile) error
 		UpdateAccountProfile(ctx context.Context, profile *domain.AccountProfile) error
-		DeleteAccountProfile(ctx context.Context, id uuid.UUID) error
 		FindBy(ctx context.Context, filter AccountProfileFilter) (*domain.AccountProfile, error)
 		FindAllBy(ctx context.Context, filter AccountProfilesFilter) ([]*domain.AccountProfile, string, error)
 	}
@@ -271,23 +270,6 @@ func (m *accountProfileManager) UpdateAccountProfile(
 		return err
 	}
 	return nil
-}
-
-func (m *accountProfileManager) DeleteAccountProfile(
-	ctx context.Context,
-	id uuid.UUID,
-) error {
-	var (
-		query = `UPDATE account_profile
-			SET
-				deleted_at = $2
-				updated_at = $2
-			WHERE id = $1 AND deleted_at IS NULL`
-		tx = m.tx.Querier(ctx)
-	)
-
-	_, err := tx.Exec(ctx, query, id, time.Now().UTC())
-	return err
 }
 
 func (m *accountProfileManager) FindBy(

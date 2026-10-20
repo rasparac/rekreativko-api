@@ -114,6 +114,14 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		appMetrics,
 	)
 
+	accountErasureService := application.NewAccountErasureService(
+		persistence.NewAccountErasureManager(txManager),
+		txManager,
+		domainEventMgr,
+		log,
+		appMetrics,
+	)
+
 	telemetryConfig := telemetry.Config{
 		ServiceName:       cfg.Service.Name,
 		ServiceVersion:    cfg.Service.Version,
@@ -183,6 +191,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		txManager,
 		accountProfileService,
 		accountSettingsService,
+		accountErasureService,
 		log,
 		//appMetrics, TODO: // check how and what to track
 	)

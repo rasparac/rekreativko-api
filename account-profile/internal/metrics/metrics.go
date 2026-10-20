@@ -18,8 +18,10 @@ type Metrics struct {
 
 	// Account Profile metrics
 	ProfileCreated prometheus.Counter
-	ProfileDeleted prometheus.Counter
 	ProfileUpdated prometheus.Counter
+
+	// AccountsErased counts accounts whose data was erased on identity.account.erased.
+	AccountsErased prometheus.Counter
 
 	// Settings metrics
 	SettingsUpdated *prometheus.CounterVec
@@ -86,16 +88,16 @@ func New() *Metrics {
 				Help: "Total number of account profiles created",
 			},
 		),
-		ProfileDeleted: promauto.NewCounter(
-			prometheus.CounterOpts{
-				Name: "deleted_total",
-				Help: "Total number of account profiles deleted",
-			},
-		),
 		ProfileUpdated: promauto.NewCounter(
 			prometheus.CounterOpts{
 				Name: "updated_total",
 				Help: "Total number of account profiles updated",
+			},
+		),
+		AccountsErased: promauto.NewCounter(
+			prometheus.CounterOpts{
+				Name: "account_profile_accounts_erased_total",
+				Help: "Total number of accounts whose profile data was erased (identity.account.erased)",
 			},
 		),
 	}

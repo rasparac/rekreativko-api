@@ -57,7 +57,7 @@ func setupAccountVerifiedTest(t *testing.T) *accountVerifiedTestEnv {
 	return &accountVerifiedTestEnv{
 		ctx:     context.Background(),
 		db:      db,
-		handler: events.NewCreateProfileEventHandler(txManager, profileSvc, settingsSvc, logger),
+		handler: events.NewCreateProfileEventHandler(txManager, profileSvc, settingsSvc, persistence.NewAccountErasureManager(txManager), logger),
 	}
 }
 

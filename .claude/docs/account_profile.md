@@ -102,7 +102,7 @@ type AccountStatistics struct {
 2. **Nickname**: Optional, must be unique if provided
 3. **Location**: City and country are required for discovery features, coordinates optional
 4. **Profile Picture**: Optional, stored as URL reference
-5. **Soft Delete**: Profiles are soft-deleted (deleted_at) to maintain referential integrity
+5. **Erasure**: On `identity.account.erased` every row of the account (profile, interests, settings, settings meta, statistics) is hard-deleted in one transaction, recorded in `account_profile.erased_account` and confirmed with `account_profile.account.erased`. There is no soft delete: the grace period lives only in identity. A later `identity.account.verified` for an erased account is dropped
 
 ### Activity Interests Rules
 1. **Multiple Interests**: Users can have multiple activity interests
@@ -136,7 +136,7 @@ type AccountStatistics struct {
 ### Profile Events
 - `AccountProfileCreated` - Profile created after account verification
 - `AccountProfileUpdated` - User updates profile information
-- `AccountProfileDeleted` - Profile soft-deleted
+- `account_profile.account.erased` - The account's data is erased (payload `account_id` only); identity records it
 - `ProfilePictureUpdated` - Profile picture changed
 - `LocationUpdated` - User location changed
 
@@ -156,6 +156,7 @@ type AccountStatistics struct {
 
 Listens to events from other contexts:
 - `identity.account.verified` ’ Create initial profile
+- `identity.account.erased` ’ Erase all of the account's data
 - `activity.member.joined` ’ Update activities joined count
 - `activity.session.attended` ’ Update statistics
 - `activity.session.completed` ’ Update monthly breakdown
@@ -409,7 +410,7 @@ Response: 200 OK
 ### Identity Context
 - Profile created automatically when `identity.account.verified` event received
 - Profile links to account via `account_id`
-- Profile deleted when account deleted (via event subscription)
+- All profile data erased on `identity.account.erased` (after identity's grace period), confirmed with `account_profile.account.erased`
 
 ### Activity Context
 - Activity interests used for discovery and matching

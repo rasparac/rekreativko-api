@@ -18,6 +18,9 @@ const (
 	EventActivityInterestAdded         = "account_profile.activity_interest.added"
 	EventActivityInterestRemoved       = "account_profile.activity_interest.removed"
 	EventActivityInterestLevelChanged  = "account_profile.activity_interest.level.changed"
+	// EventAccountErased confirms to identity that this context has erased
+	// its data of an account (identity.account.erased).
+	EventAccountErased = "account_profile.account.erased"
 )
 
 type AccountProfileCreatedEvent struct {
@@ -232,5 +235,24 @@ func NewActivityInterestLevelChangedEvent(
 		ActivityType: string(activityType),
 		OldLevel:     string(oldLevel),
 		NewLevel:     string(newLevel),
+	}
+}
+
+// AccountErasedEvent confirms that the profile, settings, interests and
+// statistics of an erased account are gone. It carries the account id only.
+type AccountErasedEvent struct {
+	domainevent.BaseEvent
+	AccountID uuid.UUID `json:"account_id"`
+}
+
+func NewAccountErasedEvent(accountID uuid.UUID) *AccountErasedEvent {
+	return &AccountErasedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventAccountErased,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: accountID,
+		},
+		AccountID: accountID,
 	}
 }

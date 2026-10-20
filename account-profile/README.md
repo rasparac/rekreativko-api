@@ -31,22 +31,33 @@ Free-form key/value store (`GET`/`PUT /my/settings`), namespaced dotted keys (`n
 
 ## Domain events
 
-**Consumed**: exactly one — `identity.account.verified` → creates a blank `AccountProfile` row and a default `AccountProfileSettings` row (11 seeded keys) in one transaction. This is the only place a profile gets created; there's no manual "create profile" endpoint.
+**Consumed**:
+- `identity.account.verified` → creates a blank `AccountProfile` row and a default `AccountProfileSettings` row (11 seeded keys) in one transaction. This is the only place a profile gets created; there's no manual "create profile" endpoint. Dropped for an account already erased.
+- `identity.account.erased` → erases every row of the account, see [Account erasure](#account-erasure).
 
-**Published** (to `account_profile.event_outbox`): `account_profile.created/deleted/anonymized`, `.location.changed`, `.profile_picture.changed`, `.activity_interest.added/removed/level.changed`. Several other defined event types are dead — see below. Settings changes publish nothing: no service consumes them, and the planned consumers (`notification.email.enabled`, stored language) need events carrying the new value, which they add when they are built.
+**Published** (to `account_profile.event_outbox`): `account_profile.created`, `account_profile.account.erased` (see [Account erasure](#account-erasure)), `.location.changed`, `.profile_picture.changed`, `.activity_interest.added/removed/level.changed`. Several other defined event types are dead (`account_profile.deleted/anonymized` among them: the domain's `Delete()`/`Anonymize()` have no caller) — see below. Settings changes publish nothing: no service consumes them, and the planned consumers (`notification.email.enabled`, stored language) need events carrying the new value, which they add when they are built.
 
 ## Configuration & schema
 
 `PORT=8082`, `SERVICE_NAME=account_profile`. No `JWT_SECRET` dependency — this service trusts the `X-User-Id` header the gateway sets after validating the JWT itself, gated only by the shared `X-Gateway-Key`.
 
-Schema (`account_profile` Postgres schema): `profiles` (PK is `account_id`, i.e. identity's account ID — no separate profile ID), `activity_interests` (unique per account+type), `settings` (composite PK `account_id, key`), `profile_statistics` (dead, see below), `account_settings_meta` (optimistic-lock version counter), `event_outbox`.
+Schema (`account_profile` Postgres schema): `profiles` (PK is `account_id`, i.e. identity's account ID — no separate profile ID), `activity_interests` (unique per account+type), `settings` (composite PK `account_id, key`), `profile_statistics` (dead, see below), `account_settings_meta` (optimistic-lock version counter), `erased_account` (accounts erased, see below), `event_outbox`.
+
+## Account erasure
+
+Identity erases a deleted account once its grace period has passed and raises `identity.account.erased` (`account_id` only). This service then, in one transaction (`application.AccountErasureService`):
+
+1. inserts the account into `erased_account` (`ON CONFLICT DO NOTHING`) - if it was already there, this is a redelivery and nothing more happens;
+2. deletes the account's rows child-first from `activity_interests`, `settings`, `profile_statistics`, `account_settings_meta`, then `profiles` (`persistence.accountDataTables` - no `ON DELETE CASCADE`, so what is erased stays visible there; **a new table holding account data must be added to that list**, and the integration test fails until it is);
+3. raises `account_profile.account.erased` (`account_id` only), which identity records in `identity.account_erasure` - `account_profile` is in identity's `ACCOUNT_ERASURE_CONTEXTS`.
+
+An account that never verified (no profile) is recorded and confirmed all the same. A late `identity.account.verified` for an erased account is acked without re-creating the profile. A bad payload is dead-lettered; any other failure is retried. `account_profile_accounts_erased_total` counts erasures. The profile picture is only a URL the client supplied (no file storage here), so there is no file to delete.
 
 ## Known issues
 
 This service had the most drift from its original design doc of anything documented so far — the list is long, but most items are low-severity/dead-code.
 
 **Broken, will error or fail silently on use:**
-- **`DeleteAccountProfile`'s SQL is malformed**: targets `account_profile` (the schema, not a table — should be `account_profile.profiles`), is missing a comma between its two `SET` assignments, and filters on a non-existent `id` column (the real PK is `account_id`). Currently unreachable anyway — there's no HTTP route for it (gateway doesn't even allow `DELETE` on this prefix) — so soft-delete/anonymize exists in the domain layer but doesn't actually work end-to-end today.
 - **Two settings keys are unreachable once written.** The account-creation defaults (`GetDefaultSettings()`) seed `privacy.location.enabled` and `privacy.activity.public`, but the settings *registry* (which both renders `GET /my/settings` and validates `PUT /my/settings`) only knows `privacy.show_location`/`privacy.show_activities`/`privacy.show_statistics`. Every new account ends up with 2 settings rows the API can never show and never let you update.
 - **`activity.search_radius` changes type on first update**: seeded as a float (`"10.00"`) but the registry declares it an int — updating any setting coerces this one from float to int silently.
 - **Version-conflict and invalid-`sort_by` errors return `500` instead of `409`/`400`** — both are raw `fmt.Errorf`s with no sentinel `errors.Is` mapping, so they fall through to the generic internal-error handler.
@@ -63,4 +74,4 @@ This service had the most drift from its original design doc of anything documen
 - `location_region` column exists in the `profiles` table but no Go code reads or writes it.
 - Minor field-name asymmetry: the update request uses `activity_interests` (plural), the response uses `activity_interest` (singular), for the same data.
 - A few typo'd exported identifiers if you're browsing the code: `Cooridantes` (→ `Coordinates`), `SeetingPrivacyShowLocation` (→ `SettingPrivacyShowLocation`).
-- If `Subscribe()` fails at startup (the one `identity.account.verified` subscription), the service logs it and keeps running anyway — meaning it could serve traffic indefinitely without ever creating profiles for newly-verified accounts, with no retry and no health-check signal for this state.
+- If `Subscribe()` fails at startup (`identity.account.verified` or `identity.account.erased`), the service logs it and keeps running anyway — meaning it could serve traffic indefinitely without ever creating profiles for newly-verified accounts or erasing erased ones, with no retry and no health-check signal for this state.

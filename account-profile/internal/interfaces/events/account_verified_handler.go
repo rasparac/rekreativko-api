@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/application"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/api"
@@ -27,9 +28,14 @@ type (
 		CreateSettings(ctx context.Context, settings application.CreateAccountSettingsParams) error
 	}
 
+	erasedAccountChecker interface {
+		IsErased(ctx context.Context, accountID uuid.UUID) (bool, error)
+	}
+
 	createProfileEventHandler struct {
 		accountProfile  accountProfileCreator
 		accountSettings accountSettingsCreator
+		erasedAccounts  erasedAccountChecker
 		txManager       *postgres.TransactionManager
 		tracer          trace.Tracer
 		logger          *logger.Logger
@@ -41,12 +47,14 @@ func NewCreateProfileEventHandler(
 	txManager *postgres.TransactionManager,
 	accountProfile accountProfileCreator,
 	accountSettings accountSettingsCreator,
+	erasedAccounts erasedAccountChecker,
 	logger *logger.Logger,
 	//metrics *metrics.Metrics,
 ) *createProfileEventHandler {
 	return &createProfileEventHandler{
 		accountProfile:  accountProfile,
 		accountSettings: accountSettings,
+		erasedAccounts:  erasedAccounts,
 		txManager:       txManager,
 		tracer:          telemetry.Tracer("createProfileEventHandler"),
 		logger:          logger,
@@ -85,8 +93,20 @@ func (avh *createProfileEventHandler) Handle(ctx context.Context, payload []byte
 	// Events are delivered at least once, so a redelivery finds the profile
 	// already there - that's success, not a conflict. Settings are still
 	// created (idempotently) so a half-created account gets repaired.
+	var erased bool
 	err = avh.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		_, err := avh.accountProfile.CreateProfile(tCtx, application.CreateProfileParams{
+		// A late or redelivered event for an account already erased must not
+		// re-create its profile.
+		var err error
+		erased, err = avh.erasedAccounts.IsErased(tCtx, event.AccountID)
+		if err != nil {
+			return fmt.Errorf("check erased: %w", err)
+		}
+		if erased {
+			return nil
+		}
+
+		_, err = avh.accountProfile.CreateProfile(tCtx, application.CreateProfileParams{
 			AccountID: event.AccountID,
 		})
 		switch {
@@ -108,6 +128,12 @@ func (avh *createProfileEventHandler) Handle(ctx context.Context, payload []byte
 	if err != nil {
 		span.RecordError(err)
 		return err
+	}
+
+	if erased {
+		log.Info(ctx, "account already erased, profile not created")
+		span.SetStatus(codes.Ok, "account already erased")
+		return nil
 	}
 
 	log.Debug(ctx, "account profile and settings created")

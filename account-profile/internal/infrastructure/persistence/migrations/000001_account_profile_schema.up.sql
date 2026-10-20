@@ -83,6 +83,15 @@ CREATE TABLE account_profile.account_settings_meta(
     CONSTRAINT fk_settings_meta_profile FOREIGN KEY (account_id) REFERENCES account_profile.profiles(account_id)
 );
 
+-- Accounts whose profile data was erased on identity.account.erased (GDPR Art.
+-- 17). Makes the erasure idempotent, lets a late identity.account.verified be
+-- dropped instead of re-creating the profile, and lists the erasures to replay
+-- after a backup restore. No foreign key: the profile row is gone.
+CREATE TABLE account_profile.erased_account(
+    account_id uuid PRIMARY KEY,
+    erased_at timestamptz NOT NULL DEFAULT NOW()
+);
+
 ---Function to update update_at timestamp
 CREATE OR REPLACE FUNCTION account_profile.update_updated_at_column()
     RETURNS TRIGGER
