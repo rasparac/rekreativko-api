@@ -54,7 +54,15 @@ func newTestHandlers(t *testing.T, sender interface {
 
 	delivery := application.NewDeliveryService(sender, sender, renderer, metrics, log)
 
-	return NewIdentityHandlers(delivery, metrics, log)
+	return NewIdentityHandlers(delivery, fakeInactiveAccounts{}, metrics, log)
+}
+
+// fakeInactiveAccounts holds the deleted or erased accounts.
+type fakeInactiveAccounts map[uuid.UUID]struct{}
+
+func (f fakeInactiveAccounts) IsInactive(_ context.Context, accountID uuid.UUID) (bool, error) {
+	_, ok := f[accountID]
+	return ok, nil
 }
 
 type okSender struct{}

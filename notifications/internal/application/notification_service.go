@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/notifications/internal/domain"
 	"github.com/rasparac/rekreativko-api/notifications/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/notifications/internal/metrics"
@@ -17,13 +18,19 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// inactiveAccountChecker tells whether an account was deleted or erased.
+type inactiveAccountChecker interface {
+	IsInactive(ctx context.Context, accountID uuid.UUID) (bool, error)
+}
+
 // NotificationService handles business logic for notifications
 type NotificationService struct {
-	logger    *logger.Logger
-	txManager *postgres.TransactionManager
-	repo      persistence.NotificationRepository
-	tracer    trace.Tracer
-	metrics   *metrics.Metrics
+	logger           *logger.Logger
+	txManager        *postgres.TransactionManager
+	repo             persistence.NotificationRepository
+	inactiveAccounts inactiveAccountChecker
+	tracer           trace.Tracer
+	metrics          *metrics.Metrics
 }
 
 // NewNotificationService creates a new notification service
@@ -31,14 +38,16 @@ func NewNotificationService(
 	logger *logger.Logger,
 	txManager *postgres.TransactionManager,
 	repo persistence.NotificationRepository,
+	inactiveAccounts inactiveAccountChecker,
 	metrics *metrics.Metrics,
 ) *NotificationService {
 	return &NotificationService{
-		logger:    logger.WithName("notifications.notification_service"),
-		txManager: txManager,
-		repo:      repo,
-		tracer:    telemetry.Tracer(telemetry.TracerNotificationsService),
-		metrics:   metrics,
+		logger:           logger.WithName("notifications.notification_service"),
+		txManager:        txManager,
+		repo:             repo,
+		inactiveAccounts: inactiveAccounts,
+		tracer:           telemetry.Tracer(telemetry.TracerNotificationsService),
+		metrics:          metrics,
 	}
 }
 
@@ -46,6 +55,8 @@ func NewNotificationService(
 // Called once per recipient by the event consumers - fan-out to multiple
 // recipients (e.g. every manager of a group) happens at the call site.
 // Idempotent per (EventID, recipient): a redelivered event creates nothing new.
+// A recipient whose account was deleted or erased gets no notification: nil
+// is returned, with no error, so a late event cannot re-create an erased feed.
 func (s *NotificationService) CreateNotification(
 	ctx context.Context,
 	params CreateNotificationParams,
@@ -63,6 +74,18 @@ func (s *NotificationService) CreateNotification(
 		attribute.String("recipient_account_id", params.RecipientAccountID.String()),
 		attribute.String("type", params.Type),
 	)
+
+	inactive, err := s.inactiveAccounts.IsInactive(ctx, params.RecipientAccountID)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to check the recipient account", "error", err)
+		return nil, mapToAppErr(err)
+	}
+	if inactive {
+		span.SetStatus(codes.Ok, "recipient account deleted")
+		log.Debug(ctx, "recipient account deleted or erased, notification not created", "event_id", params.EventID)
+		return nil, nil
+	}
 
 	notification := domain.New(
 		params.EventID,

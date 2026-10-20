@@ -100,7 +100,14 @@ Each subscription creates its own durable JetStream consumer (`<service>+<subjec
 | `identity.account.verified` | send welcome email — email accounts only; a phone account sends nothing, and neither does an event with `unconfirmed: true` (identity's `ACCOUNT_VERIFICATION_REQUIRED=false`: the address was never proven) |
 | `identity.account.password.changed` | send alert — **dead today**, identity has no route that changes passwords yet |
 
-Each handler picks the channel from the event's `code_type` (`DeliveryTypeEmail` / `DeliveryTypePhone`). Anything else is acked but dropped loudly: an error log (`dropping event with unknown delivery type`), `NotificationSendFailures{channel="unknown", reason="unknown_delivery_type"}`, and an error on the span - retrying can't fix a bad payload. There is deliberately **no lockout email/SMS** (`identity.account.locked` is not subscribed); whether to alert users about a lockout is a separate decision.
+**Identity account deletion and erasure** (`AccountLifecycleHandlers`, see [Account deletion and erasure](#account-deletion-and-erasure)):
+
+| Topic | Action |
+|---|---|
+| `identity.account.deleted` | record the account (aggregate id) in `deleted_account`: no email/SMS and no feed notification for it any more; its feed stays |
+| `identity.account.erased` | delete its feed, record it in `erased_account` and raise `notifications.account.erased` |
+
+Each delivery handler picks the channel from the event's `code_type` (`DeliveryTypeEmail` / `DeliveryTypePhone`). Anything else is acked but dropped loudly: an error log (`dropping event with unknown delivery type`), `NotificationSendFailures{channel="unknown", reason="unknown_delivery_type"}`, and an error on the span - retrying can't fix a bad payload. There is deliberately **no lockout email/SMS** (`identity.account.locked` is not subscribed); whether to alert users about a lockout is a separate decision.
 
 **Activity-domain** (create an in-app `Notification` row via `CreateNotification`):
 
@@ -186,11 +193,11 @@ Deliberate fail-fast: a nil sender would otherwise panic mid-flight on the first
 | `NOTIFICATIONS_RETENTION_INTERVAL` | Default `1h` - how often the retention sweep runs |
 | `POSTGRES_*`, `TELEMETRY_*`, `METRICS_ENABLED`, `LOG_LEVEL`/`LOGGER_FORMAT` | Shared config |
 
-Not used by this service despite being in the shared config struct: `JWT_*`, `CORS_*`, `REDIS_*`, rate limiter, `OUTBOX_*`, `GATEWAY_API_KEYS` (plural — gateway-only).
+Not used by this service despite being in the shared config struct: `JWT_*`, `CORS_*`, `REDIS_*`, rate limiter, `OUTBOX_*`, `GATEWAY_API_KEYS` (plural — gateway-only). The outbox-publisher's `OUTBOX_SCHEMAS` must include `notifications`, or `notifications.account.erased` is never published and identity counts every erasure as incomplete.
 
 ## Database schema
 
-One table, one schema:
+The feed table:
 ```sql
 CREATE TABLE notifications.notification(
     id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -202,6 +209,17 @@ CREATE TABLE notifications.notification(
 );
 ```
 Three indexes: `(recipient_account_id, created_at DESC, id DESC)` for the feed (newest first), a partial index on `recipient_account_id WHERE read_at IS NULL` for the unread-count query, and `(created_at)` for the retention sweep across all recipients.
+
+Also in the schema: `deleted_account` and `erased_account` (`account_id` PK plus a timestamp, see below) and `event_outbox` (same shape and publisher wake-up trigger as the other services' outboxes).
+
+## Account deletion and erasure
+
+Identity's grace period is the only one: this service only follows its two events (`application.AccountLifecycleService`).
+
+- **Deleted** (`identity.account.deleted`): the account goes into `deleted_account`. From then on `NotificationService.CreateNotification` creates nothing for it (every feed handler goes through it, so a fan-out just skips that recipient) and `IdentityHandlers` deliver no email or SMS to it - both check `deleted_account` and `erased_account`. Its existing feed stays: the account can no longer log in, and the erasure deletes it.
+- **Erased** (`identity.account.erased`, at the end of the grace period): one transaction inserts the account into `erased_account` (`ON CONFLICT DO NOTHING` - if it was already there, this is a redelivery and nothing more happens), deletes every `notification` it received, and raises `notifications.account.erased` (`account_id` only) for identity's erasure tracking (`notifications` is in identity's `ACCOUNT_ERASURE_CONTEXTS`). A late activity event for it then creates nothing. Notifications of *other* accounts that name it in `data` (as the actor) stay: they hold only its id, which identifies nobody once identity has erased the account. `notifications_accounts_erased_total` counts erasures.
+
+A bad payload is dead-lettered; any other failure is retried (both operations are idempotent).
 
 ## Known issues
 

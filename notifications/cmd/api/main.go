@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rasparac/rekreativko-api/notifications/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/config"
+	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/events"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/middleware"
@@ -87,10 +88,19 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	notificationRepo := persistence.NewNotificationRepository(txManager, log)
 
+	accountLifecycleService := application.NewAccountLifecycleService(
+		persistence.NewAccountStateManager(txManager),
+		txManager,
+		domainevent.NewDomainEventManager(txManager, log),
+		log,
+		appMetrics,
+	)
+
 	notificationService := application.NewNotificationService(
 		log,
 		txManager,
 		notificationRepo,
+		accountLifecycleService,
 		appMetrics,
 	)
 
@@ -187,12 +197,13 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	}
 
 	deliveryService := application.NewDeliveryService(emailSender, smsSender, renderer, appMetrics, log)
-	identityNotifier := notificationsEvents.NewIdentityHandlers(deliveryService, appMetrics, log)
+	identityNotifier := notificationsEvents.NewIdentityHandlers(deliveryService, accountLifecycleService, appMetrics, log)
 
 	subscriber := notificationsEvents.NewSubscriber(
 		messageBroker,
 		notificationService,
 		identityNotifier,
+		accountLifecycleService,
 		log,
 	)
 

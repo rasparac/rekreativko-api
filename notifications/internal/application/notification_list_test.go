@@ -41,9 +41,10 @@ func (f *listRepo) DeleteExpired(_ context.Context, readBefore, allBefore time.T
 
 func newListService(repo persistence.NotificationRepository) *NotificationService {
 	return &NotificationService{
-		logger: logger.New("error", "json"),
-		repo:   repo,
-		tracer: telemetry.Tracer(telemetry.TracerNotificationsService),
+		logger:           logger.New("error", "json"),
+		repo:             repo,
+		inactiveAccounts: fakeInactiveAccounts{},
+		tracer:           telemetry.Tracer(telemetry.TracerNotificationsService),
 	}
 }
 

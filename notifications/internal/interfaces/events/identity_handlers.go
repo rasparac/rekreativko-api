@@ -57,10 +57,16 @@ type (
 		Deliver(ctx context.Context, msg domain.Message) error
 	}
 
+	// inactiveAccountChecker tells whether an account was deleted or erased.
+	inactiveAccountChecker interface {
+		IsInactive(ctx context.Context, accountID uuid.UUID) (bool, error)
+	}
+
 	// IdentityHandlers turns identity's account-lifecycle events into emails
 	// and SMS, through the delivery layer. Nothing is written to the feed.
 	IdentityHandlers struct {
 		delivery messageDeliverer
+		accounts inactiveAccountChecker
 		metrics  application.DeliveryMetrics
 		logger   *logger.Logger
 		tracer   trace.Tracer
@@ -69,11 +75,13 @@ type (
 
 func NewIdentityHandlers(
 	delivery messageDeliverer,
+	accounts inactiveAccountChecker,
 	metrics application.DeliveryMetrics,
 	log *logger.Logger,
 ) *IdentityHandlers {
 	return &IdentityHandlers{
 		delivery: delivery,
+		accounts: accounts,
 		metrics:  metrics,
 		logger:   log.WithName("notification.identity_handlers"),
 		tracer:   telemetry.Tracer("notification.identity_handlers"),
@@ -102,11 +110,11 @@ func (h *IdentityHandlers) HandleVerificationCodeGenerated(ctx context.Context, 
 
 	switch event.DeliveryType {
 	case DeliveryTypeEmail:
-		return h.deliver(ctx, span, domain.Message{
+		return h.deliver(ctx, span, event.AccountID, domain.Message{
 			Kind: domain.MessageVerificationCode, Channel: domain.ChannelEmail, Recipient: event.Email, Data: data,
 		})
 	case DeliveryTypePhone:
-		return h.deliver(ctx, span, domain.Message{
+		return h.deliver(ctx, span, event.AccountID, domain.Message{
 			Kind: domain.MessageVerificationCode, Channel: domain.ChannelSMS, Recipient: event.Phone, Data: data,
 		})
 	default:
@@ -141,7 +149,7 @@ func (h *IdentityHandlers) HandleAccountVerified(ctx context.Context, payload []
 
 	switch event.DeliveryType {
 	case DeliveryTypeEmail:
-		return h.deliver(ctx, span, domain.Message{
+		return h.deliver(ctx, span, event.AccountID, domain.Message{
 			Kind: domain.MessageWelcome, Channel: domain.ChannelEmail, Recipient: event.Email,
 		})
 	case DeliveryTypePhone:
@@ -174,11 +182,11 @@ func (h *IdentityHandlers) HandlePasswordChanged(ctx context.Context, payload []
 
 	switch event.DeliveryType {
 	case DeliveryTypeEmail:
-		return h.deliver(ctx, span, domain.Message{
+		return h.deliver(ctx, span, event.AccountID, domain.Message{
 			Kind: domain.MessagePasswordChanged, Channel: domain.ChannelEmail, Recipient: event.Email,
 		})
 	case DeliveryTypePhone:
-		return h.deliver(ctx, span, domain.Message{
+		return h.deliver(ctx, span, event.AccountID, domain.Message{
 			Kind: domain.MessagePasswordChanged, Channel: domain.ChannelSMS, Recipient: event.Phone,
 		})
 	default:
@@ -186,7 +194,20 @@ func (h *IdentityHandlers) HandlePasswordChanged(ctx context.Context, payload []
 	}
 }
 
-func (h *IdentityHandlers) deliver(ctx context.Context, span trace.Span, msg domain.Message) error {
+// deliver sends msg to the account, unless the account was deleted or erased:
+// then nothing is sent and the event is acked.
+func (h *IdentityHandlers) deliver(ctx context.Context, span trace.Span, accountID uuid.UUID, msg domain.Message) error {
+	inactive, err := h.accounts.IsInactive(ctx, accountID)
+	if err != nil {
+		span.RecordError(err)
+		return fmt.Errorf("check account: %w", err)
+	}
+	if inactive {
+		h.logger.Debug(ctx, "account deleted or erased, nothing delivered", "notification_type", string(msg.Kind))
+		span.SetStatus(codes.Ok, "skipped: account deleted")
+		return nil
+	}
+
 	if err := h.delivery.Deliver(ctx, msg); err != nil {
 		span.RecordError(err)
 		return err

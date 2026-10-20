@@ -22,6 +22,7 @@ type identityNotifier interface {
 type Subscriber struct {
 	broker                       events.MessageBroker
 	identityNotifier             identityNotifier
+	accountLifecycleHandlers     *AccountLifecycleHandlers
 	memberJoinRequestedHandler   *memberJoinRequestedHandler
 	memberApprovedHandler        *memberApprovedHandler
 	memberRejectedHandler        *memberRejectedHandler
@@ -57,11 +58,13 @@ func NewSubscriber(
 	broker events.MessageBroker,
 	notifications notificationCreator,
 	identityNotifier identityNotifier,
+	accounts accountLifecycle,
 	logger *logger.Logger,
 ) *Subscriber {
 	return &Subscriber{
 		broker:                       broker,
 		identityNotifier:             identityNotifier,
+		accountLifecycleHandlers:     NewAccountLifecycleHandlers(accounts, logger),
 		memberJoinRequestedHandler:   &memberJoinRequestedHandler{notifications: notifications, logger: logger},
 		memberApprovedHandler:        &memberApprovedHandler{notifications: notifications, logger: logger},
 		memberRejectedHandler:        &memberRejectedHandler{notifications: notifications, logger: logger},
@@ -102,6 +105,8 @@ func (s *Subscriber) Subscribe(ctx context.Context) error {
 		{"identity.account.verified", s.identityNotifier.HandleAccountVerified},
 		{"identity.account.password.changed", s.identityNotifier.HandlePasswordChanged},
 		{"identity.verification_code.created", s.identityNotifier.HandleVerificationCodeGenerated},
+		{"identity.account.deleted", s.accountLifecycleHandlers.HandleAccountDeleted},
+		{"identity.account.erased", s.accountLifecycleHandlers.HandleAccountErased},
 		{"activity.member.join_requested", s.memberJoinRequestedHandler.Handle},
 		{"activity.member.approved", s.memberApprovedHandler.Handle},
 		{"activity.member.rejected", s.memberRejectedHandler.Handle},

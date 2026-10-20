@@ -142,3 +142,36 @@ func TestHandleAccountVerified_UnconfirmedSendsNothing(t *testing.T) {
 	assert.Empty(t, sender.sms)
 	assert.Empty(t, logs.String())
 }
+
+// A deleted or erased account gets no email or SMS any more; the event is acked.
+func TestIdentityHandlers_DeletedAccountGetsNothing(t *testing.T) {
+	for name, handle := range map[string]func(*IdentityHandlers) func(context.Context, []byte) error{
+		"verification code": func(h *IdentityHandlers) func(context.Context, []byte) error {
+			return h.HandleVerificationCodeGenerated
+		},
+		"account verified": func(h *IdentityHandlers) func(context.Context, []byte) error { return h.HandleAccountVerified },
+		"password changed": func(h *IdentityHandlers) func(context.Context, []byte) error { return h.HandlePasswordChanged },
+	} {
+		t.Run(name, func(t *testing.T) {
+			var (
+				sender    recordingSender
+				accountID = uuid.New()
+				h         = newTestHandlers(t, &sender, newFakeMetrics(), logger.New("error", "json"))
+			)
+			h.accounts = fakeInactiveAccounts{accountID: {}}
+
+			payload, err := json.Marshal(map[string]any{
+				"event_id":   uuid.New(),
+				"account_id": accountID,
+				"code_type":  "email",
+				"code":       secretCode,
+				"email":      secretEmail,
+			})
+			require.NoError(t, err)
+
+			require.NoError(t, handle(h)(context.Background(), payload))
+
+			assert.Empty(t, sender.emails)
+		})
+	}
+}

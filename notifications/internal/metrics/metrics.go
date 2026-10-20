@@ -19,6 +19,8 @@ type Metrics struct {
 	// Notification metrics
 	NotificationCreated prometheus.Counter
 	NotificationRead    prometheus.Counter
+	// AccountsErased counts accounts whose notifications were erased on identity.account.erased.
+	AccountsErased prometheus.Counter
 
 	// Notification send metrics (email/SMS delivery, moved here from gateway -
 	// this service now owns every way of notifying a user, not just the
@@ -90,6 +92,12 @@ func New() *Metrics {
 			prometheus.CounterOpts{
 				Name: "read_total",
 				Help: "Total number of notifications marked read",
+			},
+		),
+		AccountsErased: promauto.NewCounter(
+			prometheus.CounterOpts{
+				Name: "notifications_accounts_erased_total",
+				Help: "Total number of accounts whose notifications were erased (identity.account.erased)",
 			},
 		),
 
