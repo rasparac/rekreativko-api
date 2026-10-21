@@ -140,8 +140,8 @@ Published to `identity.event_outbox`, relayed to NATS by the outbox publisher. S
 | `identity.account.login.succeeded` | successful login | — |
 | `identity.account.login.failed` | failed login attempt | — |
 | `identity.account.password.changed` | `Account.ChangePassword` | `notifications` — **currently unreachable**, no route calls this (see below) |
-| `identity.account.deleted` | `DELETE /me` | `notifications` (stops email/SMS and feed notifications); activity is being added (epic `dh7`) |
-| `identity.account.erased` | erase job, `ACCOUNT_ERASURE_GRACE` after the deletion. Payload: `account_id` only | `account_profile` and `notifications` (each erases its data and confirms with `<context>.account.erased`); `activity` is being added (epic `dh7`) |
+| `identity.account.deleted` | `DELETE /me` | `notifications` (stops email/SMS and feed notifications), `activity` (cancels upcoming RSVPs, declines invites, leaves groups) |
+| `identity.account.erased` | erase job, `ACCOUNT_ERASURE_GRACE` after the deletion. Payload: `account_id` only | `account_profile`, `notifications` and `activity` - every context in `ACCOUNT_ERASURE_CONTEXTS` (each erases its data and confirms with `<context>.account.erased`) |
 | `identity.refresh_token.created` | any token issuance | — |
 | `identity.refresh_token.revoked` | logout / rotation / account deletion | — |
 | `identity.verification_code.created` | register / resend | `notifications` (sends the actual code via email/SMS) |

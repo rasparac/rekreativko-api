@@ -33,6 +33,10 @@ type Metrics struct {
 	MemberInvitedTotal  prometheus.Counter
 	MemberAcceptedTotal prometheus.Counter
 
+	// Business metrics - Accounts
+	// AccountsErasedTotal counts accounts whose activity data was erased on identity.account.erased.
+	AccountsErasedTotal prometheus.Counter
+
 	// Event metrics
 	EventsPublishedTotal *prometheus.CounterVec
 	EventPublishDuration *prometheus.HistogramVec
@@ -107,6 +111,12 @@ func New() *Metrics {
 			prometheus.CounterOpts{
 				Name: "session_deleted_total",
 				Help: "Total number of sessions deleted",
+			},
+		),
+		AccountsErasedTotal: promauto.NewCounter(
+			prometheus.CounterOpts{
+				Name: "activity_accounts_erased_total",
+				Help: "Total number of accounts whose activity data was erased (identity.account.erased)",
 			},
 		),
 		SessionTemplateCreatedTotal: promauto.NewCounter(

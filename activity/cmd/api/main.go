@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
+	activityEvents "github.com/rasparac/rekreativko-api/activity/internal/interfaces/events"
 	activityHttp "github.com/rasparac/rekreativko-api/activity/internal/interfaces/http"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/live"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
@@ -237,6 +239,17 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		domainEventMgr,
 		appMetrics,
 	)
+	accountLifecycleService := application.NewAccountLifecycleService(
+		persistence.NewAccountStateManager(txManager),
+		attendeeService,
+		inviteService,
+		sessionInviteService,
+		memberService,
+		txManager,
+		domainEventMgr,
+		log,
+		appMetrics,
+	)
 	teamFormationQuery := application.NewTeamFormationQuery(
 		sessionRepo,
 		memberRepo,
@@ -261,6 +274,12 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	liveHub := live.NewHub(teamFormationQuery, sessionService, teamFormationQuery, log)
 	if err := messageBroker.SubscribeBroadcast(ctx, live.TopicPattern, liveHub.HandleEvent); err != nil {
 		return err
+	}
+
+	// identity's account deletion and erasure (epic dh7)
+	subscriber := activityEvents.NewSubscriber(messageBroker, accountLifecycleService, log)
+	if err := subscriber.Subscribe(ctx); err != nil {
+		return fmt.Errorf("subscribe to account events: %w", err)
 	}
 
 	mux := http.NewServeMux()
@@ -290,6 +309,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 			cfg.Service.GatewayKey,
 		),
 		middleware.ExtractUserContext,
+		activityHttp.RejectInactiveAccounts(accountLifecycleService, log),
 		middleware.Tracing,
 		middleware.SpanEnrichment,
 	)

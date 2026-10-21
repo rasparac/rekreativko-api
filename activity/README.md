@@ -136,13 +136,30 @@ Grouped by aggregate (see `activity/internal/domain/events.go` for full payload 
 - **Session**: created, updated, started, cancelled, completed, expired, visibility_changed (`deleted` constant exists but nothing emits it)
 - **Attendee**: auto_confirmed, rsvp_going, rsvp_not_going, rsvp_maybe, rsvp_auto_pending, promoted, join_requested, join_approved, join_rejected, removed
 - **SessionTemplate**: created, activated, deactivated, deleted, updated
+- **Account**: `activity.account.erased` (`account_id` only) - see [Account deletion and erasure](#account-deletion-and-erasure)
 - **Team formation** (`activity.session.draft.*`, `voting.*`, `team*`, `attendee.team_*`): draft started, turn_changed, player_picked, paused, completed, cancelled; voting opened, proposal_created, vote_cast, vote_retracted, proposal_withdrawn, closed, cancelled, tied; `teams_reset` (`voting.tied` is written in its own transaction because a tie rolls the close back; deduped per round and tied set); teams created, team assigned/changed. All of them also feed the SSE stream.
+
+**Consumed** (durable consumers, `activity/internal/interfaces/events`): `identity.account.deleted` and `identity.account.erased`, see below.
+
+## Account deletion and erasure
+
+Identity's grace period is the only one; this service follows its two events (`application.AccountLifecycleService`). The decision on what an account created is dh7.3, in `.claude/docs/activity.md` ("Account erasure").
+
+- **Deleted** (`identity.account.deleted`): the account goes into `deleted_account`, and from then on every request from it that changes something gets `403 account_deleted` (`RejectInactiveAccounts` - its access token is still valid for up to `JWT_ACCESS_TOKEN_DURATION`). Then, through the same service calls as when the user does it (so the usual events and notifications follow): its RSVPs to scheduled sessions are cancelled (`CancelRSVP` - the waitlist moves up, team formation resets), the invites it can still answer are declined, and it leaves every group it did not create. What it created - its groups, templates and sessions - keeps working for the other members until the erasure; a creator cannot leave its group anyway. Pending join requests, and invites and invite links it sent, are left as they are: they belong to the group.
+- **Erased** (`identity.account.erased`, at the end of the grace period): one transaction inserts the account into `erased_account` (if it was already there, this is a redelivery and nothing more happens), runs `persistence.accountErasureSteps` and raises `activity.account.erased` for identity's erasure tracking (`activity` is in identity's `ACCOUNT_ERASURE_CONTEXTS`):
+  1. **what it created is deleted**: groups with `creator_id` = the account, templates and sessions it created (in any group) and every template and session of its groups, each with everything in it - members, invites, invite links and their uses, attendees, teams, drafts and picks, voting rounds, proposals and votes, statistics. Other members lose these from their history;
+  2. **rows about it in others' records are deleted**: its memberships, invites it received, its invite-link uses and RSVPs it withdrew;
+  3. **rows where it is only an actor stay**: past attendance, draft captain and picks, proposals and votes, invites and invite links it sent keep its id - clients show a deleted user, and the id alone identifies nobody once identity has erased the account.
+
+  Steps run children first (no `ON DELETE CASCADE`). `TestAccountErasureSteps_CoverEveryTable` fails until a new table is added to the steps or to `tablesKeptOnErasure`. `activity_accounts_erased_total` counts erasures.
+
+A bad payload is dead-lettered; any other failure is retried - both operations are idempotent, and a redelivered deletion finishes what a failed one left.
 
 ## Configuration & schema
 
 `PORT=8084` (api), no port for cron (one-shot). `SERVICE_NAME=activity` / `activity_cron`. Plus shared config (Postgres, NATS, gateway key, telemetry).
 
-Schema (`activity` Postgres schema, one migration file): `activity_group`, `member`, `group_invites`, `group_invite_links`, `group_invite_link_usage`, `session_template`, `session`, `session_attendee`, `activity_group_statistics`, `session_statistics` (see [Known issues](#known-issues) — the two `*_statistics` tables are dead), `event_outbox`.
+Schema (`activity` Postgres schema, one migration file): `activity_group`, `member`, `group_invites`, `group_invite_links`, `group_invite_link_usage`, `session_template`, `session`, `session_attendee`, `activity_group_statistics`, `session_statistics` (see [Known issues](#known-issues) — the two `*_statistics` tables are dead), `deleted_account`, `erased_account` (see above), `event_outbox`.
 
 ## Known issues
 

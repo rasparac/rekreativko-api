@@ -609,6 +609,20 @@ Spot released (not_going/maybe with heldspot):
 
 
 ====================================================================================================
+## Account erasure (decision dh7.3)
+
+What happens to what an account *created* once identity erases it (`identity.account.erased`, at the end of identity's grace period). First version: **remove it**.
+
+- **Groups** whose `creator_id` is the erased account are deleted with everything in them: memberships, invites and invite links, session templates, and all their sessions (past and future) with attendees, teams, drafts and votes.
+- **Session templates** it created (`created_by_id`) are deleted, in any group.
+- **Sessions** it created (`created_by_id`), standalone or in a group, are deleted with their attendees, invites, teams, drafts and votes.
+- Free text it wrote there (group title/description, session note, `location_street`) goes with those rows, so no separate scrubbing is needed.
+- Other members lose these groups and sessions from their history and statistics. Accepted for the first version.
+
+Timing: at erasure, not at deletion - the grace period lives only in identity, and during it the group keeps working for its other admins. Handing a group to another admin instead of deleting it is a later decision (`rekreativko-api-6xs`).
+
+In others' groups and sessions (dh7.4): at deletion the account cancels its upcoming RSVPs, declines the invites it can still answer and leaves the groups; at erasure its memberships, invites it received, invite-link uses and withdrawn RSVPs are deleted, while past attendance, draft picks, proposals, votes and invites it sent keep its id ("Deleted user"). Implementation: `application.AccountLifecycleService`, `persistence.accountErasureSteps`; see `activity/README.md` ("Account deletion and erasure").
+
 ## Database Schema
 
 All activity tables use the `activity` schema for namespace isolation (DDD bounded context).

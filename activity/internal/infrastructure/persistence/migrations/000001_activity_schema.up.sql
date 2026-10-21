@@ -491,6 +491,22 @@ CREATE TABLE IF NOT EXISTS activity.session_statistics(
 
 CREATE INDEX idx_session_statistics_group ON activity.session_statistics(activity_group_id);
 
+-- Accounts deleted in identity (identity.account.deleted). Their upcoming
+-- RSVPs, pending invites and memberships were given up, and their requests are
+-- refused from then on. What they created stays until the erasure.
+CREATE TABLE IF NOT EXISTS activity.deleted_account(
+    account_id uuid PRIMARY KEY,
+    deleted_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+-- Accounts whose activity data was erased on identity.account.erased (GDPR
+-- Art. 17). Makes the erasure idempotent and lists the erasures to replay after
+-- a backup restore.
+CREATE TABLE IF NOT EXISTS activity.erased_account(
+    account_id uuid PRIMARY KEY,
+    erased_at timestamptz NOT NULL DEFAULT NOW()
+);
+
 -- activity event outbox table
 CREATE TABLE IF NOT EXISTS activity.event_outbox(
     event_id uuid PRIMARY KEY NOT NULL,

@@ -1843,3 +1843,26 @@ func NewSessionTemplateUpdatedEvent(st *SessionTemplate) *SessionTemplateUpdated
 		ActivityGroupID: st.ActivityGroupID(),
 	}
 }
+
+// EventAccountErased confirms to identity that this context has erased its
+// data of an account (identity.account.erased).
+const EventAccountErased = "activity.account.erased"
+
+// AccountErasedEvent confirms that what an erased account created, and its
+// memberships and invites, are gone. It carries the account id only.
+type AccountErasedEvent struct {
+	domainevent.BaseEvent
+	AccountID uuid.UUID `json:"account_id"`
+}
+
+func NewAccountErasedEvent(accountID uuid.UUID) *AccountErasedEvent {
+	return &AccountErasedEvent{
+		BaseEvent: domainevent.BaseEvent{
+			EventID:     uuid.New(),
+			EventType:   EventAccountErased,
+			OccurredAt:  time.Now().UTC(),
+			AggregateID: accountID,
+		},
+		AccountID: accountID,
+	}
+}
