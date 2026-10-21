@@ -163,6 +163,30 @@ GDPR Art. 17: a deleted account's personal data is erased, in every context, wit
 
 Metrics: `identity_accounts_erased_total`, `identity_account_erasures_incomplete`. Log lines: `erased deleted accounts` (Info), `account erasures not confirmed by every context` (Warn).
 
+### After restoring a backup
+
+A database restored to time T brings back data of accounts erased after T. What to do depends on when the account was deleted:
+
+- **Erased before T**: already erased in the backup. Nothing to do.
+- **Deleted before T, erased after T**: the backup still has its `erase_after`, so the erase job erases it again on its next run and raises `identity.account.erased` again; every context erases again (their `erased_account` rows were restored without it) and confirms. Nothing to do.
+- **Deleted after T**: the deletion itself is lost - the account is active again. Take the ids from the damaged database if it can still be read (`SELECT id FROM identity.accounts WHERE deleted_at > T`), or from `identity.account.deleted` in the NATS `EVENTS` stream (kept 7 days), and delete those accounts again. There is no admin tool for this yet (`rekreativko-api-5s3`).
+
+When only **one context's schema** is restored (identity is intact), that context has lost the erasures after T. Raise `identity.account.erased` again for them; every handler is idempotent, so contexts that already erased an account do nothing:
+
+```sql
+WITH replay AS (
+    SELECT id AS account_id, gen_random_uuid() AS event_id
+    FROM identity.accounts WHERE erased_at > 'T'
+)
+INSERT INTO identity.event_outbox (event_id, event_type, aggregate_id, payload)
+SELECT event_id, 'identity.account.erased', account_id, jsonb_build_object(
+    'event_id', event_id, 'event_type', 'identity.account.erased', 'occurred_at', NOW(),
+    'aggregate_id', account_id, 'account_id', account_id)
+FROM replay;
+```
+
+Logs and traces need nothing: Loki and Jaeger keep them for less than the grace period (`CLAUDE.md`, "Personal data in logs and traces"). Keep backups for no longer than needed, and run the above after every restore.
+
 ## Known issues
 
 - **`expires_in` in the login response is hardcoded to `123`**, not derived from `JWT_ACCESS_TOKEN_DURATION`. The refresh-token endpoint's response hardcodes a different wrong value (`365*24*60*60` seconds). Neither reflects the real token lifetime.

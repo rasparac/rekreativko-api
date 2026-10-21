@@ -240,6 +240,14 @@ parameter keeps its name and shows `[redacted]`. A new endpoint's parameters are
 (tokens, codes, coordinates, street, date of birth, free-text search...) - add a key there only if its value is
 safe to store in Loki/Jaeger.
 
+**Personal data in logs and traces:** identify a person by `account_id` only. Never put an email, phone number,
+name or nickname, date of birth, verification code or token, exact coordinates, street address or free text a user
+typed (titles, descriptions, notes, bios) in a log line, a span attribute or an error message that gets logged -
+city and country alone are fine. Loki and Jaeger cannot erase one person's data, so whatever slips through only
+goes when its retention runs out: Loki keeps logs 14 days (`retention_period`, `observability/loki/loki-config.yaml`),
+Jaeger traces 7 days (`BADGER_SPAN_STORE_TTL`, `docker-compose.yaml`). Both must stay shorter than identity's
+`ACCOUNT_ERASURE_GRACE` (30 days), so nothing outlives an account's erasure (GDPR Art. 17, epic dh7).
+
 **Tracing a domain event:** with `LOG_LEVEL=debug`, every hop logs a line carrying the event's `event_id`, so
 one query shows its whole path - in Grafana's Loki: `{service=~".+"} | json | event_id="<id>"` (promtail only sees
 containers; for a service run from the IDE, grep its console). In order:

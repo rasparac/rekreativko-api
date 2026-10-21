@@ -108,7 +108,6 @@ func (s *SessionGeneratorService) generateSessionsForTemplate(
 
 	span.SetAttributes(
 		attribute.String("template_id", template.ID().String()),
-		attribute.String("template_title", template.Title()),
 	)
 
 	// Determine generation start point

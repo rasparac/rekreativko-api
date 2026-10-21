@@ -1435,9 +1435,8 @@ func (s *SessionService) DiscoverSessions(
 		"method", "DiscoverSessions",
 	)
 
+	// The search point is where the user is: not recorded.
 	span.SetAttributes(
-		attribute.Float64("lat", params.Lat),
-		attribute.Float64("lng", params.Lng),
 		attribute.Float64("radius_km", params.RadiusKM),
 	)
 

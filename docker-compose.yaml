@@ -273,6 +273,13 @@ services:
       - "14268:14268"
     env_file:
       - .env
+    # Traces are deleted after BADGER_SPAN_STORE_TTL, which must stay shorter
+    # than identity's ACCOUNT_ERASURE_GRACE (720h), see CLAUDE.md "Personal data in logs
+    # and traces".
+    environment:
+      - SPAN_STORAGE_TYPE=badger
+      - BADGER_EPHEMERAL=true
+      - BADGER_SPAN_STORE_TTL=168h
     networks:
       - rekreativko
     restart: unless-stopped

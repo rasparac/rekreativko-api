@@ -75,10 +75,10 @@ func (s *GeocodeService) ReverseGeocode(
 	ctx, span := s.tracer.Start(ctx, "location.service.ReverseGeocode")
 	defer span.End()
 
+	// No coordinates in logs or spans: they locate the user (see CLAUDE.md,
+	// "Personal data in logs and traces").
 	log := s.logger.WithValues(
 		"method", "ReverseGeocode",
-		"latitude", params.Latitude,
-		"longitude", params.Longitude,
 	)
 
 	coords, err := domain.NewCoordinates(params.Latitude, params.Longitude)
@@ -86,11 +86,6 @@ func (s *GeocodeService) ReverseGeocode(
 		span.SetStatus(codes.Error, err.Error())
 		return nil, domainerror.BadRequest("invalid_coordinates", err.Error(), err)
 	}
-
-	span.SetAttributes(
-		attribute.Float64("latitude", coords.Latitude),
-		attribute.Float64("longitude", coords.Longitude),
-	)
 
 	latBucket, lngBucket := coords.Bucket()
 
@@ -159,7 +154,6 @@ func (s *GeocodeService) ForwardGeocode(
 		"method", "ForwardGeocode",
 		"city", params.City,
 		"country", params.Country,
-		"street", params.Street,
 	)
 
 	query, err := domain.NewForwardGeocodeQuery(params.City, params.Country, params.Street)
@@ -220,7 +214,7 @@ func (s *GeocodeService) ForwardGeocode(
 	}
 
 	span.SetStatus(codes.Ok, "resolved via nominatim")
-	log.Debug(ctx, "resolved via nominatim", "latitude", result.Latitude, "longitude", result.Longitude)
+	log.Debug(ctx, "resolved via nominatim")
 
 	return result, nil
 }

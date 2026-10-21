@@ -72,12 +72,10 @@ func (s *ActivityGroupService) CreateActivityGroup(
 	log := s.logger.WithValues(
 		"method", "CreateActivityGroup",
 		"creator_id", params.CreatorID,
-		"title", params.Title,
 	)
 
 	span.SetAttributes(
 		attribute.String("creator_id", params.CreatorID.String()),
-		attribute.String("title", params.Title),
 		attribute.String("activity_type", params.ActivityType),
 	)
 
