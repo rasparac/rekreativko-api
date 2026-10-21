@@ -1,366 +1,81 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Rekreativko API: a Go 1.26 modular monolith for recreational sports groups - one repo and one `go.mod`, several
+services, each owning its own schema in one PostgreSQL 17 database. Services talk through domain events
+(transactional outbox -> NATS JetStream); clients reach them only through the gateway. `README.md` explains the
+architecture, request flow, events and setup for humans.
 
-## Project Overview
+## Services
 
-Rekreativko API is a Go-based microservices application implementing a modular monolith architecture with domain-driven design (DDD) principles. The system provides identity management, account profiles, and activity tracking capabilities.
+| Service | Port | Owns | Docs |
+|---|---|---|---|
+| `gateway` | 8080 | routing, JWT check, rate limiting; no database | `gateway/README.md` |
+| `identity` | 8081 | accounts, login, tokens, verification, account erasure | `identity/README.md` |
+| `account-profile` | 8082 | profiles, interests, settings | `account-profile/README.md` |
+| `notifications` | 8083 | in-app feed and email/SMS delivery | `notifications/README.md` |
+| `activity` | 8084 | groups, sessions, attendance, invites, teams (core domain); `cmd/cron` for jobs | `activity/README.md` |
+| `location` | 8085 | geocoding (cached); no per-account data | `location/README.md` |
+| `outbox-publisher` | - | relays every schema's `event_outbox` to NATS, purges old rows | `outbox-publisher/README.md` |
 
-## Architecture
+Read the service's README before changing it - it is the source of truth for that service's behavior.
+`.claude/docs/*.md` hold older domain design notes; where they disagree with a README or the code, those win.
 
-### Service Structure
-
-The application is organized as a modular monolith with separate bounded contexts:
-
-- **Gateway Service** (port 8080): API gateway handling routing, authentication, and notification subscriptions
-- **Identity Service** (port 8081): User authentication, registration, and account management
-- **Account Profile Service** (port 8082): User profiles, settings, and statistics
-- **Outbox Publisher**: Background service publishing domain events to NATS message broker
-- **Notifications Service** (port 8083): one bounded context with two layers - the in-app *feed* (activity events
-  -> `notification` rows, `GET /notifications`) and *delivery* (identity events -> email/SMS rendered from
-  `notifications/internal/infrastructure/templates/<locale>/`, sent through `DeliveryService`). See `notifications/README.md`
-
-Each service can run independently but shares the same PostgreSQL database.
-
-### Domain-Driven Design
-
-Each bounded context follows DDD layering:
+## Layout
 
 ```
-internal/{service}/
-├── domain/           # Business logic, aggregates, value objects, domain events
-├── application/      # Use cases, orchestration, application services
-├── infrastructure/   # External concerns (database, persistence)
-├── interfaces/       # HTTP handlers, DTOs, event subscribers
-└── metrics/          # Service-specific Prometheus metrics
+<service>/cmd/<binary>/main.go          wiring only
+<service>/internal/domain/              aggregates, value objects, domain events, sentinel errors
+<service>/internal/application/         use cases; one transaction per use case
+<service>/internal/infrastructure/persistence/   repositories; migrations/000001_<service>_schema.*.sql
+<service>/internal/interfaces/http/     handlers, DTOs, mappers
+<service>/internal/interfaces/events/   consumers of other contexts' events
+<service>/internal/metrics/             Prometheus metrics
+shared/                                 config, logger, telemetry, middleware, api, domainevent, events, store, token, testing
 ```
 
-**Key patterns:**
-- Domain aggregates raise events that are persisted to an outbox table
-- Outbox publisher polls for unpublished events and publishes to NATS
-- Domain events enable eventual consistency between bounded contexts
-- Each aggregate owns its invariants and encapsulates business rules
+`interfaces` -> `application` -> `domain`; `infrastructure` implements interfaces declared in `application`. A
+service never imports another service's `internal` packages - contexts share only the JSON shape of events.
 
-### Event-Driven Communication
-
-The system uses NATS for asynchronous communication:
-
-1. Domain events are stored in `event_outbox` table during transactions
-2. Outbox publisher service polls and publishes events to NATS
-3. Services subscribe to events (e.g., gateway subscribes to `identity.account.verified`)
-4. Event types follow pattern: `{context}.{aggregate}.{event}`
-
-Examples:
-- `identity.account.verified`
-- `identity.account.locked`
-- `identity.verification_code.created`
-
-### Shared Infrastructure
-
-The `internal/shared/` package contains reusable components:
-
-- `domainevent/`: Base event types and domain event manager
-- `events/`: NATS message broker, outbox publisher implementation
-- `store/`: PostgreSQL connection pooling, transaction management, Redis client
-- `middleware/`: HTTP middleware (auth, CORS, rate limiting, tracing, metrics)
-- `token/`: JWT generation, password hashing, verification codes
-- `telemetry/`: OpenTelemetry tracing setup
-- `logger/`: Structured logging with slog
-- `config/`: Configuration loading from environment variables
-
-## Development Commands
-
-### Task Runner
-
-This project uses [Task](https://taskfile.dev) for command execution. View all commands:
+## Commands
 
 ```bash
-task
+task                          # list every task
+go build ./...
+task test                     # unit tests (go test ./... -short)
+go test -tags integration ./<service>/...   # integration tests, need Docker (testcontainers)
+task lint                     # golangci-lint run ./... - untouched files have known findings
+task fmt
+task docker:up                # whole stack; task docker:run:local = infrastructure only
+task migrate:all:up
+task docs:ui                  # regenerate swagger for every service, serve on :8090
 ```
 
-### Local Development
+Before calling work done: `go build ./...`, `go test ./...`, the integration tests of any service whose
+persistence layer changed, and `golangci-lint run` on the packages you touched.
 
-**Run the application:**
-```bash
-task run  # Runs cmd/api/main.go
-```
+## Rules that always apply
 
-**Build:**
-```bash
-task build  # Outputs to bin/rekreativko
-```
+- **Schema changes** go into the service's existing `000001_<service>_schema.up.sql` / `.down.sql`. Never add a
+  migration file (the project is not in production) - so never use `task migrate:create`.
+- **Personal data**: identify people by `account_id` only in logs, spans and logged errors
+  (`.claude/rules/observability.md`). A new table holding account data must be covered by that context's
+  erasure (`.claude/rules/database.md`).
+- **Write code like the code around it**: same naming, idioms and comment density; comments say why.
+- **Git**: commit or push only when asked; tickets live in beads (`.claude/rules/git-and-beads.md`).
 
-**Run tests:**
-```bash
-task test  # Runs all tests with verbose output
-```
+## Where the rest lives
 
-**Lint code:**
-```bash
-task lint  # Runs golangci-lint
-```
+`.claude/rules/` - loaded automatically; those with `paths:` only while working on matching files:
 
-### Docker Development
-
-**Start all services:**
-```bash
-task docker:up  # Starts all containers (gateway, identity, account-profile, db, redis, nats, observability)
-```
-
-**Start only infrastructure (for local development):**
-```bash
-task docker:run:local-testing  # Starts db, redis, nats, jaeger, prometheus, grafana
-```
-
-**Build services:**
-```bash
-task docker:build  # Builds all services
-task docker:build-by-name -- gateway  # Build specific service
-```
-
-**Stop services:**
-```bash
-task docker:down
-```
-
-### Database Migrations
-
-**Run migrations:**
-```bash
-task migrate:up  # Applies all pending migrations
-```
-
-**Rollback last migration:**
-```bash
-task migrate:down
-```
-
-**Create new migration:**
-```bash
-task migrate:create -- <migration_name>
-```
-
-Migrations use [golang-migrate](https://github.com/golang-migrate/migrate) and are located in `migrations/` directory.
-
-### Tools
-
-**Install development tools:**
-```bash
-task tools:install  # Installs golangci-lint, migrate, goimports
-```
-
-**Generate Swagger docs:**
-```bash
-task docs:swagger  # Generates OpenAPI docs from code annotations
-```
-
-Swagger UI is available at `/swagger/index.html` when running in dev mode.
-
-### Dependencies
-
-**Install dependencies:**
-```bash
-task deps:install
-```
-
-**Update dependencies:**
-```bash
-task deps:update
-```
-
-## Testing
-
-**Run all tests:**
-```bash
-task test
-```
-
-**Run specific package tests:**
-```bash
-go test -v ./internal/identity/domain/...
-```
-
-**Run single test:**
-```bash
-go test -v -run TestName ./path/to/package
-```
-
-Tests use `testify/assert` for assertions and `miniredis` for Redis mocking.
-
-## Configuration
-
-Configuration is loaded via environment variables using `kelseyhightower/envconfig`. See `.env` file for all available options.
-
-**Key configuration areas:**
-- Service metadata (name, version, environment)
-- Server (host, port)
-- PostgreSQL connection and pooling
-- Redis connection
-- JWT tokens (secret, durations)
-- NATS messaging
-- OpenTelemetry (OTLP endpoint, sampling rates)
-- Service URLs for gateway routing
-
-## Gateway Routing
-
-The gateway uses custom routing logic in `internal/gateway/router.go`:
-
-- Routes are defined with path prefixes that map to backend services
-- Each route has auth rules using regex patterns
-- Public endpoints (login, register) are explicitly allowed via `RequireAuth: false` rules - the only place they
-  are declared; `main.go` builds the `AuthMiddleware` public-path list from `Router.PublicPaths()`
-- Authenticated requests get the caller's account in `X-User-ID`; a client-sent `X-User-ID` is always dropped,
-  so only the gateway sets it. There are no global roles - roles exist per activity group and are checked by
-  the activity service against its own membership data
-- Paths are stripped before proxying to backend services
-- Long-lived streaming endpoints (SSE) are declared in `Route.StreamPaths` and proxied by `StreamToService`
-  without the 15s WriteTimeout and per-service timeout - only connecting and the wait for response headers
-  are bounded
-
-## Authentication Flow
-
-1. User registers via `/identity/api/v1/register`
-2. Verification code is generated and event published
-3. User verifies account via `/identity/api/v1/verify-account` (skipped when `ACCOUNT_VERIFICATION_REQUIRED=false`: the account is active at registration)
-4. User logs in via `/identity/api/v1/login` receiving access + refresh tokens
-5. Gateway validates JWT on protected routes using `middleware.RequireAuth`
-6. User context is extracted and propagated via headers to backend services
-
-## Observability
-
-**Tracing:** OpenTelemetry traces exported to Jaeger (http://localhost:16686)
-
-**Metrics:** Prometheus metrics exposed on `/metrics` endpoint (http://localhost:9090)
-
-**Dashboards:** Grafana dashboards at http://localhost:3000
-
-**Query strings in logs and traces:** the access log (`query_params`) and the span's `http.target` show a
-parameter's value only if its name is in `loggedQueryKeys` (`shared/middleware/query_redact.go`); every other
-parameter keeps its name and shows `[redacted]`. A new endpoint's parameters are therefore redacted by default
-(tokens, codes, coordinates, street, date of birth, free-text search...) - add a key there only if its value is
-safe to store in Loki/Jaeger.
-
-**Personal data in logs and traces:** identify a person by `account_id` only. Never put an email, phone number,
-name or nickname, date of birth, verification code or token, exact coordinates, street address or free text a user
-typed (titles, descriptions, notes, bios) in a log line, a span attribute or an error message that gets logged -
-city and country alone are fine. Loki and Jaeger cannot erase one person's data, so whatever slips through only
-goes when its retention runs out: Loki keeps logs 14 days (`retention_period`, `observability/loki/loki-config.yaml`),
-Jaeger traces 7 days (`BADGER_SPAN_STORE_TTL`, `docker-compose.yaml`). Both must stay shorter than identity's
-`ACCOUNT_ERASURE_GRACE` (30 days), so nothing outlives an account's erasure (GDPR Art. 17, epic dh7).
-
-**Tracing a domain event:** with `LOG_LEVEL=debug`, every hop logs a line carrying the event's `event_id`, so
-one query shows its whole path - in Grafana's Loki: `{service=~".+"} | json | event_id="<id>"` (promtail only sees
-containers; for a service run from the IDE, grep its console). In order:
-
-| Line (`msg`) | Where | What it adds |
+| File | Loaded for | Covers |
 |---|---|---|
-| `event stored in outbox` | producing service (`shared/domainevent`) | `request_id` of the request that raised it; may still roll back |
-| `outbox event published` / `published message` | outbox-publisher | NATS stream sequence |
-| `event received` → `message acked` | each JetStream consumer (`shared/events`) | `consumer`, `num_delivered` (>1 = redelivery) |
-| `notification created` / `duplicate event…` | notifications | `type`, `recipient_account_id` |
-| `broadcast event received` | every activity instance | |
-| `session event delivered` / `…no viewers on this instance` | activity live hub | `viewers`, `queued`, `skipped` (client already had that version), `withheld` (manager-only), `slow_consumer` |
-| `team-formation stream update sent` | activity SSE stream | one per viewer: `account_id`, `version` |
+| `go-style.md` | `**/*.go` | errors, aggregates, application services, tracing, logging, config |
+| `testing.md` | `**/*_test.go` | unit vs integration tests, testutil, fakes, metrics in tests |
+| `database.md` | persistence, migrations | schemas, queries, locking, deletes, outbox, GDPR erasure lists |
+| `events.md` | event code | naming, outbox, consumers, idempotency, dead-lettering |
+| `gateway.md` | `gateway/**` | routing, public paths, `X-User-ID`, streaming |
+| `observability.md` | always | personal data, query redaction, retention, tracing an event |
+| `git-and-beads.md` | always | tickets, commits, session end |
 
-Set the id with `api.WithEventID(ctx, …)` rather than passing `"event_id"` as a key, so lines logged further down
-the call chain carry it too.
-
-**Service metrics include:**
-- HTTP request duration and counts
-- Database query performance
-- Event publishing metrics
-- Custom business metrics per service
-
-## Key Technical Decisions
-
-- **Go 1.26** with standard library HTTP server
-- **PostgreSQL 17** as primary database (shared across services)
-- **NATS JetStream** for reliable event streaming
-- **Redis** for caching and rate limiting
-- **Transactional outbox pattern** ensures eventual consistency
-- **OpenTelemetry** for distributed tracing
-- **Prometheus + Grafana** for metrics and visualization
-
-## Adding a New Service
-
-1. Create directory under `internal/{service-name}/` with DDD layers
-2. Add main entry point under `cmd/{service-name}/main.go`
-3. Create database migration for service schema
-4. Register route in gateway router (`internal/gateway/router.go`)
-5. Add service to `docker-compose.yaml`
-6. Add service-specific metrics in `internal/{service-name}/metrics/`
-7. Subscribe to relevant domain events if needed
-
-## Domain Documentation
-
-Detailed domain documentation is located in `.claude/docs/`. These files provide in-depth context about each bounded context:
-
-- **`.claude/docs/arhitecture.md`** - High-level architecture and domain boundaries
-- **`.claude/docs/identity_context.md`** - Identity & authentication domain (accounts, tokens, verification)
-- **`.claude/docs/account_profile.md`** - User profiles, settings, interests, and statistics
-- **`.claude/docs/activity.md`** - Activity groups, sessions, invites, and attendance (CORE domain)
-
-**When to read these:**
-- Before working on a specific domain/bounded context
-- To understand business rules, invariants, and domain events
-- When adding features that cross domain boundaries
-- To understand the event-driven architecture and event flows
-
-These files document the actual implementation including aggregates, value objects, database schemas, API contracts, and business rules.
-
-
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
-## Beads Issue Tracker
-
-This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
-
-### Quick Reference
-
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>         # Complete work
-```
-
-### Rules
-
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
-- Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
-
-**Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
-
-## Agent Context Profiles
-
-The managed Beads block is task-tracking guidance, not permission to override repository, user, or orchestrator instructions.
-
-- **Conservative (default)**: Use `bd` for task tracking. Do not run git commits, git pushes, or Dolt remote sync unless explicitly asked. At handoff, report changed files, validation, and suggested next commands.
-- **Minimal**: Keep tool instruction files as pointers to `bd prime`; use the same conservative git policy unless active instructions say otherwise.
-- **Team-maintainer**: Only when the repository explicitly opts in, agents may close beads, run quality gates, commit, and push as part of session close. A current "do not commit" or "do not push" instruction still wins.
-
-## Session Completion
-
-This protocol applies when ending a Beads implementation workflow. It is subordinate to explicit user, repository, and orchestrator instructions.
-
-1. **File issues for remaining work** - Create beads for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **Handle git/sync by active profile**:
-   ```bash
-   # Conservative/minimal/default: report status and proposed commands; wait for approval.
-   git status
-
-   # Team-maintainer opt-in only, unless current instructions forbid it:
-   git pull --rebase
-   bd dolt push
-   git push
-   git status
-   ```
-5. **Hand off** - Summarize changes, validation, issue status, and any blocked sync/commit/push step
-
-**Critical rules:**
-- Explicit user or orchestrator instructions override this Beads block.
-- Do not commit or push without clear authority from the active profile or the current user request.
-- If a required sync or push is blocked, stop and report the exact command and error.
-<!-- END BEADS INTEGRATION -->
+Also: `<service>/CLAUDE.md` (pointer to the service docs), `.claude/skills/resolve-ticket` (`/resolve-ticket`),
+`.claude/agents/` (`ticket-writer`, `architecture-reviewer`).
