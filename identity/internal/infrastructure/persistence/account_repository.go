@@ -24,6 +24,11 @@ type (
 		ListDueForErasure(ctx context.Context, now time.Time, limit int) ([]*domain.Account, error)
 	}
 
+	// AccountFilter selects one account. By email or phone number it finds
+	// only an account that is not deleted: a deleted account keeps its
+	// address until the erasure, but the address is free to register again
+	// (the unique indexes ignore deleted rows), so it would be ambiguous. By
+	// id it finds a deleted account too.
 	AccountFilter struct {
 		PhoneNumber *string
 		UUID        *uuid.UUID
@@ -129,6 +134,10 @@ func (am *AccountManager) GetBy(ctx context.Context, filter AccountFilter) (*dom
 			filters,
 			fmt.Sprintf("id = $%d", len(args)),
 		)
+	}
+
+	if filter.PhoneNumber != nil || filter.Email != nil {
+		filters = append(filters, "deleted_at IS NULL")
 	}
 
 	baseQuery = fmt.Sprintf(baseQuery, strings.Join(filters, " AND "))

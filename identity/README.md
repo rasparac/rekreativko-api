@@ -76,7 +76,7 @@ Codes are unique **globally**, not per-account — the code alone identifies whi
 ```json
 { "email": "user@example.com", "password": "Str0ng!Pass" }
 ```
-(or `phone_number` instead of `email`). Blocked for unverified/suspended/deleted/locked accounts.
+(or `phone_number` instead of `email`). Blocked for unverified/suspended/locked accounts. A deleted account is not found by its email or phone (`404 identity_account_not_found`, as for an unknown address): the address is free to register again, so a lookup by address only ever finds an account that is not deleted (`persistence.AccountFilter`).
 
 → `200` `{ "access_token", "refresh_token", "expires_in", "token_type": "Bearer" }`.
 
