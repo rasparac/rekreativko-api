@@ -19,9 +19,13 @@ import (
 )
 
 type accountLifecycleTestEnv struct {
-	ctx      context.Context
-	db       *testutil.TestDatabase
-	accounts *application.AccountLifecycleService
+	ctx            context.Context
+	db             *testutil.TestDatabase
+	accounts       *application.AccountLifecycleService
+	members        *application.MemberService
+	invites        *application.InviteService
+	sessionInvites *application.SessionInviteService
+	attendees      *application.AttendeeService
 }
 
 func setupAccountLifecycleTest(t *testing.T) *accountLifecycleTestEnv {
@@ -31,6 +35,7 @@ func setupAccountLifecycleTest(t *testing.T) *accountLifecycleTestEnv {
 	txManager := db.CreateTransactionManager()
 	logger := testutil.CreateLogger()
 	eventWriter := domainevent.NewDomainEventManager(txManager, logger)
+	accountStates := persistence.NewAccountStateManager(txManager)
 
 	sessionRepo := persistence.NewSessionManager(txManager, logger)
 	attendeeRepo := persistence.NewAttendeeRepository(txManager, logger)
@@ -40,21 +45,20 @@ func setupAccountLifecycleTest(t *testing.T) *accountLifecycleTestEnv {
 	votingRepo := persistence.NewTeamVotingRepository(txManager, logger)
 	sessionInviteRepo := persistence.NewSessionInviteRepository(txManager, logger)
 
-	return &accountLifecycleTestEnv{
-		ctx: context.Background(),
-		db:  db,
-		accounts: application.NewAccountLifecycleService(
-			persistence.NewAccountStateManager(txManager),
-			application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, draftRepo, votingRepo, eventWriter, testMetrics()),
-			application.NewInviteService(logger, txManager, persistence.NewGroupInviteRepository(txManager, logger), memberRepo, eventWriter, testMetrics()),
-			application.NewSessionInviteService(logger, txManager, sessionInviteRepo, sessionRepo, attendeeRepo, eventWriter, testMetrics()),
-			application.NewMemberService(logger, txManager, memberRepo, groupRepo, eventWriter, testMetrics()),
-			txManager,
-			eventWriter,
-			logger,
-			testMetrics(),
-		),
+	env := &accountLifecycleTestEnv{
+		ctx:            context.Background(),
+		db:             db,
+		members:        application.NewMemberService(logger, txManager, memberRepo, groupRepo, accountStates, eventWriter, testMetrics()),
+		invites:        application.NewInviteService(logger, txManager, persistence.NewGroupInviteRepository(txManager, logger), memberRepo, accountStates, eventWriter, testMetrics()),
+		sessionInvites: application.NewSessionInviteService(logger, txManager, sessionInviteRepo, sessionRepo, attendeeRepo, accountStates, eventWriter, testMetrics()),
+		attendees:      application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, draftRepo, votingRepo, accountStates, eventWriter, testMetrics()),
 	}
+	env.accounts = application.NewAccountLifecycleService(
+		accountStates, env.attendees, env.invites, env.sessionInvites, env.members,
+		txManager, eventWriter, logger, testMetrics(),
+	)
+
+	return env
 }
 
 // The fixture is written with SQL so that every table gets rows, whatever
@@ -326,4 +330,58 @@ func TestAccountLifecycle_ErasureOfAnAccountWithNoActivityIsStillConfirmed(t *te
 	require.NoError(t, env.accounts.EraseAccount(env.ctx, nobody))
 
 	assert.Len(t, env.erasedEvents(t, nobody), 1)
+}
+
+// Others cannot create new data about a deleted account: no invite to it, and
+// a request it made before the deletion cannot be approved.
+func TestAccountLifecycle_ADeletedAccountCannotBeInvitedOrApproved(t *testing.T) {
+	env := setupAccountLifecycleTest(t)
+	deleted, owner := uuid.New(), uuid.New()
+
+	group := env.group(owner)
+	env.member(group, deleted, "pending", "member") // asked to join before deleting
+	session := env.session(&group, nil, owner, "scheduled", time.Now().Add(24*time.Hour))
+	env.attendee(session, &group, deleted, "pending") // asked to attend before deleting
+	standalone := env.session(nil, nil, owner, "scheduled", time.Now().Add(24*time.Hour))
+
+	require.NoError(t, env.accounts.DeactivateAccount(env.ctx, deleted))
+
+	creator := string(domain.MemberRoleCreator)
+	for name, call := range map[string]func() error{
+		"invite as member": func() error {
+			_, err := env.members.InviteMember(env.ctx, application.InviteMemberParams{
+				ActivityGroupID: group, RequesterID: owner, RequesterRole: creator, UserID: deleted,
+			})
+			return err
+		},
+		"group invite": func() error {
+			_, err := env.invites.SendInvite(env.ctx, application.SendInviteParams{
+				ActivityGroupID: group, RequesterID: owner, RequesterRole: creator, InvitedUserID: deleted,
+			})
+			return err
+		},
+		"session invite": func() error {
+			_, err := env.sessionInvites.SendInvite(env.ctx, application.SendSessionInviteParams{
+				SessionID: standalone, RequesterID: owner, InvitedUserID: deleted,
+			})
+			return err
+		},
+		"approve join request": func() error {
+			return env.members.ApproveMember(env.ctx, application.ApproveMemberParams{
+				ActivityGroupID: group, RequesterID: owner, RequesterRole: creator, UserID: deleted,
+			})
+		},
+		"approve attendee": func() error {
+			return env.attendees.ApproveAttendee(env.ctx, application.ApproveAttendeeParams{
+				SessionID: session, UserID: deleted, RequesterID: owner, RequesterRole: creator,
+			})
+		},
+	} {
+		assert.ErrorIs(t, call(), domain.ErrAccountDeleted, name)
+	}
+
+	assert.Zero(t, env.count(t, `SELECT count(*) FROM activity.group_invites WHERE invited_user_id = $1`, deleted))
+	assert.Zero(t, env.count(t, `SELECT count(*) FROM activity.session_invites WHERE invited_user_id = $1`, deleted))
+	assert.Equal(t, 1, env.count(t, `SELECT count(*) FROM activity.member
+		WHERE account_id = $1 AND status = 'pending'`, deleted), "the request stays pending until the erasure")
 }

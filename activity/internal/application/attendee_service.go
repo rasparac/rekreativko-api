@@ -32,6 +32,7 @@ type AttendeeService struct {
 	memberRepo   MemberRepository
 	sessionRepo  SessionRepository
 	formation    teamFormation
+	accounts     inactiveAccountChecker
 	eventWriter  domainevent.EventWriter
 	tracer       trace.Tracer
 	metrics      *metrics.Metrics
@@ -46,6 +47,7 @@ func NewAttendeeService(
 	sessionRepo SessionRepository,
 	draftRepo TeamDraftRepository,
 	votingRepo TeamVotingRepository,
+	accounts inactiveAccountChecker,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *AttendeeService {
@@ -56,6 +58,7 @@ func NewAttendeeService(
 		memberRepo:   memberRepo,
 		sessionRepo:  sessionRepo,
 		formation:    newTeamFormation(sessionRepo, attendeeRepo, draftRepo, votingRepo),
+		accounts:     accounts,
 		eventWriter:  eventWriter,
 		tracer:       telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:      metrics,
@@ -292,6 +295,10 @@ func (s *AttendeeService) ApproveAttendee(
 	}
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		if err := ensureAccountActive(tCtx, s.accounts, params.UserID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)

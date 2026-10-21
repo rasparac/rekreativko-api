@@ -52,6 +52,9 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	defer pg.Close()
 
 	txManager := postgres.NewTransactionManager(pg.Pool)
+
+	// accounts deleted or erased in identity (epic dh7)
+	accountStates := persistence.NewAccountStateManager(txManager)
 	domainEventMgr := domainevent.NewDomainEventManager(txManager, log)
 
 	// Initialize telemetry
@@ -110,6 +113,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		txManager,
 		groupInviteRepo,
 		memberRepo,
+		accountStates,
 		domainEventMgr,
 		appMetrics,
 	)
@@ -126,6 +130,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		sessionInviteRepo,
 		sessionRepo,
 		attendeeRepo,
+		accountStates,
 		domainEventMgr,
 		appMetrics,
 	)

@@ -28,6 +28,7 @@ type SessionInviteService struct {
 	sessionInviteRepo SessionInviteRepository
 	sessionRepo       SessionRepository
 	attendeeRepo      AttendeeRepository
+	accounts          inactiveAccountChecker
 	eventWriter       domainevent.EventWriter
 	tracer            trace.Tracer
 	metrics           *metrics.Metrics
@@ -40,6 +41,7 @@ func NewSessionInviteService(
 	sessionInviteRepo SessionInviteRepository,
 	sessionRepo SessionRepository,
 	attendeeRepo AttendeeRepository,
+	accounts inactiveAccountChecker,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *SessionInviteService {
@@ -49,6 +51,7 @@ func NewSessionInviteService(
 		sessionInviteRepo: sessionInviteRepo,
 		sessionRepo:       sessionRepo,
 		attendeeRepo:      attendeeRepo,
+		accounts:          accounts,
 		eventWriter:       eventWriter,
 		tracer:            telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:           metrics,
@@ -80,6 +83,10 @@ func (s *SessionInviteService) SendInvite(
 	var invite *domain.SessionInvite
 
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		if err := ensureAccountActive(tCtx, s.accounts, params.InvitedUserID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)

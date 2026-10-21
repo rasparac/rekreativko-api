@@ -53,7 +53,7 @@ func setupSessionTeamTest(t *testing.T) *sessionTeamTestEnv {
 
 	return &sessionTeamTestEnv{
 		ctx:          context.Background(),
-		svc:          application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, draftRepo, votingRepo, eventWriter, testMetrics()),
+		svc:          application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, draftRepo, votingRepo, persistence.NewAccountStateManager(txManager), eventWriter, testMetrics()),
 		sessionSvc:   sessionSvc,
 		groupSvc:     application.NewActivityGroupService(logger, txManager, groupRepo, memberRepo, sessionSvc, eventWriter, testMetrics()),
 		draftSvc:     draftSvc,

@@ -63,6 +63,10 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.ValidationError("invalid_radius", "Discovery radius must be greater than 0", err)
 	}
 
+	if errors.Is(err, domain.ErrAccountDeleted) {
+		return domainerror.Conflict("account_deleted", "This account has been deleted", err)
+	}
+
 	// Session errors
 	switch {
 	case errors.Is(err, domain.ErrSessionNotFound):

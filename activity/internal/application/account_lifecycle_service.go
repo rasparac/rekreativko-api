@@ -196,6 +196,28 @@ func (s *AccountLifecycleService) EraseAccount(ctx context.Context, accountID uu
 	return nil
 }
 
+// inactiveAccountChecker tells whether an account was deleted or erased in
+// identity; persistence.AccountStateManager implements it.
+type inactiveAccountChecker interface {
+	IsInactive(ctx context.Context, accountID uuid.UUID) (bool, error)
+}
+
+// ensureAccountActive returns domain.ErrAccountDeleted for an account deleted
+// or erased in identity. Called before a request creates data about another
+// account - inviting it, approving its request - which would otherwise outlive
+// its erasure or bring it back into groups it was taken out of.
+func ensureAccountActive(ctx context.Context, accounts inactiveAccountChecker, accountID uuid.UUID) error {
+	inactive, err := accounts.IsInactive(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("check account %s: %w", accountID, err)
+	}
+	if inactive {
+		return domain.ErrAccountDeleted
+	}
+
+	return nil
+}
+
 // IsInactive reports whether the account was deleted or erased.
 func (s *AccountLifecycleService) IsInactive(ctx context.Context, accountID uuid.UUID) (bool, error) {
 	return s.states.IsInactive(ctx, accountID)

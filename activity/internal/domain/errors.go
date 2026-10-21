@@ -22,6 +22,13 @@ var (
 	ErrUnauthorized                   = errors.New("unauthorized to perform this action")
 )
 
+// Account errors
+var (
+	// ErrAccountDeleted: the account a request targets (an invitee, a pending
+	// member or attendee) was deleted or erased in identity.
+	ErrAccountDeleted = errors.New("account has been deleted")
+)
+
 // Member errors
 var (
 	ErrMemberNotFound        = errors.New("member not found")

@@ -68,7 +68,7 @@ func TestMemberService_ApproveMember_Concurrent_DoesNotOverbook(t *testing.T) {
 	memberRepo := persistence.NewMemberRepository(txManager, logger)
 	eventWriter := domainevent.NewDomainEventManager(txManager, logger)
 
-	svc := application.NewMemberService(logger, txManager, memberRepo, groupRepo, eventWriter, testMetrics())
+	svc := application.NewMemberService(logger, txManager, memberRepo, groupRepo, persistence.NewAccountStateManager(txManager), eventWriter, testMetrics())
 
 	ctx := context.Background()
 	group := createCapacityOneGroup(t, ctx, groupRepo)

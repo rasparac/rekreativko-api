@@ -48,7 +48,7 @@ func setupSessionInviteTest(t *testing.T) *sessionInviteTestEnv {
 
 	return &sessionInviteTestEnv{
 		ctx:          context.Background(),
-		svc:          application.NewSessionInviteService(logger, txManager, inviteRepo, sessionRepo, attendeeRepo, eventWriter, testMetrics()),
+		svc:          application.NewSessionInviteService(logger, txManager, inviteRepo, sessionRepo, attendeeRepo, persistence.NewAccountStateManager(txManager), eventWriter, testMetrics()),
 		sessionSvc:   application.NewSessionService(logger, txManager, sessionRepo, memberRepo, groupRepo, attendeeRepo, inviteRepo, draftRepo, votingRepo, eventWriter, testMetrics()),
 		inviteRepo:   inviteRepo,
 		sessionRepo:  sessionRepo,

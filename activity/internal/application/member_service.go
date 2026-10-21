@@ -29,6 +29,7 @@ type MemberService struct {
 	txManager   *postgres.TransactionManager
 	memberRepo  MemberRepository
 	groupRepo   ActivityGroupRepository
+	accounts    inactiveAccountChecker
 	eventWriter domainevent.EventWriter
 	tracer      trace.Tracer
 	metrics     *metrics.Metrics
@@ -40,6 +41,7 @@ func NewMemberService(
 	txManager *postgres.TransactionManager,
 	memberRepo MemberRepository,
 	groupRepo ActivityGroupRepository,
+	accounts inactiveAccountChecker,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *MemberService {
@@ -48,6 +50,7 @@ func NewMemberService(
 		txManager:   txManager,
 		memberRepo:  memberRepo,
 		groupRepo:   groupRepo,
+		accounts:    accounts,
 		eventWriter: eventWriter,
 		tracer:      telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:     metrics,
@@ -114,6 +117,10 @@ func (s *MemberService) InviteMember(
 	var member *domain.Member
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		if err := ensureAccountActive(tCtx, s.accounts, params.UserID); err != nil {
+			return err
+		}
+
 		// Check if user is already a member
 		existingMember, err := s.memberRepo.GetMemberByGroupAndUser(
 			tCtx,
@@ -544,6 +551,12 @@ func (s *MemberService) ApproveMember(
 	}
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		// A request made before the account was deleted stays pending, but
+		// cannot be approved.
+		if err := ensureAccountActive(tCtx, s.accounts, params.UserID); err != nil {
+			return err
+		}
+
 		// Get the member to approve
 		member, err := s.memberRepo.GetMemberByGroupAndUser(
 			tCtx,

@@ -101,7 +101,7 @@ func TestAttendeeService_UpdateRSVP_ConcurrentGoing_DoesNotOverbook(t *testing.T
 	memberRepo := persistence.NewMemberRepository(txManager, logger)
 	eventWriter := domainevent.NewDomainEventManager(txManager, logger)
 
-	svc := application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, persistence.NewTeamDraftRepository(txManager, logger), persistence.NewTeamVotingRepository(txManager, logger), eventWriter, testMetrics())
+	svc := application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, persistence.NewTeamDraftRepository(txManager, logger), persistence.NewTeamVotingRepository(txManager, logger), persistence.NewAccountStateManager(txManager), eventWriter, testMetrics())
 
 	ctx := context.Background()
 	session := createCapacityOneSession(t, ctx, sessionRepo)

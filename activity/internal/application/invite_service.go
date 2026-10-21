@@ -24,6 +24,7 @@ type InviteService struct {
 	txManager   *postgres.TransactionManager
 	inviteRepo  GroupInviteRepository
 	memberRepo  MemberRepository
+	accounts    inactiveAccountChecker
 	eventWriter domainevent.EventWriter
 	tracer      trace.Tracer
 	metrics     *metrics.Metrics
@@ -35,6 +36,7 @@ func NewInviteService(
 	txManager *postgres.TransactionManager,
 	inviteRepo GroupInviteRepository,
 	memberRepo MemberRepository,
+	accounts inactiveAccountChecker,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *InviteService {
@@ -43,6 +45,7 @@ func NewInviteService(
 		txManager:   txManager,
 		inviteRepo:  inviteRepo,
 		memberRepo:  memberRepo,
+		accounts:    accounts,
 		eventWriter: eventWriter,
 		tracer:      telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:     metrics,
@@ -83,6 +86,10 @@ func (s *InviteService) SendInvite(
 	var invite *domain.GroupInvite
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		if err := ensureAccountActive(tCtx, s.accounts, params.InvitedUserID); err != nil {
+			return err
+		}
+
 		// Reject if the invited user is already a member
 		existingMember, err := s.memberRepo.GetMemberByGroupAndUser(
 			tCtx,
