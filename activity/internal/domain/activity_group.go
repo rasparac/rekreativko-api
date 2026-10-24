@@ -13,23 +13,23 @@ import (
 type ActivityType = activitycatalog.ActivityType
 
 const (
-	ActivityTypeHiking        = activitycatalog.ActivityTypeHiking
-	ActivityTypeCycling       = activitycatalog.ActivityTypeCycling
-	ActivityTypeRunning       = activitycatalog.ActivityTypeRunning
-	ActivityTypeSwimming      = activitycatalog.ActivityTypeSwimming
-	ActivityTypeYoga          = activitycatalog.ActivityTypeYoga
-	ActivityTypeGym           = activitycatalog.ActivityTypeGym
-	ActivityTypeOther         = activitycatalog.ActivityTypeOther
-	ActivityTypeWalking       = activitycatalog.ActivityTypeWalking
-	ActivityTypeJogging       = activitycatalog.ActivityTypeJogging
-	ActivityTypeBasketball    = activitycatalog.ActivityTypeBasketball
-	ActivityTypeFootball      = activitycatalog.ActivityTypeFootball
-	ActivityTypeTennis        = activitycatalog.ActivityTypeTennis
-	ActivityTypeVolleyball    = activitycatalog.ActivityTypeVolleyball
-	ActivityTypeDancing       = activitycatalog.ActivityTypeDancing
-	ActivityTypeSkiing        = activitycatalog.ActivityTypeSkiing
-	ActivityTypeClimbing      = activitycatalog.ActivityTypeClimbing
-	ActivityTypeWeightlifting = activitycatalog.ActivityTypeWeightlifting
+	ActivityTypeHiking  = activitycatalog.ActivityTypeHiking
+	ActivityTypeCycling = activitycatalog.ActivityTypeCycling
+	ActivityTypeRunning = activitycatalog.ActivityTypeRunning
+	// ActivityTypeSwimming      = activitycatalog.ActivityTypeSwimming
+	// ActivityTypeYoga          = activitycatalog.ActivityTypeYoga
+	ActivityTypeGym   = activitycatalog.ActivityTypeGym
+	ActivityTypeOther = activitycatalog.ActivityTypeOther
+	// ActivityTypeWalking       = activitycatalog.ActivityTypeWalking
+	// ActivityTypeJogging       = activitycatalog.ActivityTypeJogging
+	ActivityTypeBasketball = activitycatalog.ActivityTypeBasketball
+	ActivityTypeFootball   = activitycatalog.ActivityTypeFootball
+	ActivityTypeTennis     = activitycatalog.ActivityTypeTennis
+	ActivityTypeVolleyball = activitycatalog.ActivityTypeVolleyball
+	// ActivityTypeDancing       = activitycatalog.ActivityTypeDancing
+	// ActivityTypeSkiing        = activitycatalog.ActivityTypeSkiing
+	// ActivityTypeClimbing      = activitycatalog.ActivityTypeClimbing
+	// ActivityTypeWeightlifting = activitycatalog.ActivityTypeWeightlifting
 )
 
 type ActivityGroupStatus string

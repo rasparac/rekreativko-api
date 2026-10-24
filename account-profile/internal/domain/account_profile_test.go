@@ -280,11 +280,11 @@ func TestAccountProfile_UpdateActivityInterests(t *testing.T) {
 			},
 			update: []*ActivityInterest{
 				makeInterest(ActivityTypeRunning, ActivityLevelIntermediate), // update
-				makeInterest(ActivityTypeSwimming, ActivityLevelBeginner),    // add
+				makeInterest(ActivityTypeGym, ActivityLevelBeginner),         // add
 			},
 			wantInterests: map[ActivityType]ActivityLevel{
-				ActivityTypeRunning:  ActivityLevelIntermediate,
-				ActivityTypeSwimming: ActivityLevelBeginner,
+				ActivityTypeRunning: ActivityLevelIntermediate,
+				ActivityTypeGym:     ActivityLevelBeginner,
 			},
 		},
 		{

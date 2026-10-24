@@ -16,7 +16,7 @@ type CreateSessionRequest struct {
 	// ActivityType and DifficultyLevel are required only for a standalone session
 	// (no activity_group_id) - for a grouped session both are always inherited
 	// from the group and any value sent here is ignored.
-	ActivityType    string `json:"activity_type,omitempty" validate:"omitempty,oneof=running walking jogging basketball football tennis volleyball gym dancing skiing climbing cycling swimming hiking yoga weightlifting other" example:"running"`
+	ActivityType    string `json:"activity_type,omitempty" validate:"omitempty,oneof=running basketball football tennis volleyball gym cycling hiking other" example:"running"`
 	DifficultyLevel string `json:"difficulty_level,omitempty" validate:"omitempty,oneof=beginner intermediate advanced" example:"beginner"`
 	LocationCity    string `json:"location_city" validate:"required,min=2,max=100" example:"Belgrade"`
 	LocationCountry string `json:"location_country" validate:"required,min=2,max=100" example:"Serbia"`

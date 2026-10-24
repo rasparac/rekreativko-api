@@ -545,8 +545,9 @@ The implementation uses rich value objects for type safety and validation:
 - All times converted to UTC
 
 **ActivityType:**
-- Predefined enum from `shared/activitycatalog` (running, walking, jogging, basketball, football, tennis,
-  volleyball, gym, dancing, skiing, climbing, cycling, swimming, hiking, yoga, weightlifting, other)
+- Predefined enum from `shared/activitycatalog` (running, basketball, football, tennis,
+  volleyball, gym, cycling, hiking, other; walking, jogging, dancing, skiing, climbing, swimming, yoga and
+  weightlifting are commented out of the catalog for the first version)
 - `IsTeamSport()`: basketball, football, volleyball
 - Type-safe, prevents invalid activity types
 

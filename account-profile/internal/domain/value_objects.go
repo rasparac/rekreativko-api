@@ -211,23 +211,23 @@ type (
 )
 
 const (
-	ActivityTypeRunning       = activitycatalog.ActivityTypeRunning
-	ActivityTypeWalking       = activitycatalog.ActivityTypeWalking
-	ActivityTypeJogging       = activitycatalog.ActivityTypeJogging
-	ActivityTypeBasketball    = activitycatalog.ActivityTypeBasketball
-	ActivityTypeFootball      = activitycatalog.ActivityTypeFootball
-	ActivityTypeTennis        = activitycatalog.ActivityTypeTennis
-	ActivityTypeVolleyball    = activitycatalog.ActivityTypeVolleyball
-	ActivityTypeGym           = activitycatalog.ActivityTypeGym
-	ActivityTypeDancing       = activitycatalog.ActivityTypeDancing
-	ActivityTypeSkiing        = activitycatalog.ActivityTypeSkiing
-	ActivityTypeClimbing      = activitycatalog.ActivityTypeClimbing
-	ActivityTypeCycling       = activitycatalog.ActivityTypeCycling
-	ActivityTypeSwimming      = activitycatalog.ActivityTypeSwimming
-	ActivityTypeHiking        = activitycatalog.ActivityTypeHiking
-	ActivityTypeYoga          = activitycatalog.ActivityTypeYoga
-	ActivityTypeWeightlifting = activitycatalog.ActivityTypeWeightlifting
-	ActivityTypeOther         = activitycatalog.ActivityTypeOther
+	ActivityTypeRunning = activitycatalog.ActivityTypeRunning
+	// ActivityTypeWalking       = activitycatalog.ActivityTypeWalking
+	// ActivityTypeJogging       = activitycatalog.ActivityTypeJogging
+	ActivityTypeBasketball = activitycatalog.ActivityTypeBasketball
+	ActivityTypeFootball   = activitycatalog.ActivityTypeFootball
+	ActivityTypeTennis     = activitycatalog.ActivityTypeTennis
+	ActivityTypeVolleyball = activitycatalog.ActivityTypeVolleyball
+	ActivityTypeGym        = activitycatalog.ActivityTypeGym
+	// ActivityTypeDancing       = activitycatalog.ActivityTypeDancing
+	// ActivityTypeSkiing        = activitycatalog.ActivityTypeSkiing
+	// ActivityTypeClimbing      = activitycatalog.ActivityTypeClimbing
+	ActivityTypeCycling = activitycatalog.ActivityTypeCycling
+	// ActivityTypeSwimming      = activitycatalog.ActivityTypeSwimming
+	ActivityTypeHiking = activitycatalog.ActivityTypeHiking
+	// ActivityTypeYoga          = activitycatalog.ActivityTypeYoga
+	// ActivityTypeWeightlifting = activitycatalog.ActivityTypeWeightlifting
+	ActivityTypeOther = activitycatalog.ActivityTypeOther
 )
 
 const (

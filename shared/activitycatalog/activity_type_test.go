@@ -15,7 +15,7 @@ func TestActivityType_IsTeamSport(t *testing.T) {
 		assert.Truef(t, teamSport.IsTeamSport(), "%s should be a team sport", teamSport)
 	}
 
-	for _, other := range []ActivityType{ActivityTypeRunning, ActivityTypeTennis, ActivityTypeYoga, ActivityTypeOther, "unknown"} {
+	for _, other := range []ActivityType{ActivityTypeRunning, ActivityTypeTennis, ActivityTypeGym, ActivityTypeOther, "unknown"} {
 		assert.Falsef(t, other.IsTeamSport(), "%s should not be a team sport", other)
 	}
 }
