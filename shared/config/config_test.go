@@ -99,3 +99,28 @@ func TestIdentityServiceConfig_GetErasureContexts(t *testing.T) {
 		t.Errorf("GetErasureContexts() = %v, want %v", got, want)
 	}
 }
+
+func TestPostgresConfig_DirectDSN(t *testing.T) {
+	cfg := PostgresConfig{
+		Host:     "pgbouncer",
+		Port:     "6432",
+		User:     "postgres",
+		Pass:     "postgres",
+		Database: "rekreativko",
+		SSLMode:  "disable",
+	}
+
+	if got, want := cfg.DirectDSN(), cfg.DSN(); got != want {
+		t.Errorf("DirectDSN() without direct host = %q, want DSN() %q", got, want)
+	}
+
+	cfg.DirectHost = "db"
+	cfg.DirectPort = "5432"
+
+	if got, want := cfg.DirectDSN(), "postgres://postgres:postgres@db:5432/rekreativko?sslmode=disable"; got != want {
+		t.Errorf("DirectDSN() = %q, want %q", got, want)
+	}
+	if got, want := cfg.DSN(), "postgres://postgres:postgres@pgbouncer:6432/rekreativko?sslmode=disable"; got != want {
+		t.Errorf("DSN() = %q, want %q", got, want)
+	}
+}

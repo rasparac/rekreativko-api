@@ -20,7 +20,7 @@ Each service above has its own README with full API reference, domain model, con
 ### Technology Stack
 
 - **Language**: Go 1.26
-- **Database**: PostgreSQL
+- **Database**: PostgreSQL, reached through PgBouncer (transaction pooling)
 - **Message Broker**: NATS
 - **Cache**: Redis
 - **Observability**: OpenTelemetry, Jaeger, Prometheus, Grafana
@@ -96,6 +96,16 @@ graph TB
 - **`interfaces/http`** and **`interfaces/events`** are the two ways the outside world reaches `application`: an authenticated HTTP request via the gateway, or an event delivered from NATS.
 
 `gateway` and `outbox-publisher` don't have a domain layer — they're pure infrastructure (routing, and outbox-to-NATS relaying, respectively), not bounded contexts of their own.
+
+### Database connections
+
+Every service's `pgxpool` connects to **PgBouncer** (`pgbouncer:6432` in `docker-compose.yaml`) in transaction
+pooling mode, not to Postgres: a server connection is lent to a client for one transaction only, so Postgres sees
+at most `DEFAULT_POOL_SIZE` (+ `RESERVE_POOL_SIZE`) backends however many services and instances run.
+`MAX_PREPARED_STATEMENTS` lets pgx keep its cached prepared statements across those connections. Two things need
+a session of their own and go to `db:5432` directly: migrations (golang-migrate holds a session advisory lock) and
+the outbox-publisher's `LISTEN` (`POSTGRES_DIRECT_HOST`/`POSTGRES_DIRECT_PORT`). Prometheus scrapes
+`pgbouncer-exporter`; `PgBouncerClientsWaiting` fires when clients queue for a server connection.
 
 ## Request Flow
 
@@ -267,7 +277,9 @@ This installs:
    ```bash
    task docker:run:local
    ```
-   This starts PostgreSQL, Redis, NATS, Jaeger, Prometheus, Grafana, and Swagger UI.
+   This starts PostgreSQL, PgBouncer, Redis, NATS, Jaeger, Prometheus, Grafana, and Swagger UI.
+   A service run from the IDE connects to Postgres directly (`localhost:5432`); set `POSTGRES_PORT=6432` to go
+   through PgBouncer as it does in `docker compose`.
 
 3. **Run migrations**
    ```bash

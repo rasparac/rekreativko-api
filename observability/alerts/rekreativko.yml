@@ -10,6 +10,26 @@ groups:
           summary: "{{ $labels.service }} is down"
           description: "Prometheus has failed to scrape {{ $labels.service }} for 2 minutes."
 
+  - name: rekreativko.pgbouncer
+    rules:
+      - alert: PgBouncerDown
+        expr: up{job="pgbouncer"} == 0 or pgbouncer_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PgBouncer is down"
+          description: "Every service reaches Postgres through PgBouncer; it (or its exporter) has been unreachable for 2 minutes."
+
+      - alert: PgBouncerClientsWaiting
+        expr: max by (database) (pgbouncer_pools_client_waiting_connections{database!="pgbouncer"}) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Clients waiting for a Postgres connection in PgBouncer"
+          description: "{{ $value | humanize }} client(s) on {{ $labels.database }} have been queued for a server connection for 5 minutes: DEFAULT_POOL_SIZE is too small for the load, or transactions are held open too long."
+
   - name: rekreativko.http
     rules:
       - alert: HighErrorRate

@@ -16,6 +16,59 @@ services:
     networks:
       - rekreativko
 
+  # Transaction-pooling PgBouncer in front of db: every service's pgxpool
+  # connects here, so Postgres sees at most DEFAULT_POOL_SIZE (+ reserve)
+  # backends however many services and instances run. Anything that needs
+  # session state goes to db directly: migrate (golang-migrate holds a
+  # session advisory lock) and the outbox listener's LISTEN
+  # (POSTGRES_DIRECT_HOST). MAX_PREPARED_STATEMENTS lets pgx keep its cached
+  # prepared statements in transaction mode.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    container_name: pgbouncer
+    ports:
+      - "6432:6432"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - AUTH_TYPE=scram-sha-256
+      - ADMIN_USERS=${POSTGRES_USER}
+      - LISTEN_PORT=6432
+      - POOL_MODE=transaction
+      - MAX_PREPARED_STATEMENTS=200
+      - DEFAULT_POOL_SIZE=20
+      - RESERVE_POOL_SIZE=5
+      - MAX_CLIENT_CONN=500
+      # pgxpools recycle connections every POSTGRES_CONN_MAX_LIFETIME and the
+      # healthcheck logs in every 10s: per-connection lines are only noise.
+      - LOG_CONNECTIONS=0
+      - LOG_DISCONNECTIONS=0
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rekreativko
+    restart: unless-stopped
+
+  pgbouncer-exporter:
+    image: prometheuscommunity/pgbouncer-exporter:v0.10.2
+    container_name: pgbouncer-exporter
+    environment:
+      - PGBOUNCER_EXPORTER_CONNECTION_STRING=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:6432/pgbouncer?sslmode=disable
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+    networks:
+      - rekreativko
+    restart: unless-stopped
+
   # One-shot: applies every service's migrations before any app service starts,
   # so a fresh clone + `docker compose up` is self-contained (no host Go/migrate
   # CLI required). Idempotent - `migrate up` no-ops if already at the latest
@@ -78,11 +131,13 @@ services:
     env_file:
       - .env
     environment:
+      - POSTGRES_HOST=pgbouncer
+      - POSTGRES_PORT=6432
       - NATS_URL=nats://nats:4222
       - PORT=8081
       - SERVICE_NAME=identity
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
@@ -98,11 +153,13 @@ services:
     env_file:
       - .env
     environment:
+      - POSTGRES_HOST=pgbouncer
+      - POSTGRES_PORT=6432
       - NATS_URL=nats://nats:4222
       - PORT=8082
       - SERVICE_NAME=account_profile
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
@@ -118,11 +175,13 @@ services:
     env_file:
       - .env
     environment:
+      - POSTGRES_HOST=pgbouncer
+      - POSTGRES_PORT=6432
       - NATS_URL=nats://nats:4222
       - PORT=8084
       - SERVICE_NAME=activity
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
@@ -138,11 +197,13 @@ services:
     env_file:
       - .env
     environment:
+      - POSTGRES_HOST=pgbouncer
+      - POSTGRES_PORT=6432
       - NATS_URL=nats://nats:4222
       - PORT=8083
       - SERVICE_NAME=notifications
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
@@ -158,10 +219,12 @@ services:
     env_file:
       - .env
     environment:
+      - POSTGRES_HOST=pgbouncer
+      - POSTGRES_PORT=6432
       - PORT=8085
       - SERVICE_NAME=location
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
@@ -175,10 +238,12 @@ services:
     env_file:
       - .env
     environment:
+      - POSTGRES_HOST=pgbouncer
+      - POSTGRES_PORT=6432
       - NATS_URL=nats://nats:4222
       - SERVICE_NAME=activity_cron
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
@@ -196,11 +261,15 @@ services:
     env_file:
       - .env
     environment:
+      - POSTGRES_HOST=pgbouncer
+      - POSTGRES_PORT=6432
+      - POSTGRES_DIRECT_HOST=db
+      - POSTGRES_DIRECT_PORT=5432
       - NATS_URL=nats://nats:4222
       - SERVICE_NAME=outbox_publisher
       - PORT=8085
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully

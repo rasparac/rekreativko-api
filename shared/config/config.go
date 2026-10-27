@@ -114,6 +114,12 @@ type (
 		MaxOpenConn     int           `envconfig:"POSTGRES_MAX_OPEN_CONN" default:"25"`
 		MaxIdleConn     int           `envconfig:"POSTGRES_MAX_IDLE_CONN" default:"25"`
 		ConnMaxlifeTime time.Duration `envconfig:"POSTGRES_CONN_MAX_LIFETIME" default:"5m"`
+		// DirectHost and DirectPort reach Postgres itself when Host and Port
+		// point at a transaction-pooling PgBouncer, for a connection that
+		// keeps session state - the outbox listener's LISTEN. Empty means
+		// Host and Port.
+		DirectHost string `envconfig:"POSTGRES_DIRECT_HOST"`
+		DirectPort string `envconfig:"POSTGRES_DIRECT_PORT"`
 	}
 
 	RedisConfig struct {
@@ -198,11 +204,29 @@ func Load() (*Config, error) {
 }
 
 func (pc *PostgresConfig) DSN() string {
+	return pc.dsn(pc.Host, pc.Port)
+}
+
+// DirectDSN is the DSN of Postgres itself, bypassing PgBouncer: see
+// DirectHost.
+func (pc *PostgresConfig) DirectDSN() string {
+	host, port := pc.Host, pc.Port
+	if pc.DirectHost != "" {
+		host = pc.DirectHost
+	}
+	if pc.DirectPort != "" {
+		port = pc.DirectPort
+	}
+
+	return pc.dsn(host, port)
+}
+
+func (pc *PostgresConfig) dsn(host, port string) string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		pc.User,
 		pc.Pass,
-		pc.Host,
-		pc.Port,
+		host,
+		port,
 		pc.Database,
 		pc.SSLMode,
 	)

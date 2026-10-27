@@ -27,6 +27,14 @@ paths:
 - Soft-deleted rows (`deleted_at`) must be filtered in every query that should not see them
   (`rekreativko-api-1uo.3` tracks making that harder to forget).
 
+## Connections
+
+Services reach Postgres through PgBouncer in transaction pooling mode: consecutive transactions of one pgx
+connection may run on different server connections. Keep everything a query relies on inside its transaction -
+`SET LOCAL`, `pg_advisory_xact_lock`, `FOR UPDATE`. Never use session state: `SET`/`set_config(..., false)`,
+`pg_advisory_lock`, `LISTEN`, temp tables, `WITH HOLD` cursors. Something that truly needs a session connects
+to Postgres directly (`PostgresConfig.DirectDSN`, as the outbox listener does).
+
 ## Outbox
 
 Every schema that raises events has an `event_outbox` table with the same columns, indexes and the

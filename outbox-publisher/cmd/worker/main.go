@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rasparac/rekreativko-api/shared/config"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
@@ -95,7 +96,15 @@ func main() {
 	)
 
 	if cfg.Outbox.Listen {
-		outboxPublisher.WithWakeups(events.ListenOutbox(ctx, pg.Pool.Config().ConnConfig, log))
+		// LISTEN holds session state, so the listener goes to Postgres itself,
+		// never through a transaction-pooling PgBouncer.
+		listenConfig, err := pgx.ParseConfig(cfg.Postgres.DirectDSN())
+		if err != nil {
+			log.Error(ctx, "invalid postgres direct connection configuration", "error", err)
+			os.Exit(1)
+		}
+
+		outboxPublisher.WithWakeups(events.ListenOutbox(ctx, listenConfig, log))
 	}
 
 	go func() {

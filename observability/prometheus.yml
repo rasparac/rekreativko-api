@@ -61,6 +61,12 @@ scrape_configs:
         labels:
           service: "outbox-publisher"
 
+  - job_name: "pgbouncer"
+    static_configs:
+      - targets: ["pgbouncer-exporter:9127"]
+        labels:
+          service: "pgbouncer"
+
   # - job_name: "postgres"
   #   static_configs:
   #     - targets: ["postgres-exporter:9187"]

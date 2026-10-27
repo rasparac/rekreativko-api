@@ -277,7 +277,7 @@ tasks:
     desc: Run infrastructure services only (for local development)
     cmds:
       - echo "Starting infrastructure services..."
-      - docker compose up -d jaeger prometheus alertmanager loki promtail grafana db redis nats swagger-ui
+      - docker compose up -d jaeger prometheus alertmanager loki promtail grafana db pgbouncer pgbouncer-exporter redis nats swagger-ui
 
   docs:ui:
     desc: Regenerate swagger docs for all services and (re)start the swagger-ui container

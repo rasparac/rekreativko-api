@@ -10,7 +10,7 @@ Every service writes domain events to its own schema's `event_outbox` table in t
 
 ## How it works
 
-**Wake-up (`LISTEN/NOTIFY`).** Every service's `event_outbox` has an `AFTER INSERT ... FOR EACH STATEMENT` trigger that runs `pg_notify('outbox_events', <schema>)`. Postgres delivers a `NOTIFY` only when the sending transaction commits, so the publisher can never be woken for an event it cannot yet see. The publisher holds one dedicated connection (not from the pool) that `LISTEN`s on `outbox_events`, built on [`jackc/pgxlisten`](https://github.com/jackc/pgxlisten) (`shared/events/outbox_listener.go`):
+**Wake-up (`LISTEN/NOTIFY`).** Every service's `event_outbox` has an `AFTER INSERT ... FOR EACH STATEMENT` trigger that runs `pg_notify('outbox_events', <schema>)`. Postgres delivers a `NOTIFY` only when the sending transaction commits, so the publisher can never be woken for an event it cannot yet see. The publisher holds one dedicated connection (not from the pool, and straight to Postgres via `POSTGRES_DIRECT_HOST`/`POSTGRES_DIRECT_PORT` - `LISTEN` is session state, which PgBouncer's transaction pooling would hand to other clients) that `LISTEN`s on `outbox_events`, built on [`jackc/pgxlisten`](https://github.com/jackc/pgxlisten) (`shared/events/outbox_listener.go`):
 - a notification names the schema, and that schema is published immediately; a burst of commits is coalesced into one pass per schema
 - notifications are lossy by nature (nothing is queued while the connection is down), so after every (re)connect the listener asks for a **full pass over every schema**
 - if the connection drops, pgxlisten reconnects every 2s; the poll below covers the gap
@@ -32,6 +32,7 @@ Latency from commit to NATS is therefore milliseconds in the normal case; `OUTBO
 | `OUTBOX_SCHEMAS` | Required, comma-separated (e.g. `activity,identity,account_profile,notifications`) — every schema this instance polls |
 | `OUTBOX_POLL_INTERVAL` | Default `5s` — with `OUTBOX_LISTEN` on, only the fallback for missed notifications |
 | `OUTBOX_LISTEN` | Default `true` — publish on `NOTIFY` instead of waiting for the next poll; `false` = polling only |
+| `POSTGRES_DIRECT_HOST`, `POSTGRES_DIRECT_PORT` | Postgres itself, for the `LISTEN` connection when `POSTGRES_HOST`/`POSTGRES_PORT` point at PgBouncer (`db`/`5432` in `docker-compose.yaml`); empty = `POSTGRES_HOST`/`POSTGRES_PORT` |
 | `OUTBOX_MAX_RETRIES` | Default `5` — failed publishes before an event is dead-lettered |
 | `OUTBOX_READ_LIMIT` | Default `100` — rows fetched per schema per poll |
 | `OUTBOX_PUBLISHED_RETENTION` | Default `168h` (7 days, the NATS stream's `MaxAge`) - published rows older than this are deleted, see [Purging old rows](#purging-old-rows) |
