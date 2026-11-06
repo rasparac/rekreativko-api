@@ -264,6 +264,63 @@ func TestTeamVoting_InvalidDivisionReportsTheReason(t *testing.T) {
 	assert.Equal(t, []uuid.UUID{u[3]}, division.UserIDs)
 }
 
+func TestTeamVoting_ProposingTheSameDivisionAgainAddsNothing(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session, u := env.draftSession(t, 4)
+
+	_, err := env.propose(session, u[0], []uuid.UUID{u[0], u[1]}, []uuid.UUID{u[2], u[3]})
+	require.NoError(t, err)
+	state, err := env.propose(session, u[1], []uuid.UUID{u[0], u[3]}, []uuid.UUID{u[1], u[2]})
+	require.NoError(t, err)
+	second := state.Round.Proposals()[1].ID()
+	version := state.Round.Version()
+
+	// The author retries: same result as the first call, nothing written.
+	retried, err := env.propose(session, u[1], []uuid.UUID{u[0], u[3]}, []uuid.UUID{u[1], u[2]})
+	require.NoError(t, err)
+	assert.Len(t, retried.Round.Proposals(), 2)
+	assert.Equal(t, version, retried.Round.Version())
+
+	// Someone else proposes the same split, teams swapped: told which proposal it is.
+	_, err = env.propose(session, u[2], []uuid.UUID{u[2], u[1]}, []uuid.UUID{u[3], u[0]})
+	var dup *domain.DuplicateProposalError
+	require.True(t, errors.As(err, &dup), "got %v", err)
+	assert.Equal(t, second, dup.ProposalID)
+
+	got := env.voting(t, session)
+	assert.Len(t, got.Round.Proposals(), 2)
+	assert.Equal(t, version, got.Round.Version())
+	assert.Equal(t, 1, env.outboxCount(t, domain.EventActivitySessionVotingProposalAdded))
+}
+
+// TestTeamVoting_DoubleTappedProposalIsAddedOnce sends the same proposal twice
+// at once: the session lock orders them, and the second finds the first.
+func TestTeamVoting_DoubleTappedProposalIsAddedOnce(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session, u := env.draftSession(t, 4)
+	_, err := env.propose(session, u[0], []uuid.UUID{u[0], u[1]}, []uuid.UUID{u[2], u[3]})
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i := range errs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, errs[i] = env.propose(session, u[1], []uuid.UUID{u[0], u[3]}, []uuid.UUID{u[1], u[2]})
+		}()
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		require.NoErrorf(t, err, "request %d", i)
+	}
+
+	got := env.voting(t, session)
+	assert.Len(t, got.Round.Proposals(), 2, "the opening proposal and one copy of the retried one")
+	assert.Equal(t, 1, env.outboxCount(t, domain.EventActivitySessionVotingProposalAdded))
+}
+
 // TestTeamVoting_ConcurrentVotes_NoneLost casts votes from everyone at once.
 // Saving a round rewrites its votes, so without the session lock two votes
 // could read the same round and the later save would drop the earlier vote.

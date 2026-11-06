@@ -88,6 +88,20 @@ func (e *TieError) Key() string {
 	return strings.Join(parts, ",")
 }
 
+// DuplicateProposalError is ErrDuplicateProposal with the proposal that
+// already has the same division, so the client can offer a vote for it.
+type DuplicateProposalError struct {
+	ProposalID uuid.UUID
+}
+
+func (e *DuplicateProposalError) Error() string {
+	return ErrDuplicateProposal.Error()
+}
+
+func (e *DuplicateProposalError) Unwrap() error {
+	return ErrDuplicateProposal
+}
+
 // TeamProposal is one suggested division: teams in order (first = Team A),
 // each a list of user IDs.
 type TeamProposal struct {
@@ -256,7 +270,12 @@ func ReconstructTeamVotingRound(
 	}
 }
 
-// Propose adds another proposal to an open round.
+// Propose adds another proposal to an open round. A division the round
+// already has (same players together, whatever the order) is not added again,
+// so votes can't split between two identical options: the same author gets
+// their existing proposal back unchanged - a retried request looks like the
+// first one, with no event and no version bump - and anyone else gets a
+// *DuplicateProposalError naming it.
 func (r *TeamVotingRound) Propose(session *Session, authorID uuid.UUID, teams [][]uuid.UUID, confirmed []uuid.UUID) (*TeamProposal, error) {
 	if r.status != VotingStatusOpen {
 		return nil, ErrVotingNotOpen
@@ -279,11 +298,48 @@ func (r *TeamVotingRound) Propose(session *Session, authorID uuid.UUID, teams []
 		return nil, err
 	}
 
+	if existing := r.proposalWithDivision(proposal.teams); existing != nil {
+		if existing.authorID == authorID {
+			return existing, nil
+		}
+		return nil, &DuplicateProposalError{ProposalID: existing.id}
+	}
+
 	r.proposals = append(r.proposals, proposal)
 	r.version++
 	r.addEvent(NewProposalCreatedEvent(r, proposal))
 
 	return proposal, nil
+}
+
+// proposalWithDivision returns the round's proposal that splits the players
+// the same way as teams, or nil. Player order within a team and team order
+// don't count: a division with the teams swapped only swaps the colors.
+func (r *TeamVotingRound) proposalWithDivision(teams [][]uuid.UUID) *TeamProposal {
+	key := divisionKey(teams)
+	for _, p := range r.proposals {
+		if divisionKey(p.teams) == key {
+			return p
+		}
+	}
+	return nil
+}
+
+// divisionKey is teams in a canonical form: each team's players sorted, then
+// the teams sorted.
+func divisionKey(teams [][]uuid.UUID) string {
+	keys := make([]string, len(teams))
+	for i, team := range teams {
+		ids := make([]string, len(team))
+		for j, userID := range team {
+			ids[j] = userID.String()
+		}
+		slices.Sort(ids)
+		keys[i] = strings.Join(ids, ",")
+	}
+	slices.Sort(keys)
+
+	return strings.Join(keys, "|")
 }
 
 func (r *TeamVotingRound) newProposal(authorID uuid.UUID, teams [][]uuid.UUID, confirmed []uuid.UUID) (*TeamProposal, error) {

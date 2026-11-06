@@ -121,12 +121,17 @@ func (s *TeamVotingService) Propose(ctx context.Context, params ProposeTeamsPara
 				return fmt.Errorf("persist voting round: %w", err)
 			}
 		} else {
+			version := round.Version()
+
 			if _, err := round.Propose(session, params.AuthorID, params.Teams, confirmedIDs); err != nil {
 				return fmt.Errorf("propose: %w", err)
 			}
 
-			if err := s.votingRepo.UpdateRound(tCtx, round); err != nil {
-				return fmt.Errorf("persist voting round: %w", err)
+			// A retry of the author's own proposal changes nothing.
+			if round.Version() != version {
+				if err := s.votingRepo.UpdateRound(tCtx, round); err != nil {
+					return fmt.Errorf("persist voting round: %w", err)
+				}
 			}
 		}
 

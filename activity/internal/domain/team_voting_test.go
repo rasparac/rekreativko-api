@@ -158,6 +158,66 @@ func TestTeamVotingRound_ProposalValidation(t *testing.T) {
 	})
 }
 
+func TestTeamVotingRound_ProposingTheSameDivisionAgain(t *testing.T) {
+	users := newUsers(4)
+	session := newTestTeamSession(t, newTestTeamConfig(t, nil))
+
+	// openVoting proposes {0,1} vs {2,3}, authored by users[0].
+	setup := func(t *testing.T) (*TeamVotingRound, *TeamProposal) {
+		t.Helper()
+		round, first := openVoting(t, session, users)
+		round.ClearEvents()
+		return round, first
+	}
+
+	sameDivisions := map[string][][]uuid.UUID{
+		"identical":              {users[:2], users[2:]},
+		"players in other order": {{users[1], users[0]}, {users[3], users[2]}},
+		"teams in other order":   {users[2:], users[:2]},
+	}
+
+	for name, teams := range sameDivisions {
+		t.Run("same author, "+name+": the existing proposal, nothing changes", func(t *testing.T) {
+			round, first := setup(t)
+			version := round.Version()
+
+			p, err := round.Propose(session, users[0], teams, users)
+			require.NoError(t, err)
+
+			assert.Equal(t, first.ID(), p.ID())
+			assert.Len(t, round.Proposals(), 1)
+			assert.Equal(t, version, round.Version())
+			assert.Empty(t, round.Events())
+		})
+
+		t.Run("other author, "+name+": conflict naming the existing proposal", func(t *testing.T) {
+			round, first := setup(t)
+			version := round.Version()
+
+			_, err := round.Propose(session, users[1], teams, users)
+
+			var dup *DuplicateProposalError
+			require.ErrorAs(t, err, &dup)
+			assert.ErrorIs(t, err, ErrDuplicateProposal)
+			assert.Equal(t, first.ID(), dup.ProposalID)
+			assert.Len(t, round.Proposals(), 1)
+			assert.Equal(t, version, round.Version())
+			assert.Empty(t, round.Events())
+		})
+	}
+
+	t.Run("same author, different division: added", func(t *testing.T) {
+		round, first := setup(t)
+
+		p, err := round.Propose(session, users[0], [][]uuid.UUID{{users[0], users[2]}, {users[1], users[3]}}, users)
+		require.NoError(t, err)
+
+		assert.NotEqual(t, first.ID(), p.ID())
+		assert.Len(t, round.Proposals(), 2)
+		assert.Equal(t, []string{EventActivitySessionVotingProposalAdded}, votingEventTypes(round))
+	})
+}
+
 func TestTeamVotingRound_Vote(t *testing.T) {
 	users := newUsers(4)
 	session := newTestTeamSession(t, newTestTeamConfig(t, nil))

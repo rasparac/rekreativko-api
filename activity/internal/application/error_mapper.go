@@ -126,6 +126,11 @@ func MapErrToAppError(err error) *domainerror.AppError {
 				"keep_current_tied": tie.KeepCurrentTied,
 			})
 	}
+	var duplicate *domain.DuplicateProposalError
+	if errors.As(err, &duplicate) {
+		return domainerror.Conflict("duplicate_proposal", "A proposal with the same teams is already in this round; vote for it instead", err).
+			WithDetails(map[string]any{"proposal_id": duplicate.ProposalID})
+	}
 	var division *domain.InvalidDivisionError
 	if errors.As(err, &division) {
 		details := map[string]any{"reason": string(division.Problem)}
