@@ -373,15 +373,15 @@ func (s *SessionService) CreateTeams(
 	var session *domain.Session
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		session, err = s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
-		if err != nil {
-			return fmt.Errorf("get session: %w", err)
-		}
-
 		// Same lock as team assignment and capacity checks, so nobody can be
 		// assigned to an old team while it is being replaced.
 		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
 			return err
+		}
+
+		session, err = s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
+		if err != nil {
+			return fmt.Errorf("get session: %w", err)
 		}
 
 		if err := s.formation.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
@@ -483,18 +483,18 @@ func (s *SessionService) ResetTeams(ctx context.Context, params ResetTeamsParams
 	}
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		// Same lock as team assignment, drafts and RSVPs: nobody can be
+		// assigned, pick or leave while the formation is being wiped.
+		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
 		}
 
 		if err := session.AuthorizeTeamsReset(params.RequesterID, requesterRole); err != nil {
-			return err
-		}
-
-		// Same lock as team assignment, drafts and RSVPs: nobody can be
-		// assigned, pick or leave while the formation is being wiped.
-		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
 			return err
 		}
 

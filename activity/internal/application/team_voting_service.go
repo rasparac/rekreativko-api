@@ -82,13 +82,13 @@ func (s *TeamVotingService) Propose(ctx context.Context, params ProposeTeamsPara
 	var state *TeamVotingState
 
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
-		}
-
-		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
-			return err
 		}
 
 		// A draft and a voting round never run at the same time.
@@ -172,14 +172,14 @@ func (s *TeamVotingService) Vote(ctx context.Context, params CastVoteParams) (*T
 	var state *TeamVotingState
 
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
-		if err != nil {
-			return fmt.Errorf("get session: %w", err)
-		}
-
 		// Serializes votes, so a vote can't land in a round being closed.
 		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
 			return err
+		}
+
+		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
+		if err != nil {
+			return fmt.Errorf("get session: %w", err)
 		}
 
 		round, err := s.formation.openVoting(tCtx, params.SessionID)
@@ -263,13 +263,13 @@ func (s *TeamVotingService) changeOpenRound(
 	var state *TeamVotingState
 
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		if err := lockSessionCapacity(tCtx, s.txManager, sessionID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, sessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
-		}
-
-		if err := lockSessionCapacity(tCtx, s.txManager, sessionID); err != nil {
-			return err
 		}
 
 		round, err := s.formation.openVoting(tCtx, sessionID)
@@ -345,13 +345,13 @@ func (s *TeamVotingService) Close(ctx context.Context, params CloseVotingParams)
 	var state *TeamVotingState
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
-		}
-
-		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
-			return err
 		}
 
 		round, err := s.formation.openVoting(tCtx, params.SessionID)

@@ -89,13 +89,13 @@ func (s *TeamDraftService) StartDraft(ctx context.Context, params StartDraftPara
 	var state *TeamDraftState
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
-		}
-
-		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
-			return err
 		}
 
 		if err := s.formation.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
@@ -171,15 +171,15 @@ func (s *TeamDraftService) Pick(ctx context.Context, params DraftPickParams) (*T
 	var state *TeamDraftState
 
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
-		if err != nil {
-			return fmt.Errorf("get session: %w", err)
-		}
-
 		// Serializes picks: two captains (or a double tap) can't both take the
 		// same turn or the same player.
 		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
 			return err
+		}
+
+		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
+		if err != nil {
+			return fmt.Errorf("get session: %w", err)
 		}
 
 		draft, err := s.formation.activeDraft(tCtx, params.SessionID)
@@ -250,13 +250,13 @@ func (s *TeamDraftService) ReplaceCaptain(ctx context.Context, params ReplaceDra
 	var state *TeamDraftState
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
-		}
-
-		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
-			return err
 		}
 
 		draft, err := s.formation.activeDraft(tCtx, params.SessionID)
@@ -331,13 +331,13 @@ func (s *TeamDraftService) CancelDraft(ctx context.Context, params CancelDraftPa
 	var state *TeamDraftState
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
-		}
-
-		if err := lockSessionCapacity(tCtx, s.txManager, params.SessionID); err != nil {
-			return err
 		}
 
 		draft, err := s.formation.activeDraft(tCtx, params.SessionID)

@@ -172,6 +172,13 @@ func (s *SessionInviteService) AcceptInvite(
 			return fmt.Errorf("accept invite: %w", err)
 		}
 
+		// Serialize with concurrent RSVPs/approvals so the capacity check
+		// below can't be raced into overbooking the session, and so the
+		// session read below sees a cancel that committed while we waited.
+		if err := lockSessionCapacity(tCtx, s.txManager, invite.SessionID()); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, invite.SessionID())
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
@@ -191,12 +198,6 @@ func (s *SessionInviteService) AcceptInvite(
 
 		if err := s.sessionInviteRepo.UpdateInvite(tCtx, invite); err != nil {
 			return fmt.Errorf("persist session invite acceptance: %w", err)
-		}
-
-		// Serialize with concurrent RSVPs/approvals so the capacity check
-		// below can't be raced into overbooking the session.
-		if err := lockSessionCapacity(tCtx, s.txManager, session.ID()); err != nil {
-			return err
 		}
 
 		confirmedCount, err := s.attendeeRepo.CountConfirmedAttendees(tCtx, session.ID())

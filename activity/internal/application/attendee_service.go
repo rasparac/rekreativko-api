@@ -74,8 +74,13 @@ func (s *AttendeeService) lockSessionCapacity(ctx context.Context, sessionID uui
 }
 
 // lockSessionCapacity is the shared implementation, so every code path that
-// consumes a session slot (RSVPs, approvals, accepted session invites) takes
-// the same lock.
+// consumes a session slot (RSVPs, approvals, accepted session invites) or
+// changes team formation takes the same lock.
+//
+// Take it before reading the session or its attendees: transactions are READ
+// COMMITTED, so only a read made after the lock sees what the previous holder
+// committed (a cancel, a completion, new teams). A read made before it can be
+// stale by the time the lock is granted.
 func lockSessionCapacity(ctx context.Context, txManager *postgres.TransactionManager, sessionID uuid.UUID) error {
 	_, err := txManager.Querier(ctx).Exec(
 		ctx,
@@ -125,6 +130,14 @@ func (s *AttendeeService) CreateRSVP(
 	var attendee *domain.Attendee
 
 	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		// Lock the session before reading it and the confirmed count so a
+		// concurrent RSVP/approval for the same session can't read the same
+		// count and both pass the capacity check below.
+		if err := s.lockSessionCapacity(txCtx, params.SessionID); err != nil {
+			log.Error(txCtx, "failed to lock session for capacity check", "error", err)
+			return err
+		}
+
 		// Get session to check visibility, capacity and RSVP permissions
 		session, err := s.sessionRepo.GetSessionByID(txCtx, params.SessionID)
 		if err != nil {
@@ -173,14 +186,6 @@ func (s *AttendeeService) CreateRSVP(
 		if err == nil && existing != nil {
 			log.Error(txCtx, "user already has RSVP")
 			return domain.ErrAttendeeAlreadyAttending
-		}
-
-		// Lock the session before reading the confirmed count so a
-		// concurrent RSVP/approval for the same session can't read the same
-		// count and both pass the capacity check below.
-		if err := s.lockSessionCapacity(txCtx, params.SessionID); err != nil {
-			log.Error(txCtx, "failed to lock session for capacity check", "error", err)
-			return err
 		}
 
 		// Get current confirmed count for capacity check
@@ -299,6 +304,14 @@ func (s *AttendeeService) ApproveAttendee(
 			return err
 		}
 
+		// Re-check capacity here, not just at request time - approving is the
+		// moment a slot is actually consumed, and other approvals may have
+		// filled the session in the meantime. Lock the session first so a
+		// concurrent RSVP/approval can't read the same count.
+		if err := s.lockSessionCapacity(tCtx, params.SessionID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
@@ -307,14 +320,6 @@ func (s *AttendeeService) ApproveAttendee(
 		attendee, err := s.attendeeRepo.GetAttendeeBySessionAndUser(tCtx, params.SessionID, params.UserID)
 		if err != nil {
 			return fmt.Errorf("get attendee: %w", err)
-		}
-
-		// Re-check capacity here, not just at request time - approving is the
-		// moment a slot is actually consumed, and other approvals may have
-		// filled the session in the meantime. Lock the session first so a
-		// concurrent RSVP/approval can't read the same count.
-		if err := s.lockSessionCapacity(tCtx, params.SessionID); err != nil {
-			return err
 		}
 
 		confirmedCount, err := s.attendeeRepo.CountConfirmedAttendees(tCtx, params.SessionID)
@@ -455,15 +460,15 @@ func (s *AttendeeService) RemoveAttendee(
 	}
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
-		if err != nil {
-			return fmt.Errorf("get session: %w", err)
-		}
-
 		// Freeing a spot can promote the waitlist and change a running draft,
 		// both read under this lock.
 		if err := s.lockSessionCapacity(tCtx, params.SessionID); err != nil {
 			return err
+		}
+
+		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
+		if err != nil {
+			return fmt.Errorf("get session: %w", err)
 		}
 
 		attendee, err := s.attendeeRepo.GetAttendeeBySessionAndUser(tCtx, params.SessionID, params.UserID)
@@ -550,17 +555,17 @@ func (s *AttendeeService) AssignAttendeeTeam(
 	var attendee *domain.Attendee
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
-		if err != nil {
-			return fmt.Errorf("get session: %w", err)
-		}
-
 		// Same lock as every capacity check: serializes assignments for this
 		// session so two concurrent assignments can't both read the same team
 		// size and overfill the team. Taken before reading the attendee so a
 		// concurrent RSVP change (which also holds it) is seen.
 		if err := s.lockSessionCapacity(tCtx, params.SessionID); err != nil {
 			return err
+		}
+
+		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
+		if err != nil {
+			return fmt.Errorf("get session: %w", err)
 		}
 
 		if err := s.formation.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
@@ -635,13 +640,13 @@ func (s *AttendeeService) UnassignAttendeeTeam(
 	var attendee *domain.Attendee
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		if err := s.lockSessionCapacity(tCtx, params.SessionID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, params.SessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
-		}
-
-		if err := s.lockSessionCapacity(tCtx, params.SessionID); err != nil {
-			return err
 		}
 
 		if err := s.formation.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
@@ -716,6 +721,14 @@ func (s *AttendeeService) UpdateRSVP(
 	var attendee *domain.Attendee
 
 	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		// Lock the session before reading the RSVP, the session and the
+		// confirmed count so a concurrent RSVP/approval for the same session
+		// can't read the same count and both pass the capacity check below.
+		if err := s.lockSessionCapacity(txCtx, params.SessionID); err != nil {
+			log.Error(txCtx, "failed to lock session for capacity check", "error", err)
+			return err
+		}
+
 		// Get existing RSVP
 		var err error
 		attendee, err = s.attendeeRepo.GetAttendeeBySessionAndUser(
@@ -733,14 +746,6 @@ func (s *AttendeeService) UpdateRSVP(
 		if err != nil {
 			log.Error(txCtx, "failed to get session", "error", err)
 			return fmt.Errorf("failed to get session: %w", err)
-		}
-
-		// Lock the session before reading the confirmed count so a
-		// concurrent RSVP/approval for the same session can't read the same
-		// count and both pass the capacity check below.
-		if err := s.lockSessionCapacity(txCtx, params.SessionID); err != nil {
-			log.Error(txCtx, "failed to lock session for capacity check", "error", err)
-			return err
 		}
 
 		// Get current confirmed count
