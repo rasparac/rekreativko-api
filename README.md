@@ -261,7 +261,8 @@ task tools:install
 ```
 
 This installs:
-- golangci-lint
+- golangci-lint v2.15.0 (pinned in `task tools:install`; built with your Go toolchain - v1 cannot type-check
+  this code base)
 - golang-migrate
 
 swag (the Swagger generator) is not installed: it is a `tool` dependency in `go.mod`, so `task docs:*` runs it
