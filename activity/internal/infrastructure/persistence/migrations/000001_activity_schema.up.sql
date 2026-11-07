@@ -238,6 +238,11 @@ CREATE TABLE IF NOT EXISTS activity.session(
     -- captain draft) or vote (a winning proposal); NULL = no teams. Proposals are
     -- refused while it is 'draft'.
     teams_source varchar(10) DEFAULT NULL CHECK (teams_source IS NULL OR teams_source IN ('manual', 'draft', 'vote')),
+    -- bumped by triggers (see bump_session_formation_version below) on every
+    -- write to the session or its team-formation rows: the version of the
+    -- team-formation snapshot, so a snapshot of newer state always has a
+    -- higher one. Never set by the application.
+    formation_version bigint NOT NULL DEFAULT 0,
     created_at timestamptz NOT NULL DEFAULT NOW(),
     updated_at timestamptz NOT NULL DEFAULT NOW(),
     cancelled_at timestamptz DEFAULT NULL,
@@ -534,6 +539,94 @@ CREATE INDEX idx_event_outbox_pending ON activity.event_outbox(created_at)
 -- Dead-lettered events, for the purge of those past their retention window.
 CREATE INDEX idx_activity_event_outbox_failed_at ON activity.event_outbox(failed_at)
     WHERE failed_at IS NOT NULL;
+
+-- Team-formation version: every write that can change a session's
+-- team-formation snapshot (GET /sessions/{id}/team-formation, the SSE stream)
+-- bumps activity.session.formation_version in the same transaction. Triggers
+-- rather than application code, so no write path - including bulk deletes on
+-- reset and account erasure - can forget it. The session row lock taken by the
+-- bump orders the versions by commit, and a snapshot read in one REPEATABLE
+-- READ transaction gets the version that matches the rows it read.
+CREATE OR REPLACE FUNCTION activity.bump_session_formation_version() RETURNS trigger AS $$
+DECLARE
+    changed record;
+    target uuid;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        changed := OLD;
+    ELSE
+        changed := NEW;
+    END IF;
+
+    CASE TG_TABLE_NAME
+        WHEN 'session_team_draft_pick' THEN
+            SELECT session_id INTO target FROM activity.session_team_draft WHERE id = changed.draft_id;
+        WHEN 'session_team_proposal', 'session_team_vote' THEN
+            SELECT session_id INTO target FROM activity.session_team_voting_round WHERE id = changed.round_id;
+        WHEN 'session_team_proposal_member' THEN
+            SELECT r.session_id INTO target
+            FROM activity.session_team_proposal p
+            JOIN activity.session_team_voting_round r ON r.id = p.round_id
+            WHERE p.id = changed.proposal_id;
+        ELSE
+            target := changed.session_id;
+    END CASE;
+
+    -- no row when the parent is already gone (deleted earlier in the same
+    -- transaction): nothing left to version
+    UPDATE activity.session SET formation_version = formation_version + 1 WHERE id = target;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- A write to the session row itself (status, team setup, teams_source...)
+-- bumps it too, unless it is the bump above.
+CREATE OR REPLACE FUNCTION activity.bump_own_formation_version() RETURNS trigger AS $$
+BEGIN
+    IF NEW.formation_version = OLD.formation_version THEN
+        NEW.formation_version := OLD.formation_version + 1;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_session_formation_version
+    BEFORE UPDATE ON activity.session
+    FOR EACH ROW EXECUTE FUNCTION activity.bump_own_formation_version();
+
+CREATE TRIGGER trg_session_team_formation_version
+    AFTER INSERT OR UPDATE OR DELETE ON activity.session_team
+    FOR EACH ROW EXECUTE FUNCTION activity.bump_session_formation_version();
+
+CREATE TRIGGER trg_session_attendee_formation_version
+    AFTER INSERT OR UPDATE OR DELETE ON activity.session_attendee
+    FOR EACH ROW EXECUTE FUNCTION activity.bump_session_formation_version();
+
+CREATE TRIGGER trg_session_team_draft_formation_version
+    AFTER INSERT OR UPDATE OR DELETE ON activity.session_team_draft
+    FOR EACH ROW EXECUTE FUNCTION activity.bump_session_formation_version();
+
+CREATE TRIGGER trg_session_team_draft_pick_formation_version
+    AFTER INSERT OR UPDATE OR DELETE ON activity.session_team_draft_pick
+    FOR EACH ROW EXECUTE FUNCTION activity.bump_session_formation_version();
+
+CREATE TRIGGER trg_session_team_voting_round_formation_version
+    AFTER INSERT OR UPDATE OR DELETE ON activity.session_team_voting_round
+    FOR EACH ROW EXECUTE FUNCTION activity.bump_session_formation_version();
+
+CREATE TRIGGER trg_session_team_proposal_formation_version
+    AFTER INSERT OR UPDATE OR DELETE ON activity.session_team_proposal
+    FOR EACH ROW EXECUTE FUNCTION activity.bump_session_formation_version();
+
+CREATE TRIGGER trg_session_team_proposal_member_formation_version
+    AFTER INSERT OR UPDATE OR DELETE ON activity.session_team_proposal_member
+    FOR EACH ROW EXECUTE FUNCTION activity.bump_session_formation_version();
+
+CREATE TRIGGER trg_session_team_vote_formation_version
+    AFTER INSERT OR UPDATE OR DELETE ON activity.session_team_vote
+    FOR EACH ROW EXECUTE FUNCTION activity.bump_session_formation_version();
 
 -- Wake the outbox publisher as soon as a transaction that wrote events
 -- commits (NOTIFY is delivered on commit) instead of on its next poll. The

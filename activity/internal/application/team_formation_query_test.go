@@ -13,8 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// snapshotFakes lets a test pause the first GetSessionByID call, to make one
-// Snapshot start before another and finish after it.
+// snapshotFakes lets a test pause the first snapshot transaction before it
+// reads anything, to make one Snapshot start before another and finish after
+// it. A join bumps the formation version, as the database triggers do.
 type snapshotFakes struct {
 	SessionRepository
 	AttendeeRepository
@@ -23,13 +24,14 @@ type snapshotFakes struct {
 
 	mu        sync.Mutex
 	attendees []*domain.Attendee
+	version   int64
 	calls     int
 
-	entered chan struct{} // closed when the first GetSessionByID call is waiting
-	release chan struct{} // closing it lets that call go on
+	entered chan struct{} // closed when the first snapshot transaction is waiting
+	release chan struct{} // closing it lets that transaction go on
 }
 
-func (f *snapshotFakes) GetSessionByID(context.Context, uuid.UUID) (*domain.Session, error) {
+func (f *snapshotFakes) WithReadOnlySnapshot(ctx context.Context, fn func(ctx context.Context) error) error {
 	f.mu.Lock()
 	f.calls++
 	first := f.calls == 1
@@ -40,6 +42,17 @@ func (f *snapshotFakes) GetSessionByID(context.Context, uuid.UUID) (*domain.Sess
 		<-f.release
 	}
 
+	return fn(ctx)
+}
+
+func (f *snapshotFakes) GetFormationVersion(context.Context, uuid.UUID) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.version, nil
+}
+
+func (f *snapshotFakes) GetSessionByID(context.Context, uuid.UUID) (*domain.Session, error) {
 	return f.session, nil
 }
 
@@ -55,6 +68,7 @@ func (f *snapshotFakes) addGoing(userID uuid.UUID) {
 	defer f.mu.Unlock()
 
 	now := time.Now().UTC()
+	f.version++
 	f.attendees = append(f.attendees, domain.ReconstructAttendee(
 		uuid.New(), f.session.ID(), nil, userID,
 		domain.AttendeeStatusGoing, domain.AttendeeSourceRSVPManual, nil, now, now,
@@ -108,7 +122,7 @@ func TestTeamFormationQuery_ASnapshotOfNewerStateHasAHigherVersion(t *testing.T)
 		entered: make(chan struct{}),
 		release: make(chan struct{}),
 	}
-	query := NewTeamFormationQuery(fakes, nil, fakes, noDraft{}, noVoting{})
+	query := NewTeamFormationQuery(fakes, fakes, nil, fakes, noDraft{}, noVoting{})
 	sessionID := fakes.session.ID()
 
 	// Snapshot A starts first but is held up before it reads anything.

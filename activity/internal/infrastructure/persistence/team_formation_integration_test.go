@@ -23,7 +23,7 @@ func TestTeamFormationQuery_NothingYet(t *testing.T) {
 
 	resp := mapper.TeamFormationSnapshotToResponse(snapshot, uuid.New())
 	assert.Equal(t, session.ID(), resp.SessionID)
-	assert.Positive(t, resp.Version)
+	assert.Zero(t, resp.Version, "no team-formation write yet")
 	assert.Nil(t, resp.TeamConfig)
 	assert.Empty(t, resp.Teams)
 	assert.NotNil(t, resp.Teams, "teams is [] not null")
@@ -62,7 +62,7 @@ func TestTeamFormationQuery_TeamsAndRunningDraft(t *testing.T) {
 
 	second, err := env.formation.Snapshot(env.ctx, session.ID())
 	require.NoError(t, err)
-	assert.Greater(t, second.Version, first.Version, "a later snapshot has a higher version")
+	assert.Equal(t, first.Version, second.Version, "nothing changed in between, so the same version")
 }
 
 func TestTeamFormationQuery_VotingIsPersonalisedPerViewer(t *testing.T) {

@@ -53,6 +53,7 @@ type SessionRepository interface {
 	CreateSession(ctx context.Context, session *domain.Session) error
 	UpdateSession(ctx context.Context, session *domain.Session) error
 	GetSessionByID(ctx context.Context, id uuid.UUID) (*domain.Session, error)
+	GetFormationVersion(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	IsSessionVisibleTo(ctx context.Context, sessionID, userID uuid.UUID) (bool, error)
 	ListSessions(ctx context.Context, filter SessionFilter) ([]*domain.Session, string, error)
 	DiscoverSessions(ctx context.Context, filter DiscoverSessionsFilter) ([]SessionWithDistance, string, error)
@@ -356,6 +357,26 @@ func (m *sessionManager) UpdateSession(ctx context.Context, session *domain.Sess
 	}
 
 	return nil
+}
+
+// GetFormationVersion returns the session's team-formation version, which the
+// schema's triggers bump on every write to the session or its team-formation
+// rows. Read it in the same REPEATABLE READ transaction as the rest of the
+// snapshot, so it matches what that snapshot read.
+func (m *sessionManager) GetFormationVersion(ctx context.Context, sessionID uuid.UUID) (int64, error) {
+	var version int64
+	err := m.tx.Querier(ctx).QueryRow(ctx,
+		`SELECT formation_version FROM activity.session WHERE id = $1 AND deleted_at IS NULL`,
+		sessionID,
+	).Scan(&version)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, domain.ErrSessionNotFound
+		}
+		return 0, fmt.Errorf("get formation version: %w", err)
+	}
+
+	return version, nil
 }
 
 func (m *sessionManager) GetSessionByID(ctx context.Context, id uuid.UUID) (*domain.Session, error) {

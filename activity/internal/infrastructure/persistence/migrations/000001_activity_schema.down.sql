@@ -1,6 +1,17 @@
 BEGIN;
 DROP TABLE IF EXISTS activity.event_outbox;
 DROP FUNCTION IF EXISTS activity.notify_event_outbox();
+DROP TRIGGER IF EXISTS trg_session_team_vote_formation_version ON activity.session_team_vote;
+DROP TRIGGER IF EXISTS trg_session_team_proposal_member_formation_version ON activity.session_team_proposal_member;
+DROP TRIGGER IF EXISTS trg_session_team_proposal_formation_version ON activity.session_team_proposal;
+DROP TRIGGER IF EXISTS trg_session_team_voting_round_formation_version ON activity.session_team_voting_round;
+DROP TRIGGER IF EXISTS trg_session_team_draft_pick_formation_version ON activity.session_team_draft_pick;
+DROP TRIGGER IF EXISTS trg_session_team_draft_formation_version ON activity.session_team_draft;
+DROP TRIGGER IF EXISTS trg_session_attendee_formation_version ON activity.session_attendee;
+DROP TRIGGER IF EXISTS trg_session_team_formation_version ON activity.session_team;
+DROP TRIGGER IF EXISTS trg_session_formation_version ON activity.session;
+DROP FUNCTION IF EXISTS activity.bump_own_formation_version();
+DROP FUNCTION IF EXISTS activity.bump_session_formation_version();
 DROP TABLE IF EXISTS activity.erased_account;
 DROP TABLE IF EXISTS activity.deleted_account;
 DROP TABLE IF EXISTS activity.session_statistics;

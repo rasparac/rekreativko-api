@@ -258,6 +258,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		appMetrics,
 	)
 	teamFormationQuery := application.NewTeamFormationQuery(
+		txManager,
 		sessionRepo,
 		memberRepo,
 		attendeeRepo,

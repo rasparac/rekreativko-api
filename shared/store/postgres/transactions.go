@@ -33,11 +33,29 @@ func (tm *TransactionManager) WithTransaction(
 	ctx context.Context,
 	fn func(ctx context.Context) error,
 ) error {
+	return tm.withTransaction(ctx, pgx.TxOptions{}, fn)
+}
+
+// WithReadOnlySnapshot runs fn in a read-only REPEATABLE READ transaction, so
+// every query in it sees the same committed state - for reads that must agree
+// with each other. Called inside a transaction, it joins that one instead.
+func (tm *TransactionManager) WithReadOnlySnapshot(
+	ctx context.Context,
+	fn func(ctx context.Context) error,
+) error {
+	return tm.withTransaction(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, fn)
+}
+
+func (tm *TransactionManager) withTransaction(
+	ctx context.Context,
+	opts pgx.TxOptions,
+	fn func(ctx context.Context) error,
+) error {
 	if _, ok := ctx.Value(txKey).(pgx.Tx); ok {
 		return fn(ctx)
 	}
 
-	tx, err := tm.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := tm.db.BeginTx(ctx, opts)
 	if err != nil {
 		return err
 	}

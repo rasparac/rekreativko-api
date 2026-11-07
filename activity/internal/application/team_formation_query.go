@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
@@ -28,8 +27,9 @@ type TeamFormationSnapshot struct {
 	Draft  *TeamDraftState
 	Voting *TeamVotingState
 	// Version orders snapshots of the same session - a higher version is newer
-	// state. It is the build time in microseconds: a snapshot reflects every
-	// change committed before it was built.
+	// state. It is the session's formation_version, which the database bumps
+	// on every team-formation write and which is read in the same transaction
+	// as the rest of the snapshot, so it describes exactly the state read.
 	Version int64
 }
 
@@ -41,12 +41,19 @@ type (
 	teamVotingReader interface {
 		GetVoting(ctx context.Context, sessionID uuid.UUID) (*TeamVotingState, error)
 	}
+
+	// snapshotReader runs reads that must all see the same committed state
+	// (postgres.TransactionManager.WithReadOnlySnapshot).
+	snapshotReader interface {
+		WithReadOnlySnapshot(ctx context.Context, fn func(ctx context.Context) error) error
+	}
 )
 
 // TeamFormationQuery builds TeamFormationSnapshots. Read-only, and it does no
 // visibility check of its own - callers check the session through
 // SessionService.GetSession first.
 type TeamFormationQuery struct {
+	snapshots    snapshotReader
 	sessionRepo  SessionRepository
 	memberRepo   MemberRepository
 	attendeeRepo AttendeeRepository
@@ -55,6 +62,7 @@ type TeamFormationQuery struct {
 }
 
 func NewTeamFormationQuery(
+	snapshots snapshotReader,
 	sessionRepo SessionRepository,
 	memberRepo MemberRepository,
 	attendeeRepo AttendeeRepository,
@@ -62,6 +70,7 @@ func NewTeamFormationQuery(
 	voting teamVotingReader,
 ) *TeamFormationQuery {
 	return &TeamFormationQuery{
+		snapshots:    snapshots,
 		sessionRepo:  sessionRepo,
 		memberRepo:   memberRepo,
 		attendeeRepo: attendeeRepo,
@@ -70,9 +79,30 @@ func NewTeamFormationQuery(
 	}
 }
 
-// Snapshot returns the session's current team-formation state.
+// Snapshot returns the session's current team-formation state. Everything is
+// read in one REPEATABLE READ transaction, so the parts agree with each other
+// and with the version: of two snapshots, the one that saw more changes has
+// the higher version, whichever started first.
 func (q *TeamFormationQuery) Snapshot(ctx context.Context, sessionID uuid.UUID) (*TeamFormationSnapshot, error) {
-	version := time.Now().UnixMicro()
+	var snapshot *TeamFormationSnapshot
+
+	err := q.snapshots.WithReadOnlySnapshot(ctx, func(tCtx context.Context) error {
+		var err error
+		snapshot, err = q.readSnapshot(tCtx, sessionID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return snapshot, nil
+}
+
+func (q *TeamFormationQuery) readSnapshot(ctx context.Context, sessionID uuid.UUID) (*TeamFormationSnapshot, error) {
+	version, err := q.sessionRepo.GetFormationVersion(ctx, sessionID)
+	if err != nil {
+		return nil, mapToAppErr(err)
+	}
 
 	session, err := q.sessionRepo.GetSessionByID(ctx, sessionID)
 	if err != nil {

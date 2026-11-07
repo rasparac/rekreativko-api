@@ -15,7 +15,8 @@ type TeamFormationResponse struct {
 	SessionID uuid.UUID `json:"session_id" example:"123e4567-e89b-12d3-a456-426655440000"`
 	// Version orders snapshots of the same session: a higher version is newer
 	// state. Ignore a snapshot with a lower version than one you already have.
-	Version int64 `json:"version" example:"1790000000000000"`
+	// A per-session counter, the same on every instance; not a timestamp.
+	Version int64 `json:"version" example:"42"`
 	// TeamConfig is null until the session is split into teams.
 	TeamConfig *TeamConfigResponse `json:"team_config"`
 	// TeamsSource is where the current teams came from: "manual", "draft" (a
