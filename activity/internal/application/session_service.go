@@ -634,6 +634,13 @@ func (s *SessionService) UpdateSession(
 	}
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		// Same lock as cancel, complete and every team-formation command: the
+		// whole row is written back, so a status read before a concurrent
+		// cancel or completion committed would undo it.
+		if err := lockSessionCapacity(tCtx, s.txManager, sessionID); err != nil {
+			return err
+		}
+
 		// Fetch existing session
 		session, err := s.sessionRepo.GetSessionByID(tCtx, sessionID)
 		if err != nil {
@@ -722,6 +729,13 @@ func (s *SessionService) StartSession(
 	}
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		// Same lock as cancel, complete and every team-formation command: the
+		// whole row is written back, so a status read before a concurrent
+		// cancel or completion committed would undo it.
+		if err := lockSessionCapacity(tCtx, s.txManager, sessionID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, sessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
@@ -1221,6 +1235,13 @@ func (s *SessionService) SetSessionVisibility(
 	}
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+		// Same lock as cancel, complete and every team-formation command: the
+		// whole row is written back, so a status read before a concurrent
+		// cancel or completion committed would undo it.
+		if err := lockSessionCapacity(tCtx, s.txManager, sessionID); err != nil {
+			return err
+		}
+
 		session, err := s.sessionRepo.GetSessionByID(tCtx, sessionID)
 		if err != nil {
 			return fmt.Errorf("get session: %w", err)
