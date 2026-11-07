@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Rekreativko API: a Go 1.26 modular monolith for recreational sports groups - one repo and one `go.mod`, several
+Rekreativko API: a Go 1.27 modular monolith for recreational sports groups - one repo and one `go.mod`, several
 services, each owning its own schema in one PostgreSQL 17 database. Services talk through domain events
 (transactional outbox -> NATS JetStream); clients reach them only through the gateway. `README.md` explains the
 architecture, request flow, events and setup for humans.

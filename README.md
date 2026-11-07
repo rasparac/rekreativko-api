@@ -19,7 +19,7 @@ Each service above has its own README with full API reference, domain model, con
 
 ### Technology Stack
 
-- **Language**: Go 1.26
+- **Language**: Go 1.27
 - **Database**: PostgreSQL, reached through PgBouncer (transaction pooling)
 - **Message Broker**: NATS
 - **Cache**: Redis
@@ -249,7 +249,7 @@ Two separate channels tell the app that something happened; neither is push.
 
 ### Prerequisites
 
-- [Go 1.26+](https://golang.org/dl/)
+- [Go 1.27.3+](https://golang.org/dl/)
 - [Docker & Docker Compose](https://docs.docker.com/get-docker/)
 - [Task](https://taskfile.dev/) - Task runner (replaces Make)
 - [golang-migrate](https://github.com/golang-migrate/migrate) - Database migrations
@@ -263,7 +263,10 @@ task tools:install
 This installs:
 - golangci-lint
 - golang-migrate
-- swag (Swagger generator)
+
+swag (the Swagger generator) is not installed: it is a `tool` dependency in `go.mod`, so `task docs:*` runs it
+with `go tool swag` at the pinned version, built with the project's Go toolchain. A swag binary built with an
+older Go cannot parse the newer standard library (`method must have no type parameters`).
 
 ### Local Development Setup
 

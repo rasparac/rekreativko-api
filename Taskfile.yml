@@ -463,7 +463,6 @@ tasks:
       - echo "Installing development tools..."
       - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
       - go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-      - go install github.com/swaggo/swag/cmd/swag@latest
       - echo "✓ Tools installed successfully"
 
   # ============================================================================
@@ -485,38 +484,38 @@ tasks:
     desc: Generate swagger docs for notifications service
     cmds:
       - echo "Generating swagger docs for notifications service..."
-      - GOFLAGS="-mod=mod" swag init -g cmd/api/main.go -o ./notifications/docs --parseDependency --parseInternal -d ./notifications
+      - GOFLAGS="-mod=mod" go tool swag init -g cmd/api/main.go -o ./notifications/docs --parseDependency --parseInternal -d ./notifications
       - echo "✓ Notifications swagger docs generated"
 
   docs:swagger:location:
     desc: Generate swagger docs for location service
     cmds:
       - echo "Generating swagger docs for location service..."
-      - GOFLAGS="-mod=mod" swag init -g cmd/api/main.go -o ./location/docs --parseDependency --parseInternal -d ./location
+      - GOFLAGS="-mod=mod" go tool swag init -g cmd/api/main.go -o ./location/docs --parseDependency --parseInternal -d ./location
       - echo "✓ Location swagger docs generated"
 
   docs:swagger:activity:
     desc: Generate swagger docs for activity service
     cmds:
       - echo "Generating swagger docs for activity service..."
-      - GOFLAGS="-mod=mod" swag init -g cmd/api/main.go -o ./activity/docs --parseDependency --parseInternal -d ./activity
+      - GOFLAGS="-mod=mod" go tool swag init -g cmd/api/main.go -o ./activity/docs --parseDependency --parseInternal -d ./activity
       - echo "✓ Activity swagger docs generated"
 
   docs:swagger:identity:
     desc: Generate swagger docs for identity service
     cmds:
       - echo "Generating swagger docs for identity service..."
-      - GOFLAGS="-mod=mod" swag init -g cmd/api/main.go -o ./identity/docs --parseDependency --parseInternal -d ./identity
+      - GOFLAGS="-mod=mod" go tool swag init -g cmd/api/main.go -o ./identity/docs --parseDependency --parseInternal -d ./identity
       - echo "✓ Identity swagger docs generated"
 
   docs:swagger:account-profile:
     desc: Generate swagger docs for account-profile service
     cmds:
       - echo "Generating swagger docs for account-profile service..."
-      - GOFLAGS="-mod=mod" swag init -g cmd/api/main.go -o ./account-profile/docs --parseDependency --parseInternal -d ./account-profile
+      - GOFLAGS="-mod=mod" go tool swag init -g cmd/api/main.go -o ./account-profile/docs --parseDependency --parseInternal -d ./account-profile
       - echo "✓ Account-profile swagger docs generated"
 
   docs:fmt:
     desc: Format swagger docs
     cmds:
-      - swag fmt
+      - GOFLAGS="-mod=mod" go tool swag fmt
