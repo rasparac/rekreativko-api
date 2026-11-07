@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -50,26 +51,33 @@ func ErrorResponse(code string, message string, details map[string]any) Response
 	}
 }
 
-func WriteJSONResponse[T any](w http.ResponseWriter, statusCode int, response Response[T]) error {
+// WriteJSONResponse writes response as JSON with statusCode. The body is
+// encoded before anything is sent: a response that fails to encode (a bug,
+// e.g. an unsupported value) becomes a 500 instead of a truncated body after
+// the status line already went out. Nothing is returned - an error writing the
+// body means the client is gone, and there is nothing left to do about it.
+func WriteJSONResponse[T any](w http.ResponseWriter, statusCode int, response Response[T]) {
+	body, err := json.Marshal(response)
+	if err != nil {
+		// shared/logger imports this package, so the default slog logger it is
+		slog.Error("failed to encode JSON response", "status_code", statusCode, "error", err)
+
+		statusCode = http.StatusInternalServerError
+		body, _ = json.Marshal(internalServerError())
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	return json.NewEncoder(w).Encode(response)
+	// newline-terminated, as json.Encoder wrote it
+	_, _ = w.Write(append(body, '\n'))
 }
 
-func WriteCreatedResponse[T any](w http.ResponseWriter, data T, message string) error {
-	return WriteJSONResponse(
-		w,
-		http.StatusCreated,
-		SuccessResponse(data, message),
-	)
+func WriteCreatedResponse[T any](w http.ResponseWriter, data T, message string) {
+	WriteJSONResponse(w, http.StatusCreated, SuccessResponse(data, message))
 }
 
-func WriteOkResponse[T any](w http.ResponseWriter, data T, message string) error {
-	return WriteJSONResponse(
-		w,
-		http.StatusOK,
-		SuccessResponse(data, message),
-	)
+func WriteOkResponse[T any](w http.ResponseWriter, data T, message string) {
+	WriteJSONResponse(w, http.StatusOK, SuccessResponse(data, message))
 }
 
 func WriteError(
@@ -77,23 +85,15 @@ func WriteError(
 	stautsCode int,
 	code, message string,
 	details map[string]any,
-) error {
-	return WriteJSONResponse(
-		w,
-		stautsCode,
-		ErrorResponse(code, message, details),
-	)
+) {
+	WriteJSONResponse(w, stautsCode, ErrorResponse(code, message, details))
 }
 
 func WriteBadRequestResponse(
 	w http.ResponseWriter,
 	code, message string,
-) error {
-	return WriteJSONResponse(
-		w,
-		http.StatusBadRequest,
-		ErrorResponse(code, message, nil),
-	)
+) {
+	WriteJSONResponse(w, http.StatusBadRequest, ErrorResponse(code, message, nil))
 }
 
 // WriteBadRequestWithDetails writes a 400 Bad Request response with field-level error details
@@ -101,71 +101,51 @@ func WriteBadRequestWithDetails(
 	w http.ResponseWriter,
 	code, message string,
 	details map[string]any,
-) error {
-	return WriteJSONResponse(
-		w,
-		http.StatusBadRequest,
-		ErrorResponse(code, message, details),
-	)
+) {
+	WriteJSONResponse(w, http.StatusBadRequest, ErrorResponse(code, message, details))
 }
 
 // WriteValidationErrorResponse writes a validation error response with field details
 // It checks if the error is a ValidationError and extracts field details
-func WriteValidationErrorResponse(w http.ResponseWriter, err error) error {
+func WriteValidationErrorResponse(w http.ResponseWriter, err error) {
 	if validationErr, ok := errors.AsType[*ValidationError](err); ok {
 		details := make(map[string]any)
 		for field, msg := range validationErr.Fields {
 			details[field] = msg
 		}
-		return WriteBadRequestWithDetails(
-			w,
-			"validation_error",
-			validationErr.Message,
-			details,
-		)
+		WriteBadRequestWithDetails(w, "validation_error", validationErr.Message, details)
+		return
 	}
 
 	// Fallback to generic bad request
-	return WriteBadRequestResponse(w, "bad_request", "Invalid request body")
+	WriteBadRequestResponse(w, "bad_request", "Invalid request body")
 }
 
 func WriteNotFoundResponse(
 	w http.ResponseWriter,
 	code, message string,
-) error {
-	return WriteJSONResponse(
-		w,
-		http.StatusNotFound,
-		ErrorResponse(code, message, nil),
-	)
+) {
+	WriteJSONResponse(w, http.StatusNotFound, ErrorResponse(code, message, nil))
 }
 
 func WriteUnauthorizedResponse(
 	w http.ResponseWriter,
 	code, message string,
-) error {
-	return WriteJSONResponse(
-		w,
-		http.StatusUnauthorized,
-		ErrorResponse(code, message, nil),
-	)
+) {
+	WriteJSONResponse(w, http.StatusUnauthorized, ErrorResponse(code, message, nil))
 }
 
 func WriteForbiddenResponse(
 	w http.ResponseWriter,
 	code, message string,
-) error {
-	return WriteJSONResponse(
-		w,
-		http.StatusForbidden,
-		ErrorResponse(code, message, nil),
-	)
+) {
+	WriteJSONResponse(w, http.StatusForbidden, ErrorResponse(code, message, nil))
 }
 
-func WriteInternalServerErrorResponse(w http.ResponseWriter) error {
-	return WriteJSONResponse(
-		w,
-		http.StatusInternalServerError,
-		ErrorResponse("internal_server_error", http.StatusText(http.StatusInternalServerError), nil),
-	)
+func WriteInternalServerErrorResponse(w http.ResponseWriter) {
+	WriteJSONResponse(w, http.StatusInternalServerError, internalServerError())
+}
+
+func internalServerError() Response[any] {
+	return ErrorResponse("internal_server_error", http.StatusText(http.StatusInternalServerError), nil)
 }

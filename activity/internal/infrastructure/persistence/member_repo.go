@@ -296,7 +296,6 @@ func (m *memberManager) ListMembers(ctx context.Context, filter MemberFilter) ([
 	if filter.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT $%d", argIndex)
 		args = append(args, filter.Limit+1)
-		argIndex++
 	}
 
 	q := m.tx.Querier(ctx)

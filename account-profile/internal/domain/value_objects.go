@@ -411,7 +411,7 @@ func isValidSettingKey(key string) bool {
 	}
 
 	for _, r := range key {
-		if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '.' && r != '_' {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '.' && r != '_' {
 			return false
 		}
 	}

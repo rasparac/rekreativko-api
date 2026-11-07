@@ -150,7 +150,7 @@ func (h *Handler) ListSessionTemplates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = api.WriteOkResponse(w, api.NewList(templates, mapper.DomainToResponse), "")
+	api.WriteOkResponse(w, api.NewList(templates, mapper.DomainToResponse), "")
 }
 
 // UpdateSessionTemplate handles PUT /api/v1/templates/{id}

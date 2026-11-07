@@ -84,7 +84,7 @@ func (h *Handler) GetNotifications(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var resp *dtos.NotificationListResponse = mapper.NotificationListToResponse(notifications, unreadCount)
+	var resp *dtos.NotificationListResponse = mapper.NotificationListToResponse(notifications, unreadCount) //nolint:staticcheck // ST1023: the explicit type keeps the dtos import swag resolves the annotations through
 
 	api.WriteOkResponse(w, resp, "")
 }

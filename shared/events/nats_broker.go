@@ -365,7 +365,10 @@ func (b *natsBroker) processMessage(
 	metadata, err := msg.Metadata()
 	if err != nil {
 		b.logger.Error(ctx, "failed to get message metadata", "error", err)
-		msg.Nak()
+		// redelivered after AckWait even if the nak is lost
+		if err := msg.Nak(); err != nil {
+			b.logger.Error(ctx, "failed to nak message", "error", err)
+		}
 		return
 	}
 
@@ -449,11 +452,12 @@ func (b *natsBroker) deadLetter(
 	dlqMsg.Header.Set(headerDLQStreamSeq, strconv.FormatUint(metadata.Sequence.Stream, 10))
 	dlqMsg.Header.Set(headerDLQFailedAt, time.Now().UTC().Format(time.RFC3339))
 
-	// Deterministic id so a retried dead-letter of the same message is deduplicated.
-	msgID := fmt.Sprintf("%s-%d", metadata.Consumer, metadata.Sequence.Stream)
+	// Deterministic id so a retried dead-letter of the same message is
+	// deduplicated. Set as the header jetstream.WithMsgID would set.
+	dlqMsg.Header.Set(jetstream.MsgIDHeader, fmt.Sprintf("%s-%d", metadata.Consumer, metadata.Sequence.Stream))
 
 	published := true
-	if _, err := b.dlq.PublishMsg(ctx, dlqMsg, jetstream.WithMsgID(msgID)); err != nil {
+	if _, err := b.dlq.PublishMsg(ctx, dlqMsg); err != nil {
 		published = false
 		log.Error(ctx, "failed to publish message to dead-letter stream, dropping it",
 			"error", err,

@@ -57,7 +57,7 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 }
 
 func (c *Client) Stats() map[string]any {
-	stats := c.Client.PoolStats()
+	stats := c.PoolStats()
 	return map[string]any{
 		"hits":        stats.Hits,
 		"misses":      stats.Misses,

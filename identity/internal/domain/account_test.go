@@ -108,7 +108,7 @@ func Test_Account_ChangePassword(t *testing.T) {
 			require.NoError(t, err)
 
 			if tt.activate {
-				account.Activate(verificationCode)
+				require.NoError(t, account.Activate(verificationCode))
 			}
 
 			newPassword := NewPasswordFromHash(tt.newPassword)

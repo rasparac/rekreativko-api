@@ -48,6 +48,6 @@ func (h *Handler) GetTeamFormation(w http.ResponseWriter, r *http.Request) {
 
 	// Typed so this file imports dtos: swag resolves the @Success type
 	// through the file's imports and fails on a package it doesn't import.
-	var response *dtos.TeamFormationResponse = mapper.TeamFormationSnapshotToResponse(snapshot, accountID)
+	var response *dtos.TeamFormationResponse = mapper.TeamFormationSnapshotToResponse(snapshot, accountID) //nolint:staticcheck // ST1023: the explicit type keeps the dtos import swag resolves the annotations through
 	api.WriteOkResponse(w, response, "")
 }

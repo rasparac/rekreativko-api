@@ -81,8 +81,7 @@ func isValidPhoneNumber(phone string) bool {
 }
 
 type Password struct {
-	value string
-	hash  string
+	hash string
 }
 
 func NewPassword(value string) (*Password, error) {

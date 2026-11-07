@@ -94,7 +94,7 @@ func (rl *RateLimiter) serve(w http.ResponseWriter, r *http.Request, next http.H
 
 	w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(retryAfter)))
 	// Nothing to do if the client has gone: the refusal is already decided.
-	_ = api.WriteError(
+	api.WriteError(
 		w,
 		http.StatusTooManyRequests,
 		"too_many_requests",

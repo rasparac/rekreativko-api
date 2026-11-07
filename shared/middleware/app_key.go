@@ -84,7 +84,7 @@ func matchesAny(valid [][]byte, given []byte) bool {
 
 func writeAppKeyRefusal(w http.ResponseWriter) {
 	// Nothing to do if the client has gone: the refusal is already decided.
-	_ = api.WriteError(
+	api.WriteError(
 		w,
 		http.StatusForbidden,
 		"app_key_invalid",

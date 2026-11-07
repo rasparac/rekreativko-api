@@ -314,7 +314,6 @@ func (a *attendeeManager) ListAttendees(ctx context.Context, filter AttendeeFilt
 	if filter.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT $%d", argIndex)
 		args = append(args, filter.Limit+1)
-		argIndex++
 	}
 
 	q := a.tx.Querier(ctx)

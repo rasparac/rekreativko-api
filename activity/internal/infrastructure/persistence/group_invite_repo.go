@@ -247,7 +247,6 @@ func (m *groupInviteManager) ListPendingInvitesForUser(
 	if filter.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT $%d", argIndex)
 		args = append(args, filter.Limit+1)
-		argIndex++
 	}
 
 	q := m.tx.Querier(ctx)

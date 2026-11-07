@@ -536,7 +536,7 @@ func (h *Handler) ResetTeams(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info(ctx, "team formation reset", "session_id", sessionID)
 
 	// Typed so this file imports dtos: see GetTeamFormation.
-	var response *dtos.TeamFormationResponse = mapper.TeamFormationSnapshotToResponse(snapshot, accountID)
+	var response *dtos.TeamFormationResponse = mapper.TeamFormationSnapshotToResponse(snapshot, accountID) //nolint:staticcheck // ST1023: the explicit type keeps the dtos import swag resolves the annotations through
 	api.WriteOkResponse(w, response, "Team formation reset")
 }
 

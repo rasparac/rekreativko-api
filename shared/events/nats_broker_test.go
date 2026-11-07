@@ -42,7 +42,6 @@ func (m *fakeMsg) Term() error { m.termed = true; return nil }
 
 type fakeDLQ struct {
 	published []*nats.Msg
-	msgIDs    []string
 	err       error
 }
 
@@ -111,6 +110,8 @@ func TestProcessMessage_MaxDeliveriesDeadLetters(t *testing.T) {
 	assert.Equal(t, "42", dead.Header.Get(headerDLQStreamSeq))
 	assert.Equal(t, "db down second line", dead.Header.Get(headerDLQError), "newlines are stripped from headers")
 	assert.NotEmpty(t, dead.Header.Get(headerDLQFailedAt))
+	assert.Equal(t, "svc-events-identity-account-verified-42", dead.Header.Get(jetstream.MsgIDHeader),
+		"deterministic id, so a retried dead-letter of the same message is deduplicated")
 	assert.True(t, msg.termed)
 	assert.Nil(t, msg.nakDelay)
 }

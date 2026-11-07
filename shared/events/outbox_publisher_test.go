@@ -18,7 +18,6 @@ import (
 type fakeReader struct {
 	events       []domainevent.BrokerEvent
 	published    []uuid.UUID
-	failed       map[uuid.UUID]int
 	retries      map[uuid.UUID]int
 	markPubErr   error
 	readCalls    int

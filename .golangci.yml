@@ -1,0 +1,15 @@
+version: "2"
+
+linters:
+  exclusions:
+    presets:
+      # unchecked errors from Close, Flush, fmt.Print* and the like - the
+      # idiomatic `defer x.Close()`, where there is nothing useful to do with
+      # the error
+      - std-error-handling
+
+issues:
+  # Show every finding: the defaults (50 per linter, 3 with the same text)
+  # once hid 193 of 240 findings.
+  max-issues-per-linter: 0
+  max-same-issues: 0

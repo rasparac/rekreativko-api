@@ -83,7 +83,7 @@ func (c *ClientIPResolver) IP(r *http.Request) string {
 	peer := peerHost(r)
 
 	peerAddr, peerOK := parseAddr(peer)
-	if !c.trustAll && !(peerOK && c.isTrusted(peerAddr)) {
+	if !c.trustAll && (!peerOK || !c.isTrusted(peerAddr)) {
 		return peer
 	}
 

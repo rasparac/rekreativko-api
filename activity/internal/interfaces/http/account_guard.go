@@ -39,12 +39,12 @@ func RejectInactiveAccounts(accounts inactiveAccountChecker, log *logger.Logger)
 			inactive, err := accounts.IsInactive(ctx, accountID)
 			if err != nil {
 				log.Error(ctx, "failed to check the account", "error", err, "account_id", accountID)
-				_ = api.WriteInternalServerErrorResponse(w)
+				api.WriteInternalServerErrorResponse(w)
 				return
 			}
 
 			if inactive {
-				_ = api.WriteForbiddenResponse(w, "account_deleted", "This account has been deleted")
+				api.WriteForbiddenResponse(w, "account_deleted", "This account has been deleted")
 				return
 			}
 

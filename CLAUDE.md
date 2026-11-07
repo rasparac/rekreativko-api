@@ -43,7 +43,7 @@ task                          # list every task
 go build ./...
 task test                     # unit tests (go test ./... -short)
 go test -tags integration ./<service>/...   # integration tests, need Docker (testcontainers)
-task lint                     # golangci-lint run ./... - untouched files have known findings
+task lint                     # golangci-lint v2 run ./... (.golangci.yml) - must report 0 issues
 task fmt
 task docker:up                # whole stack; task docker:run:local = infrastructure only
 task migrate:all:up
@@ -51,7 +51,7 @@ task docs:ui                  # regenerate swagger for every service, serve on :
 ```
 
 Before calling work done: `go build ./...`, `go test ./...`, the integration tests of any service whose
-persistence layer changed, and `golangci-lint run` on the packages you touched.
+persistence layer changed, and `task lint` with 0 issues (a `//nolint` needs a reason after it).
 
 ## Rules that always apply
 
