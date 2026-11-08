@@ -47,3 +47,6 @@ observability/secrets/*
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# load test output (task loadtest:run)
+loadtest/results/

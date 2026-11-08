@@ -329,6 +329,16 @@ task test:identity:integration
 task test:account-profile:integration
 ```
 
+### Load Testing
+
+`loadtest/README.md` explains how to load the docker stack with k6, how each service's CPU and memory is
+measured, and the Kubernetes requests/limits that follow from it.
+
+```bash
+task loadtest:up && task loadtest:seed   # services with production-like settings, test users
+task loadtest:run                        # RATES="0 50 100" DURATION=60s to choose the rates
+```
+
 ### Database Migrations
 
 ```bash

@@ -1,0 +1,45 @@
+# Accounts for the load test (task loadtest:seed). Generated: loadtest-01..40.
+defaults:
+  password: Loadtest1234!
+
+users:
+  - email: loadtest-01@example.com
+  - email: loadtest-02@example.com
+  - email: loadtest-03@example.com
+  - email: loadtest-04@example.com
+  - email: loadtest-05@example.com
+  - email: loadtest-06@example.com
+  - email: loadtest-07@example.com
+  - email: loadtest-08@example.com
+  - email: loadtest-09@example.com
+  - email: loadtest-10@example.com
+  - email: loadtest-11@example.com
+  - email: loadtest-12@example.com
+  - email: loadtest-13@example.com
+  - email: loadtest-14@example.com
+  - email: loadtest-15@example.com
+  - email: loadtest-16@example.com
+  - email: loadtest-17@example.com
+  - email: loadtest-18@example.com
+  - email: loadtest-19@example.com
+  - email: loadtest-20@example.com
+  - email: loadtest-21@example.com
+  - email: loadtest-22@example.com
+  - email: loadtest-23@example.com
+  - email: loadtest-24@example.com
+  - email: loadtest-25@example.com
+  - email: loadtest-26@example.com
+  - email: loadtest-27@example.com
+  - email: loadtest-28@example.com
+  - email: loadtest-29@example.com
+  - email: loadtest-30@example.com
+  - email: loadtest-31@example.com
+  - email: loadtest-32@example.com
+  - email: loadtest-33@example.com
+  - email: loadtest-34@example.com
+  - email: loadtest-35@example.com
+  - email: loadtest-36@example.com
+  - email: loadtest-37@example.com
+  - email: loadtest-38@example.com
+  - email: loadtest-39@example.com
+  - email: loadtest-40@example.com

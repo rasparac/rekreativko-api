@@ -1,0 +1,39 @@
+# Overrides docker-compose.yaml for a load test (task loadtest:run):
+#
+#   docker compose -f docker-compose.yaml -f loadtest/docker-compose.loadtest.yml up -d
+#
+# The numbers should be what production would see, so the services log and
+# trace the way they would there (info, 10% of traces) rather than the dev
+# defaults (debug, every trace), which cost more CPU than the requests do. The
+# gateway's limits are raised because every virtual user comes from one IP.
+
+x-production-like: &production-like
+  LOG_LEVEL: info
+  OTEL_TRACES_SAMPLER_ARG: "0.1"
+
+services:
+  gateway:
+    environment:
+      <<: *production-like
+      RATE_LIMIT_IP_BURST: "1000000"
+      RATE_LIMIT_IP_PER_MINUTE: "1000000"
+      RATE_LIMIT_ACCOUNT_BURST: "1000000"
+      RATE_LIMIT_ACCOUNT_PER_MINUTE: "1000000"
+      RATE_LIMIT_ANONYMOUS_BURST: "1000000"
+      RATE_LIMIT_ANONYMOUS_PER_MINUTE: "1000000"
+      RATE_LIMIT_LOGIN_BURST: "1000000"
+      RATE_LIMIT_LOGIN_PER_MINUTE: "1000000"
+      RATE_LIMIT_SENSITIVE_BURST: "1000000"
+      RATE_LIMIT_SENSITIVE_PER_MINUTE: "1000000"
+  identity:
+    environment: *production-like
+  account-profile:
+    environment: *production-like
+  activity:
+    environment: *production-like
+  notifications:
+    environment: *production-like
+  location:
+    environment: *production-like
+  outbox-publisher:
+    environment: *production-like

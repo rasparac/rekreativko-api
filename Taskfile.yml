@@ -435,6 +435,26 @@ tasks:
     cmds:
       - go run ./scripts/seed-users -db "{{.DB_URL}}" {{if .CLI_ARGS}}{{.CLI_ARGS}}{{else}}-file scripts/seed-users/users.example.yaml{{end}}
 
+  # ============================================================================
+  # Load test (loadtest/README.md)
+  # ============================================================================
+
+  loadtest:up:
+    desc: "(Re)start the services with the load-test overrides: production-like logging and tracing, gateway rate limits off"
+    cmds:
+      - docker compose -f docker-compose.yaml -f loadtest/docker-compose.loadtest.yml up -d gateway identity account-profile activity notifications location outbox-publisher
+
+  loadtest:seed:
+    desc: "Create the 40 load-test users and their sessions and RSVPs (once, after loadtest:up)"
+    cmds:
+      - go run ./scripts/seed-users -db "{{.DB_URL}}" -file loadtest/users.yaml
+      - docker run --rm --network rekreativko-api_rekreativko -v "$PWD/loadtest/k6:/scripts:ro" -e MODE=prepare grafana/k6:1.0.0 run -q /scripts/load.js
+
+  loadtest:run:
+    desc: "Load the stack at each rate and sample every service's CPU and memory. Usage: RATES=\"0 50 100\" DURATION=60s task loadtest:run"
+    cmds:
+      - loadtest/run.sh
+
   dev:browsers:
     desc: "Open one Chrome window per seed user, logged in to the web app (:8888) and tiled. Usage: task dev:browsers [-- -file my-users.yaml -only a@gmail.com,b@gmail.com]"
     cmds:
