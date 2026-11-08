@@ -165,6 +165,61 @@ func TestTeamReset_LeavingWithNothingToResetRaisesNothing(t *testing.T) {
 	assert.Zero(t, env.outboxCount(t, "activity.session.teams_reset"))
 }
 
+// Ended drafts and rounds are history, which a reset clears even when nothing
+// is live - silently, because nothing anyone was doing has changed.
+func TestTeamReset_OnlyEndedDraftsAndRoundsAreClearedSilently(t *testing.T) {
+	ended := map[string]func(t *testing.T, env *sessionTeamTestEnv, session *domain.Session, u []uuid.UUID){
+		"a cancelled round": func(t *testing.T, env *sessionTeamTestEnv, session *domain.Session, u []uuid.UUID) {
+			a, b := divide(u)
+			state, err := env.propose(session, u[0], a, b)
+			require.NoError(t, err)
+			_, err = env.withdraw(session, u[0], state.Round.Proposals()[0].ID())
+			require.NoError(t, err)
+			require.NotNil(t, env.voting(t, session).Round)
+		},
+		"a cancelled draft": func(t *testing.T, env *sessionTeamTestEnv, session *domain.Session, u []uuid.UUID) {
+			_, err := env.startDraft(session, u[0], u[1], nil)
+			require.NoError(t, err)
+			_, err = env.draftSvc.CancelDraft(env.ctx, application.CancelDraftParams{
+				SessionID: session.ID(), RequesterID: session.CreatedByID(),
+			})
+			require.NoError(t, err)
+			_, err = env.draftSvc.GetDraft(env.ctx, session.ID())
+			require.NoError(t, err)
+		},
+	}
+
+	resets := map[string]func(env *sessionTeamTestEnv, session *domain.Session, u []uuid.UUID) error{
+		"someone leaves": func(env *sessionTeamTestEnv, session *domain.Session, u []uuid.UUID) error {
+			return env.svc.CancelRSVP(env.ctx, session.ID(), u[4])
+		},
+		"the organizer resets": func(env *sessionTeamTestEnv, session *domain.Session, _ []uuid.UUID) error {
+			return env.resetTeams(session, session.CreatedByID(), "")
+		},
+	}
+
+	for scenario, setup := range ended {
+		for how, reset := range resets {
+			t.Run(scenario+"/"+how, func(t *testing.T) {
+				env := setupSessionTeamTest(t)
+				session, u := env.draftSession(t, 5)
+				setup(t, env, session, u)
+
+				loaded, err := env.sessionRepo.GetSessionByID(env.ctx, session.ID())
+				require.NoError(t, err)
+				require.False(t, loaded.HasTeams(), "nothing live: this is the early return")
+
+				require.NoError(t, reset(env, session, u))
+
+				assert.Nil(t, env.voting(t, session).Round, "GET /proposals reports voting_status none")
+				_, err = env.draftSvc.GetDraft(env.ctx, session.ID())
+				assert.ErrorIs(t, err, domain.ErrDraftNotFound, "GET /draft is 404")
+				assert.Zero(t, env.outboxCount(t, "activity.session.teams_reset"))
+			})
+		}
+	}
+}
+
 func TestTeamReset_AJoinerDoesNotResetAnything(t *testing.T) {
 	env := setupSessionTeamTest(t)
 	session, u := env.draftSession(t, 4)

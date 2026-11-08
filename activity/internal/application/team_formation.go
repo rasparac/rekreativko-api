@@ -286,10 +286,10 @@ func (c teamFormation) sessionEnded(ctx context.Context, sessionID, endedBy uuid
 // had never been a draft": the teams and team setup are deleted (everyone
 // unassigned), a running draft and an open voting round are cancelled, and
 // every draft and voting round of the session is deleted so none is reported
-// as its latest (proposals are allowed again). Nothing happens - and nil is
-// returned - when there is nothing to reset. by is the organizer, or the
-// person who stopped going. Returns the events to insert: the cancellations,
-// then teams_reset.
+// as its latest (proposals are allowed again). With nothing live to reset only
+// that history goes, and no event is returned, so a leaver notifies nobody. by
+// is the organizer, or the person who stopped going. Returns the events to
+// insert: the cancellations, then teams_reset.
 func (c teamFormation) resetTeamFormation(
 	ctx context.Context,
 	session *domain.Session,
@@ -312,7 +312,7 @@ func (c teamFormation) resetTeamFormation(
 	}
 
 	if !session.HasTeams() && draft == nil && round == nil {
-		return nil, nil
+		return nil, c.deleteFormationHistory(ctx, sessionID)
 	}
 
 	draftReason, votingReason := domain.DraftCancelReasonRosterChanged, domain.VotingCancelReasonRosterChanged
@@ -348,11 +348,7 @@ func (c teamFormation) resetTeamFormation(
 		return nil, fmt.Errorf("persist reset teams: %w", err)
 	}
 
-	if err := c.draftRepo.DeleteSessionDrafts(ctx, sessionID); err != nil {
-		return nil, err
-	}
-
-	if err := c.votingRepo.DeleteSessionRounds(ctx, sessionID); err != nil {
+	if err := c.deleteFormationHistory(ctx, sessionID); err != nil {
 		return nil, err
 	}
 
@@ -360,4 +356,13 @@ func (c teamFormation) resetTeamFormation(
 	session.ClearEvents()
 
 	return events, nil
+}
+
+// deleteFormationHistory deletes every draft and voting round of the session.
+func (c teamFormation) deleteFormationHistory(ctx context.Context, sessionID uuid.UUID) error {
+	if err := c.draftRepo.DeleteSessionDrafts(ctx, sessionID); err != nil {
+		return err
+	}
+
+	return c.votingRepo.DeleteSessionRounds(ctx, sessionID)
 }
