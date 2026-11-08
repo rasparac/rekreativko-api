@@ -43,6 +43,8 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.ValidationError("missing_interval", "Interval must be specified for recurring activity", err)
 	case errors.Is(err, domain.ErrRecurrenceRuleMissingTimeOfDay):
 		return domainerror.ValidationError("missing_time_of_day", "Time of day must be specified for recurring activity", err)
+	case errors.Is(err, domain.ErrRecurrenceRuleMissingDayOfWeek):
+		return domainerror.ValidationError("missing_day_of_week", "Day of week must be specified for weekly recurrence", err)
 	case errors.Is(err, domain.ErrRecurrenceRuleInvalidDayOfWeek):
 		return domainerror.ValidationError("invalid_day_of_week", "Day of week must be between 0 (Sunday) and 6 (Saturday)", err)
 	case errors.Is(err, domain.ErrRecurrenceRuleInvalidDayOfMonth):

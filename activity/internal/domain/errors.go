@@ -138,6 +138,7 @@ var (
 	ErrInvalidRecurrenceRule           = errors.New("invalid recurrence rule")
 	ErrNoRecurrenceRule                = errors.New("no recurrence rule provided for recurring activity")
 	ErrRecurrenceRuleMissingTimeOfDay  = errors.New("time of day must be specified for recurring activity")
+	ErrRecurrenceRuleMissingDayOfWeek  = errors.New("day of week must be specified for weekly recurrence")
 	ErrRecurrenceRuleInvalidDayOfWeek  = errors.New("day of week must be between 0 (Sunday) and 6 (Saturday)")
 	ErrRecurrenceRuleInvalidDayOfMonth = errors.New("day of month must be between 1 and 31")
 	ErrRecurrenceRuleMissingDayOfMonth = errors.New("day of month must be specified for monthly recurrence")

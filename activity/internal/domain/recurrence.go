@@ -81,7 +81,7 @@ func NewRecurrenceRule(
 	switch frequency {
 	case RecurrenceFrequencyWeekly:
 		if dayOfWeek == nil {
-			return RecurrenceRule{}, ErrRecurrenceRuleMissingTimeOfDay
+			return RecurrenceRule{}, ErrRecurrenceRuleMissingDayOfWeek
 		}
 		if *dayOfWeek < 0 || *dayOfWeek > 6 {
 			return RecurrenceRule{}, ErrRecurrenceRuleInvalidDayOfWeek
@@ -178,6 +178,9 @@ func (r RecurrenceRule) nextDaily(after time.Time) time.Time {
 	return candidate
 }
 
+// nextWeekly applies the interval only when walking from an occurrence: a rule
+// has no start date to count from, so from any other time the next occurrence
+// is simply the next matching weekday.
 func (r RecurrenceRule) nextWeekly(after time.Time) time.Time {
 	targetDay := *r.dayOfWeek
 
@@ -265,5 +268,5 @@ func (r RecurrenceRule) HasEnded(t time.Time) bool {
 	if r.endsAt == nil {
 		return false
 	}
-	return time.Now().UTC().After(*r.endsAt)
+	return t.After(*r.endsAt)
 }

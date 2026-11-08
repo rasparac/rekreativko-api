@@ -264,6 +264,12 @@ func TestRecurrenceRule_WalkingAlwaysMovesForward(t *testing.T) {
 	})
 }
 
+func TestNewRecurrenceRule_WeeklyWithoutADayAsksForTheDay(t *testing.T) {
+	_, err := NewRecurrenceRule(RecurrenceFrequencyWeekly, mustTimeOfDay(t, 18, 0), 1, nil, nil, nil)
+
+	assert.ErrorIs(t, err, ErrRecurrenceRuleMissingDayOfWeek)
+}
+
 func TestRecurrenceRule_EndsAt(t *testing.T) {
 	endsAt := time.Now().UTC().Add(10 * 24 * time.Hour)
 	rule, err := NewRecurrenceRule(RecurrenceFrequencyDaily, mustTimeOfDay(t, 18, 0), 1, nil, nil, &endsAt)
@@ -276,6 +282,11 @@ func TestRecurrenceRule_EndsAt(t *testing.T) {
 
 	t.Run("not ended yet", func(t *testing.T) {
 		assert.False(t, rule.HasEnded(time.Now().UTC()))
+		assert.False(t, rule.HasEnded(endsAt.Add(-time.Hour)))
+	})
+
+	t.Run("ended once the given time is past the end date", func(t *testing.T) {
+		assert.True(t, rule.HasEnded(endsAt.Add(time.Hour)))
 	})
 
 	t.Run("no end date never ends", func(t *testing.T) {
