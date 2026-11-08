@@ -138,6 +138,7 @@ func TestAttendeeService_CreateRSVP_Rejections(t *testing.T) {
 	t.Run("one RSVP per person", func(t *testing.T) {
 		_, err := env.rsvp(session, user, domain.AttendeeStatusMaybe)
 		assert.ErrorIs(t, err, domain.ErrAttendeeAlreadyAttending)
+		requireAppErrorCode(t, err, "attendee_already_attending")
 	})
 
 	t.Run("an unknown status", func(t *testing.T) {
@@ -158,6 +159,28 @@ func TestAttendeeService_CreateRSVP_Rejections(t *testing.T) {
 			SessionID: uuid.New(), UserID: uuid.New(), Status: string(domain.AttendeeStatusGoing),
 		})
 		assert.ErrorIs(t, err, domain.ErrSessionNotFound)
+	})
+}
+
+// Changing or cancelling an RSVP that was never made is a 404 the client can
+// act on (offer to RSVP), not a 500.
+func TestAttendeeService_ChangingAnRSVPThatDoesNotExistIsNotFound(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session := env.createSessionWith(t, uuid.New(), sessionOptions{})
+	stranger := uuid.New()
+
+	t.Run("update", func(t *testing.T) {
+		_, err := env.svc.UpdateRSVP(env.ctx, application.UpdateRSVPParams{
+			SessionID: session.ID(), UserID: stranger, NewStatus: string(domain.AttendeeStatusMaybe),
+		})
+		assert.ErrorIs(t, err, domain.ErrAttendeeNotFound)
+		requireAppErrorCode(t, err, "attendee_not_found")
+	})
+
+	t.Run("cancel", func(t *testing.T) {
+		err := env.svc.CancelRSVP(env.ctx, session.ID(), stranger)
+		assert.ErrorIs(t, err, domain.ErrAttendeeNotFound)
+		requireAppErrorCode(t, err, "attendee_not_found")
 	})
 }
 

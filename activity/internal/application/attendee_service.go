@@ -261,7 +261,7 @@ func (s *AttendeeService) CreateRSVP(
 
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
-		return nil, err
+		return nil, mapToAppErr(err)
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -803,7 +803,7 @@ func (s *AttendeeService) UpdateRSVP(
 
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
-		return nil, err
+		return nil, mapToAppErr(err)
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -889,7 +889,7 @@ func (s *AttendeeService) CancelRSVP(
 
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
-		return err
+		return mapToAppErr(err)
 	}
 
 	span.SetStatus(codes.Ok, "")

@@ -138,8 +138,7 @@ const MIX = [
   [2, 'geocode/reverse', (t) => http.get(`${BASE}/location/api/v1/geocode/reverse?lat=${ZAGREB.lat}&lon=${ZAGREB.lng}`, t)],
   [6, 'rsvp', (t, d) => {
     // RSVP, or flip an existing RSVP between going and maybe - reading it
-    // first, as the app does, because the wrong one of POST and PUT answers
-    // 500 rather than 409/404 (rekreativko-api-clp)
+    // first, as the app does, so every write is one that succeeds
     const id = pick(d.sessions);
     const url = `${BASE}/activity/api/v1/sessions/${id}/rsvp`;
     const status = Math.random() < 0.5 ? 'going' : 'maybe';
