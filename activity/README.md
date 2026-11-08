@@ -64,6 +64,8 @@ For team sports (basketball, football, volleyball) a session can be split into t
 
 **Reset:** team formation goes back to its initial state ("as if there had never been a draft") - teams and team setup deleted, a running draft and an open vote cancelled, draft and vote history cleared (`GET /draft` is 404, proposals are allowed). It happens automatically whenever a confirmed attendee stops going (cancels, switches to Maybe/Not going, or is removed - any leaver, not just a team member; a joiner does not reset anything) and by hand with `DELETE /sessions/{id}/teams` (managers only, idempotent). It raises `activity.session.teams_reset` and everyone still going gets one `team_formation_reset` notification.
 
+**Round version:** the `version` of a voting response counts the changes to that one round and starts at 1 for every new round, so it goes backwards when a new round opens or a reset deletes the old ones. Compare it only between responses with the same `round_id`. The snapshot version of the team-formation document (below) is the one that orders changes across rounds.
+
 Commands are plain REST; the stream below only tells clients that state changed.
 
 ### The SSE stream

@@ -79,7 +79,9 @@ type VotingResponse struct {
 	KeepCurrentVotes *int                  `json:"keep_current_votes" example:"1"`
 	Items            []ProposalResponse    `json:"items"`
 	Result           *VotingResultResponse `json:"result,omitempty"`
-	// Version increases with every change; ignore a snapshot older than one you have.
+	// Version counts the changes to this round and starts at 1 for a new one, so
+	// compare it only between responses with the same round_id; the snapshot
+	// version of the team-formation document orders changes across rounds.
 	Version   int        `json:"version" example:"42"`
 	StartedAt *time.Time `json:"started_at,omitempty" example:"2024-02-01T17:40:00Z"`
 	EndedAt   *time.Time `json:"ended_at,omitempty" example:"2024-02-01T17:50:00Z"`

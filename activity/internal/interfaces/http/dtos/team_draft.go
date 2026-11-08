@@ -92,7 +92,9 @@ type DraftResponse struct {
 	Picks     []DraftPickResponse `json:"picks"`
 	// AvailableUserIDs are people going nobody has picked yet; empty once the draft ended.
 	AvailableUserIDs []uuid.UUID `json:"available_user_ids"`
-	// Version increases with every change; ignore a snapshot older than one you have.
+	// Version counts the changes to this draft and starts at 1 for a new one, so
+	// compare it only between responses with the same draft id; the snapshot
+	// version of the team-formation document orders changes across drafts.
 	Version   int        `json:"version" example:"12"`
 	StartedBy uuid.UUID  `json:"started_by" example:"123e4567-e89b-12d3-a456-426655440000"`
 	StartedAt time.Time  `json:"started_at" example:"2024-02-01T17:40:00Z"`
