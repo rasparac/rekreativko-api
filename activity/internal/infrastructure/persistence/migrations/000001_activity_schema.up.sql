@@ -388,7 +388,7 @@ CREATE TABLE IF NOT EXISTS activity.session_team_voting_round(
     session_id uuid NOT NULL REFERENCES activity.session(id),
     -- open | closed | cancelled
     status varchar(20) NOT NULL DEFAULT 'open',
-    -- not_enough_players | teams_replaced
+    -- teams_replaced | session_ended | no_proposals
     cancel_reason varchar(50) DEFAULT NULL,
     -- fixed when the round opens (session's teams, else the first proposal)
     team_count smallint NOT NULL CHECK (team_count >= 2),
