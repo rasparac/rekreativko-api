@@ -29,6 +29,13 @@ const (
 	VotingCancelReasonTeamsReset       VotingCancelReason = "teams_reset"        // an organizer reset team formation
 )
 
+// Every write of a round rewrites its proposals under the session lock that
+// RSVPs also need, so these keep one person from slowing a session down.
+const (
+	MaxProposalsPerRound  = 20
+	MaxProposalsPerAuthor = 3
+)
+
 // KeepCurrentTeams is the vote choice "keep the current teams" - offered only
 // when the session already had teams when the round started.
 var KeepCurrentTeams = uuid.Nil
@@ -305,11 +312,32 @@ func (r *TeamVotingRound) Propose(session *Session, authorID uuid.UUID, teams []
 		return nil, &DuplicateProposalError{ProposalID: existing.id}
 	}
 
+	// Checked after the duplicates, so that a retry or a duplicate keeps its
+	// usual answer at the limit. The author's limit goes first: they can act on
+	// it by withdrawing one of their own.
+	if r.proposalCountBy(authorID) >= MaxProposalsPerAuthor {
+		return nil, ErrAuthorProposalLimit
+	}
+
+	if len(r.proposals) >= MaxProposalsPerRound {
+		return nil, ErrRoundProposalLimit
+	}
+
 	r.proposals = append(r.proposals, proposal)
 	r.version++
 	r.addEvent(NewProposalCreatedEvent(r, proposal))
 
 	return proposal, nil
+}
+
+func (r *TeamVotingRound) proposalCountBy(authorID uuid.UUID) int {
+	count := 0
+	for _, p := range r.proposals {
+		if p.authorID == authorID {
+			count++
+		}
+	}
+	return count
 }
 
 // proposalWithDivision returns the round's proposal that splits the players

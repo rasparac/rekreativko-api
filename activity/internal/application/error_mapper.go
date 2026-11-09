@@ -149,6 +149,12 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.Conflict("voting_open", "Team voting is open for this session", err)
 	case errors.Is(err, domain.ErrProposalNotFound):
 		return domainerror.NotFound("proposal_not_found", "Proposal not found in this voting round", err)
+	case errors.Is(err, domain.ErrRoundProposalLimit):
+		return domainerror.Conflict("round_proposal_limit", "This round has reached its limit of proposals; vote for one of them instead", err).
+			WithDetails(map[string]any{"limit": domain.MaxProposalsPerRound})
+	case errors.Is(err, domain.ErrAuthorProposalLimit):
+		return domainerror.Conflict("author_proposal_limit", "You have reached your limit of proposals in this round; withdraw one to add another", err).
+			WithDetails(map[string]any{"limit": domain.MaxProposalsPerAuthor})
 	case errors.Is(err, domain.ErrKeepCurrentNotAvailable):
 		return domainerror.ValidationError("keep_current_not_available", "Keep current teams is only an option when the session has teams", err)
 	case errors.Is(err, domain.ErrInvalidWinner):

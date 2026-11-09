@@ -73,7 +73,7 @@ func (m *teamVotingManager) CreateRound(ctx context.Context, round *domain.TeamV
 }
 
 // UpdateRound saves the round's state and rewrites its proposals and votes
-// (a round has at most a few dozen). An ended round has none, so this is also
+// (domain.MaxProposalsPerRound caps them). An ended round has none, so this is also
 // what deletes them (D16).
 func (m *teamVotingManager) UpdateRound(ctx context.Context, round *domain.TeamVotingRound) error {
 	q := m.tx.Querier(ctx)

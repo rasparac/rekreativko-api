@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -215,6 +216,122 @@ func TestTeamVotingRound_ProposingTheSameDivisionAgain(t *testing.T) {
 		assert.NotEqual(t, first.ID(), p.ID())
 		assert.Len(t, round.Proposals(), 2)
 		assert.Equal(t, []string{EventActivitySessionVotingProposalAdded}, votingEventTypes(round))
+	})
+}
+
+// tradedDivision is the 5-5 split of ten users with users[i] and users[5+j]
+// traded: a different division for each (i, j).
+func tradedDivision(users []uuid.UUID, i, j int) [][]uuid.UUID {
+	a, b := slices.Clone(users[:5]), slices.Clone(users[5:])
+	a[i], b[j] = b[j], a[i]
+	return [][]uuid.UUID{a, b}
+}
+
+func TestTeamVotingRound_AnAuthorHasALimitOfProposals(t *testing.T) {
+	users := newUsers(10)
+	session := newTestTeamSession(t, newTestTeamConfig(t, nil))
+
+	// users[0] reaches the limit: the opening proposal plus two more.
+	setup := func(t *testing.T) (*TeamVotingRound, *TeamProposal) {
+		t.Helper()
+		round, first := openVoting(t, session, users)
+		for j := range MaxProposalsPerAuthor - 1 {
+			_, err := round.Propose(session, users[0], tradedDivision(users, 0, j), users)
+			require.NoError(t, err)
+		}
+		round.ClearEvents()
+		return round, first
+	}
+
+	t.Run("one more is refused and changes nothing", func(t *testing.T) {
+		round, _ := setup(t)
+		version := round.Version()
+
+		_, err := round.Propose(session, users[0], tradedDivision(users, 1, 0), users)
+
+		assert.ErrorIs(t, err, ErrAuthorProposalLimit)
+		assert.Len(t, round.Proposals(), MaxProposalsPerAuthor)
+		assert.Equal(t, version, round.Version())
+		assert.Empty(t, round.Events())
+	})
+
+	t.Run("a retry of their own proposal still gets it back", func(t *testing.T) {
+		round, first := setup(t)
+
+		p, err := round.Propose(session, users[0], [][]uuid.UUID{users[:5], users[5:]}, users)
+
+		require.NoError(t, err)
+		assert.Equal(t, first.ID(), p.ID())
+	})
+
+	t.Run("someone else can still propose", func(t *testing.T) {
+		round, _ := setup(t)
+
+		_, err := round.Propose(session, users[1], tradedDivision(users, 1, 0), users)
+
+		assert.NoError(t, err)
+	})
+
+	t.Run("withdrawing one frees a place", func(t *testing.T) {
+		round, first := setup(t)
+		require.NoError(t, round.WithdrawProposal(users[0], first.ID()))
+
+		_, err := round.Propose(session, users[0], tradedDivision(users, 1, 0), users)
+
+		assert.NoError(t, err)
+	})
+}
+
+func TestTeamVotingRound_ARoundHasALimitOfProposals(t *testing.T) {
+	users := newUsers(10)
+	session := newTestTeamSession(t, newTestTeamConfig(t, nil))
+
+	// Fills the round, with no author over their own limit.
+	setup := func(t *testing.T) (*TeamVotingRound, *TeamProposal) {
+		t.Helper()
+		round, first := openVoting(t, session, users)
+		for k := range MaxProposalsPerRound - 1 {
+			author := users[1+k/MaxProposalsPerAuthor]
+			_, err := round.Propose(session, author, tradedDivision(users, k%5, k/5), users)
+			require.NoError(t, err)
+		}
+		require.Len(t, round.Proposals(), MaxProposalsPerRound)
+		round.ClearEvents()
+		return round, first
+	}
+
+	// Traded pairs setup never reaches, proposed by someone with none yet.
+	next := tradedDivision(users, 0, 4)
+
+	t.Run("one more is refused and changes nothing", func(t *testing.T) {
+		round, _ := setup(t)
+		version := round.Version()
+
+		_, err := round.Propose(session, users[9], next, users)
+
+		assert.ErrorIs(t, err, ErrRoundProposalLimit)
+		assert.Len(t, round.Proposals(), MaxProposalsPerRound)
+		assert.Equal(t, version, round.Version())
+		assert.Empty(t, round.Events())
+	})
+
+	t.Run("a duplicate still names the existing proposal", func(t *testing.T) {
+		round, first := setup(t)
+
+		_, err := round.Propose(session, users[9], [][]uuid.UUID{users[:5], users[5:]}, users)
+
+		var dup *DuplicateProposalError
+		require.ErrorAs(t, err, &dup)
+		assert.Equal(t, first.ID(), dup.ProposalID)
+	})
+
+	t.Run("withdrawing one frees a place", func(t *testing.T) {
+		round, first := setup(t)
+		require.NoError(t, round.WithdrawProposal(users[0], first.ID()))
+
+		_, err := round.Propose(session, users[9], next, users)
+
+		assert.NoError(t, err)
 	})
 }
 
