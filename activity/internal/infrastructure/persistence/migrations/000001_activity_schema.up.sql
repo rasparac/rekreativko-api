@@ -438,7 +438,6 @@ CREATE TABLE IF NOT EXISTS activity.session_team_vote(
     voter_id uuid NOT NULL,
     -- NULL = voted to keep the current teams
     proposal_id uuid DEFAULT NULL REFERENCES activity.session_team_proposal(id),
-    voted_at timestamptz NOT NULL DEFAULT NOW(),
     -- one vote per person per round
     PRIMARY KEY (round_id, voter_id)
 );

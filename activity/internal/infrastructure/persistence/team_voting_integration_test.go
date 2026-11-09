@@ -5,6 +5,7 @@ package persistence_test
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 
@@ -375,6 +376,88 @@ func (e *sessionTeamTestEnv) retractVote(session *domain.Session, voter uuid.UUI
 func (e *sessionTeamTestEnv) withdraw(session *domain.Session, requester, proposalID uuid.UUID) (*application.TeamVotingState, error) {
 	return e.votingSvc.WithdrawProposal(e.ctx, application.WithdrawProposalParams{
 		SessionID: session.ID(), ProposalID: proposalID, RequesterID: requester,
+	})
+}
+
+// rowsWritten runs do and returns how many team-formation rows it wrote: the
+// triggers bump formation_version once per row.
+func (e *sessionTeamTestEnv) rowsWritten(t *testing.T, session *domain.Session, do func() error) int64 {
+	t.Helper()
+
+	version := func() int64 {
+		var v int64
+		require.NoError(t, e.txManager.Querier(e.ctx).QueryRow(e.ctx,
+			`SELECT formation_version FROM activity.session WHERE id = $1`, session.ID(),
+		).Scan(&v))
+		return v
+	}
+
+	before := version()
+	require.NoError(t, do())
+
+	return version() - before
+}
+
+// A write holds the session lock RSVPs also need, so what it costs must not
+// grow with the round.
+func TestTeamVoting_AWriteTouchesOnlyWhatChanged(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session, u := env.draftSession(t, 8)
+
+	opened, err := env.propose(session, u[0], u[:4], u[4:])
+	require.NoError(t, err)
+	proposal := opened.Round.Proposals()[0].ID()
+
+	// a division of its own for each i
+	propose := func(author uuid.UUID, i int) error {
+		a, b := slices.Clone(u[:4]), slices.Clone(u[4:])
+		a[0], b[i] = b[i], a[0]
+		_, err := env.propose(session, author, a, b)
+		return err
+	}
+	retract := func(voter uuid.UUID) error {
+		_, err := env.votingSvc.RetractVote(env.ctx, application.RetractVoteParams{SessionID: session.ID(), VoterID: voter})
+		return err
+	}
+
+	// what each costs while the round is small
+	addProposal := env.rowsWritten(t, session, func() error { return propose(u[1], 0) })
+	castVote := env.rowsWritten(t, session, func() error { return env.vote(session, u[0], proposal) })
+
+	require.NoError(t, propose(u[2], 1))
+	require.NoError(t, propose(u[3], 2))
+	require.NoError(t, env.vote(session, u[1], proposal))
+	require.NoError(t, env.vote(session, u[2], proposal))
+
+	t.Run("adding a proposal costs the same in a bigger round", func(t *testing.T) {
+		assert.Equal(t, addProposal, env.rowsWritten(t, session, func() error { return propose(u[4], 3) }))
+	})
+
+	t.Run("a vote costs the same in a bigger round", func(t *testing.T) {
+		assert.Equal(t, castVote, env.rowsWritten(t, session, func() error { return env.vote(session, u[3], proposal) }))
+	})
+
+	other := env.voting(t, session).Round.Proposals()[1].ID()
+
+	t.Run("changing a vote replaces that vote only", func(t *testing.T) {
+		assert.Equal(t, castVote, env.rowsWritten(t, session, func() error { return env.vote(session, u[3], other) }))
+
+		round := env.voting(t, session).Round
+		assert.Equal(t, 1, round.VoteCount(other))
+		assert.Equal(t, 3, round.VoteCount(proposal), "the other votes stay")
+	})
+
+	t.Run("retracting a vote removes that vote only", func(t *testing.T) {
+		assert.Equal(t, castVote, env.rowsWritten(t, session, func() error { return retract(u[3]) }))
+
+		round := env.voting(t, session).Round
+		assert.Zero(t, round.VoteCount(other))
+		assert.Equal(t, 3, round.VoteCount(proposal), "the other votes stay")
+	})
+
+	t.Run("a change that changes nothing writes nothing", func(t *testing.T) {
+		assert.Zero(t, env.rowsWritten(t, session, func() error { return env.vote(session, u[0], proposal) }), "the same vote again")
+		assert.Zero(t, env.rowsWritten(t, session, func() error { return retract(u[7]) }), "no vote to retract")
 	})
 }
 

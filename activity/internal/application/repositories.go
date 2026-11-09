@@ -95,6 +95,11 @@ type TeamDraftRepository interface {
 type TeamVotingRepository interface {
 	CreateRound(ctx context.Context, round *domain.TeamVotingRound) error
 	UpdateRound(ctx context.Context, round *domain.TeamVotingRound) error
+	// AddProposal saves the round's state and the one proposal added to it.
+	AddProposal(ctx context.Context, round *domain.TeamVotingRound, proposal *domain.TeamProposal) error
+	// SaveVote saves the round's state and voterID's vote, removing the vote
+	// when the round no longer has one from them.
+	SaveVote(ctx context.Context, round *domain.TeamVotingRound, voterID uuid.UUID) error
 	GetOpenRound(ctx context.Context, sessionID uuid.UUID) (*domain.TeamVotingRound, error)
 	GetLatestRound(ctx context.Context, sessionID uuid.UUID) (*domain.TeamVotingRound, error)
 	// MarkTieNotified records the tie (see domain.TieError.Key) the managers

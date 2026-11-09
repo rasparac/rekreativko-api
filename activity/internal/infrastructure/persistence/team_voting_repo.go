@@ -18,6 +18,11 @@ import (
 type TeamVotingRepository interface {
 	CreateRound(ctx context.Context, round *domain.TeamVotingRound) error
 	UpdateRound(ctx context.Context, round *domain.TeamVotingRound) error
+	// AddProposal saves the round's state and the one proposal added to it.
+	AddProposal(ctx context.Context, round *domain.TeamVotingRound, proposal *domain.TeamProposal) error
+	// SaveVote saves the round's state and voterID's vote, removing the vote
+	// when the round no longer has one from them.
+	SaveVote(ctx context.Context, round *domain.TeamVotingRound, voterID uuid.UUID) error
 	GetOpenRound(ctx context.Context, sessionID uuid.UUID) (*domain.TeamVotingRound, error)
 	GetLatestRound(ctx context.Context, sessionID uuid.UUID) (*domain.TeamVotingRound, error)
 	// MarkTieNotified records the tie (see domain.TieError.Key) the managers
@@ -72,13 +77,61 @@ func (m *teamVotingManager) CreateRound(ctx context.Context, round *domain.TeamV
 	return m.insertContent(ctx, round)
 }
 
-// UpdateRound saves the round's state and rewrites its proposals and votes
-// (domain.MaxProposalsPerRound caps them). An ended round has none, so this is also
-// what deletes them (D16).
+// UpdateRound saves the round's state and rewrites its proposals and votes, for
+// a change that removes proposals; AddProposal and SaveVote cover the frequent
+// ones. An ended round has none, so this is also what deletes them (D16).
 func (m *teamVotingManager) UpdateRound(ctx context.Context, round *domain.TeamVotingRound) error {
+	if err := m.updateRoundState(ctx, round); err != nil {
+		return err
+	}
+
 	q := m.tx.Querier(ctx)
 
-	result, err := q.Exec(
+	for _, query := range []string{
+		`DELETE FROM activity.session_team_vote WHERE round_id = $1`,
+		`DELETE FROM activity.session_team_proposal_member
+		WHERE proposal_id IN (SELECT id FROM activity.session_team_proposal WHERE round_id = $1)`,
+		`DELETE FROM activity.session_team_proposal WHERE round_id = $1`,
+	} {
+		if _, err := q.Exec(ctx, query, round.ID()); err != nil {
+			return fmt.Errorf("failed to clear team voting round content: %w", err)
+		}
+	}
+
+	return m.insertContent(ctx, round)
+}
+
+func (m *teamVotingManager) AddProposal(ctx context.Context, round *domain.TeamVotingRound, proposal *domain.TeamProposal) error {
+	if err := m.updateRoundState(ctx, round); err != nil {
+		return err
+	}
+
+	return m.insertProposal(ctx, round.ID(), proposal)
+}
+
+func (m *teamVotingManager) SaveVote(ctx context.Context, round *domain.TeamVotingRound, voterID uuid.UUID) error {
+	if err := m.updateRoundState(ctx, round); err != nil {
+		return err
+	}
+
+	if choice, voted := round.VoteOf(voterID); voted {
+		return m.upsertVote(ctx, round.ID(), voterID, choice)
+	}
+
+	_, err := m.tx.Querier(ctx).Exec(
+		ctx,
+		`DELETE FROM activity.session_team_vote WHERE round_id = $1 AND voter_id = $2`,
+		round.ID(), voterID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete team vote: %w", err)
+	}
+
+	return nil
+}
+
+func (m *teamVotingManager) updateRoundState(ctx context.Context, round *domain.TeamVotingRound) error {
+	result, err := m.tx.Querier(ctx).Exec(
 		ctx,
 		`UPDATE activity.session_team_voting_round
 		SET status = $2, cancel_reason = $3, winner_proposal_id = $4, kept_current = $5,
@@ -100,18 +153,7 @@ func (m *teamVotingManager) UpdateRound(ctx context.Context, round *domain.TeamV
 		return domain.ErrVotingNotOpen
 	}
 
-	for _, query := range []string{
-		`DELETE FROM activity.session_team_vote WHERE round_id = $1`,
-		`DELETE FROM activity.session_team_proposal_member
-		WHERE proposal_id IN (SELECT id FROM activity.session_team_proposal WHERE round_id = $1)`,
-		`DELETE FROM activity.session_team_proposal WHERE round_id = $1`,
-	} {
-		if _, err := q.Exec(ctx, query, round.ID()); err != nil {
-			return fmt.Errorf("failed to clear team voting round content: %w", err)
-		}
-	}
-
-	return m.insertContent(ctx, round)
+	return nil
 }
 
 func (m *teamVotingManager) MarkTieNotified(ctx context.Context, roundID uuid.UUID, tieKey string) (bool, error) {
@@ -153,48 +195,65 @@ func (m *teamVotingManager) DeleteSessionRounds(ctx context.Context, sessionID u
 }
 
 func (m *teamVotingManager) insertContent(ctx context.Context, round *domain.TeamVotingRound) error {
-	q := m.tx.Querier(ctx)
-
 	for _, p := range round.Proposals() {
-		_, err := q.Exec(
-			ctx,
-			`INSERT INTO activity.session_team_proposal (id, round_id, author_id, created_at)
-			VALUES ($1, $2, $3, $4)`,
-			p.ID(), round.ID(), p.AuthorID(), p.CreatedAt(),
-		)
-		if err != nil {
-			return fmt.Errorf("failed to create team proposal: %w", err)
-		}
-
-		for position, team := range p.Teams() {
-			for order, userID := range team {
-				_, err := q.Exec(
-					ctx,
-					`INSERT INTO activity.session_team_proposal_member (proposal_id, team_position, account_id, sort_order)
-					VALUES ($1, $2, $3, $4)`,
-					p.ID(), position, userID, order,
-				)
-				if err != nil {
-					return fmt.Errorf("failed to create team proposal member: %w", err)
-				}
-			}
+		if err := m.insertProposal(ctx, round.ID(), p); err != nil {
+			return err
 		}
 	}
 
 	for voterID, choice := range round.Votes() {
-		var proposalID uuid.NullUUID
-		if choice != domain.KeepCurrentTeams {
-			proposalID = uuid.NullUUID{UUID: choice, Valid: true}
+		if err := m.upsertVote(ctx, round.ID(), voterID, choice); err != nil {
+			return err
 		}
+	}
 
-		_, err := q.Exec(
-			ctx,
-			`INSERT INTO activity.session_team_vote (round_id, voter_id, proposal_id) VALUES ($1, $2, $3)`,
-			round.ID(), voterID, proposalID,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to create team vote: %w", err)
+	return nil
+}
+
+func (m *teamVotingManager) insertProposal(ctx context.Context, roundID uuid.UUID, p *domain.TeamProposal) error {
+	q := m.tx.Querier(ctx)
+
+	_, err := q.Exec(
+		ctx,
+		`INSERT INTO activity.session_team_proposal (id, round_id, author_id, created_at)
+		VALUES ($1, $2, $3, $4)`,
+		p.ID(), roundID, p.AuthorID(), p.CreatedAt(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create team proposal: %w", err)
+	}
+
+	for position, team := range p.Teams() {
+		for order, userID := range team {
+			_, err := q.Exec(
+				ctx,
+				`INSERT INTO activity.session_team_proposal_member (proposal_id, team_position, account_id, sort_order)
+				VALUES ($1, $2, $3, $4)`,
+				p.ID(), position, userID, order,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to create team proposal member: %w", err)
+			}
 		}
+	}
+
+	return nil
+}
+
+func (m *teamVotingManager) upsertVote(ctx context.Context, roundID, voterID, choice uuid.UUID) error {
+	var proposalID uuid.NullUUID
+	if choice != domain.KeepCurrentTeams {
+		proposalID = uuid.NullUUID{UUID: choice, Valid: true}
+	}
+
+	_, err := m.tx.Querier(ctx).Exec(
+		ctx,
+		`INSERT INTO activity.session_team_vote (round_id, voter_id, proposal_id) VALUES ($1, $2, $3)
+		ON CONFLICT (round_id, voter_id) DO UPDATE SET proposal_id = EXCLUDED.proposal_id`,
+		roundID, voterID, proposalID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to save team vote: %w", err)
 	}
 
 	return nil

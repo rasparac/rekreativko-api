@@ -123,13 +123,14 @@ func (s *TeamVotingService) Propose(ctx context.Context, params ProposeTeamsPara
 		} else {
 			version := round.Version()
 
-			if _, err := round.Propose(session, params.AuthorID, params.Teams, confirmedIDs); err != nil {
+			proposal, err := round.Propose(session, params.AuthorID, params.Teams, confirmedIDs)
+			if err != nil {
 				return fmt.Errorf("propose: %w", err)
 			}
 
 			// A retry of the author's own proposal changes nothing.
 			if round.Version() != version {
-				if err := s.votingRepo.UpdateRound(tCtx, round); err != nil {
+				if err := s.votingRepo.AddProposal(tCtx, round, proposal); err != nil {
 					return fmt.Errorf("persist voting round: %w", err)
 				}
 			}
@@ -200,12 +201,17 @@ func (s *TeamVotingService) Vote(ctx context.Context, params CastVoteParams) (*T
 			return err
 		}
 
+		version := round.Version()
+
 		if err := round.Vote(params.VoterID, choice, confirmedIDs); err != nil {
 			return fmt.Errorf("vote: %w", err)
 		}
 
-		if err := s.votingRepo.UpdateRound(tCtx, round); err != nil {
-			return fmt.Errorf("persist voting round: %w", err)
+		// The same vote again changes nothing.
+		if round.Version() != version {
+			if err := s.votingRepo.SaveVote(tCtx, round, params.VoterID); err != nil {
+				return fmt.Errorf("persist voting round: %w", err)
+			}
 		}
 
 		if err := s.insertEvents(tCtx, round.Events()); err != nil {
@@ -234,6 +240,9 @@ func (s *TeamVotingService) RetractVote(ctx context.Context, params RetractVoteP
 	return s.changeOpenRound(ctx, "RetractVote", params.SessionID, params.VoterID,
 		func(round *domain.TeamVotingRound, confirmedIDs []uuid.UUID) error {
 			return round.RetractVote(params.VoterID, confirmedIDs)
+		},
+		func(ctx context.Context, round *domain.TeamVotingRound) error {
+			return s.votingRepo.SaveVote(ctx, round, params.VoterID)
 		})
 }
 
@@ -244,17 +253,19 @@ func (s *TeamVotingService) WithdrawProposal(ctx context.Context, params Withdra
 	return s.changeOpenRound(ctx, "WithdrawProposal", params.SessionID, params.RequesterID,
 		func(round *domain.TeamVotingRound, _ []uuid.UUID) error {
 			return round.WithdrawProposal(params.RequesterID, params.ProposalID)
-		})
+		},
+		s.votingRepo.UpdateRound)
 }
 
 // changeOpenRound runs change on the session's open round under the session
-// lock (so it can't land in a round being closed), saves it, writes the events
-// it raised and returns the voting state.
+// lock (so it can't land in a round being closed), saves it with save unless
+// nothing changed, writes the events it raised and returns the voting state.
 func (s *TeamVotingService) changeOpenRound(
 	ctx context.Context,
 	method string,
 	sessionID, userID uuid.UUID,
 	change func(round *domain.TeamVotingRound, confirmedIDs []uuid.UUID) error,
+	save func(ctx context.Context, round *domain.TeamVotingRound) error,
 ) (*TeamVotingState, error) {
 	ctx, span := s.tracer.Start(ctx, "activity.service."+method)
 	defer span.End()
@@ -290,12 +301,16 @@ func (s *TeamVotingService) changeOpenRound(
 			return err
 		}
 
+		version := round.Version()
+
 		if err := change(round, confirmedIDs); err != nil {
 			return err
 		}
 
-		if err := s.votingRepo.UpdateRound(tCtx, round); err != nil {
-			return fmt.Errorf("persist voting round: %w", err)
+		if round.Version() != version {
+			if err := save(tCtx, round); err != nil {
+				return fmt.Errorf("persist voting round: %w", err)
+			}
 		}
 
 		if err := s.insertEvents(tCtx, round.Events()); err != nil {
