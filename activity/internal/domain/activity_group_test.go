@@ -133,6 +133,7 @@ func TestActivityGroup_Activate(t *testing.T) {
 		require.Len(t, group.Events(), 1)
 		published, ok := group.Events()[0].(*ActivityPublishedEvent)
 		require.True(t, ok, "publishing raises a published event")
+		assert.Equal(t, EventActivityGroupPublished, published.GetEventType(), "a consumer can tell it from an edit")
 		assert.Equal(t, creator, published.CreatorID)
 	})
 

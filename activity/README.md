@@ -135,7 +135,7 @@ This exists specifically for **standalone sessions**, where the creator has no g
 
 Grouped by aggregate (see `activity/internal/domain/events.go` for full payload shapes):
 
-- **ActivityGroup**: created, updated, cancelled, deleted, started, completed, recurrence_updated, visibility_changed
+- **ActivityGroup**: created, updated, published (a draft group activated by its creator), cancelled, deleted, visibility_changed (`recurrence_updated` constant exists but nothing emits it)
 - **Member**: join_requested, joined, left, approved, rejected, removed, role_changed, priority_set, priority_removed
 - **Invite**: sent, accepted, declined, expired
 - **InviteLink**: created, used, revoked, expired

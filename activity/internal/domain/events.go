@@ -12,10 +12,9 @@ const (
 	// Activity events
 	EventActivityGroupCreated           = "activity.group.created"
 	EventActivityGroupUpdated           = "activity.group.updated"
+	EventActivityGroupPublished         = "activity.group.published"
 	EventActivityGroupCancelled         = "activity.group.cancelled"
 	EventActivityGroupDeleted           = "activity.group.deleted"
-	EventActivityGroupStarted           = "activity.group.started"
-	EventActivityGroupCompleted         = "activity.group.completed"
 	EventActivityGroupRecurrenceUpdated = "activity.group.recurrence_updated"
 	EventActivityGroupVisibilityChanged = "activity.group.visibility_changed"
 
@@ -128,6 +127,8 @@ func NewActivityCreatedEvent(activity *ActivityGroup) *ActivityCreatedEvent {
 	}
 }
 
+// ActivityPublishedEvent is raised when the creator publishes a draft group
+// (draft -> active).
 type ActivityPublishedEvent struct {
 	domainevent.BaseEvent
 	CreatorID uuid.UUID `json:"creator_id"`
@@ -137,7 +138,7 @@ func NewActivityPublishedEvent(activity *ActivityGroup) *ActivityPublishedEvent 
 	return &ActivityPublishedEvent{
 		BaseEvent: domainevent.BaseEvent{
 			EventID:     uuid.New(),
-			EventType:   EventActivityGroupUpdated,
+			EventType:   EventActivityGroupPublished,
 			OccurredAt:  time.Now().UTC(),
 			AggregateID: activity.ID(),
 		},
@@ -247,40 +248,6 @@ func NewActivityGroupDeletedEvent(
 			AggregateID: activity.ID(),
 		},
 		DeletedBy: deletedBy,
-	}
-}
-
-type ActivityStartedEvent struct {
-	domainevent.BaseEvent
-	StartedBy uuid.UUID `json:"started_by"`
-}
-
-func NewActivityStartedEvent(activity *ActivityGroup, startedBy uuid.UUID) *ActivityStartedEvent {
-	return &ActivityStartedEvent{
-		BaseEvent: domainevent.BaseEvent{
-			EventID:     uuid.New(),
-			EventType:   EventActivityGroupStarted,
-			OccurredAt:  time.Now().UTC(),
-			AggregateID: activity.ID(),
-		},
-		StartedBy: startedBy,
-	}
-}
-
-type ActivityCompletedEvent struct {
-	domainevent.BaseEvent
-	CompletedBy uuid.UUID `json:"completed_by"`
-}
-
-func NewActivityCompletedEvent(activity *ActivityGroup, completedBy uuid.UUID) *ActivityCompletedEvent {
-	return &ActivityCompletedEvent{
-		BaseEvent: domainevent.BaseEvent{
-			EventID:     uuid.New(),
-			EventType:   EventActivityGroupCompleted,
-			OccurredAt:  time.Now().UTC(),
-			AggregateID: activity.ID(),
-		},
-		CompletedBy: completedBy,
 	}
 }
 
