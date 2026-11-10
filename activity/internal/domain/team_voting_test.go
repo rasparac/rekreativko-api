@@ -470,54 +470,6 @@ func TestTeamVotingRound_Close(t *testing.T) {
 	})
 }
 
-func TestTeamVotingRound_AttendeeLeft(t *testing.T) {
-	t.Run("drops out of every proposal and loses their vote (D12)", func(t *testing.T) {
-		users := newUsers(6)
-		session := newTestSessionOfType(t, ActivityTypeBasketball)
-		round, first := openVoting(t, session, users)
-		require.NoError(t, round.Vote(users[5], first.ID(), users))
-		round.ClearEvents()
-
-		round.AttendeeLeft(users[5], users[:5])
-
-		assert.True(t, round.IsOpen())
-		assert.NotContains(t, first.Teams()[1], users[5])
-		assert.Equal(t, 0, round.VoteCount(first.ID()))
-		assert.Equal(t, []string{EventActivitySessionVotingPlayerRemoved}, votingEventTypes(round))
-	})
-
-	t.Run("a team may fall below the minimum and the proposal still counts", func(t *testing.T) {
-		users := newUsers(7)
-		session := newTestTeamSession(t, newTestTeamConfig(t, intPtr(3)))
-		round, first, err := OpenTeamVoting(OpenVotingInput{
-			Session:   session,
-			AuthorID:  users[0],
-			Teams:     [][]uuid.UUID{users[:4], users[4:]}, // 4 vs 3
-			Confirmed: users,
-		})
-		require.NoError(t, err)
-
-		round.AttendeeLeft(users[6], users[:6]) // 6 going, still >= 6 needed
-
-		assert.True(t, round.IsOpen())
-		assert.Len(t, first.Teams()[1], 2, "below the minimum of 3")
-	})
-
-	t.Run("falling below players needed cancels (D12)", func(t *testing.T) {
-		users := newUsers(6)
-		session := newTestTeamSession(t, newTestTeamConfig(t, intPtr(3))) // needs 6
-		round, _ := openVoting(t, session, users)
-		round.ClearEvents()
-
-		round.AttendeeLeft(users[5], users[:5])
-
-		assert.Equal(t, VotingStatusCancelled, round.Status())
-		assert.Equal(t, VotingCancelReasonNotEnoughPlayers, round.CancelReason())
-		assert.Empty(t, round.Proposals())
-		assert.Equal(t, []string{EventActivitySessionVotingCancelled}, votingEventTypes(round))
-	})
-}
-
 func TestTeamVotingRound_TeamsReplaced(t *testing.T) {
 	users := newUsers(4)
 	session := newTestSessionOfType(t, ActivityTypeBasketball)

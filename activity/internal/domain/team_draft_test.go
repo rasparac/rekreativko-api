@@ -43,16 +43,6 @@ func draftEventTypes(d *TeamDraft) []string {
 	return types
 }
 
-func remove(users []uuid.UUID, gone uuid.UUID) []uuid.UUID {
-	out := make([]uuid.UUID, 0, len(users))
-	for _, u := range users {
-		if u != gone {
-			out = append(out, u)
-		}
-	}
-	return out
-}
-
 func sidesOf(order []DraftSide) []int {
 	out := make([]int, len(order))
 	for i, s := range order {
@@ -200,186 +190,13 @@ func TestTeamDraft_PickRejections(t *testing.T) {
 	assert.ErrorIs(t, draft.Pick(session, b, users[3], users), ErrSessionCanceled)
 }
 
-func TestTeamDraft_AttendeeLeft(t *testing.T) {
-	t.Run("captain leaving pauses the draft (D8)", func(t *testing.T) {
-		users := newUsers(6)
-		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		draft.ClearEvents()
-		going := remove(users, users[0])
+func TestTeamDraft_ANewAttendeeJoinsThePool(t *testing.T) {
+	users := newUsers(3)
+	session, draft := newTestDraft(t, users, PickOrderSnake, nil)
+	joined := append(users, uuid.New())
 
-		draft.AttendeeLeft(users[0], going)
-
-		assert.Equal(t, DraftStatusPaused, draft.Status())
-		assert.Equal(t, DraftPauseReasonCaptainLeft, draft.PausedReason())
-		assert.Equal(t, uuid.Nil, draft.Captains()[DraftSideA], "Team A's captain is vacant")
-		assert.Nil(t, draft.CurrentCaptainID(), "it was A's turn, and A has no captain")
-		assert.True(t, draft.IsRunning())
-		assert.Equal(t, []string{EventActivitySessionDraftPaused}, draftEventTypes(draft))
-		assert.ErrorIs(t, draft.Pick(session, users[1], users[2], going), ErrDraftPaused)
-	})
-
-	t.Run("picked player leaving is dropped", func(t *testing.T) {
-		users := newUsers(5)
-		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		require.NoError(t, draft.Pick(session, users[0], users[2], users))
-		draft.ClearEvents()
-
-		draft.AttendeeLeft(users[2], remove(users, users[2]))
-
-		assert.Equal(t, DraftStatusActive, draft.Status())
-		assert.Equal(t, []uuid.UUID{users[0]}, draft.Roster(DraftSideA))
-		assert.Equal(t, []string{EventActivitySessionDraftPlayerDropped}, draftEventTypes(draft))
-	})
-
-	t.Run("last available player leaving completes", func(t *testing.T) {
-		users := newUsers(4)
-		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		require.NoError(t, draft.Pick(session, users[0], users[2], users))
-
-		draft.AttendeeLeft(users[3], users[:3])
-
-		assert.True(t, draft.IsCompleted())
-	})
-
-	t.Run("falling below the minimum cancels (D7)", func(t *testing.T) {
-		users := newUsers(6) // min 3 per team: needs 6
-		_, draft := newTestDraft(t, users, PickOrderSnake, intPtr(3))
-		draft.ClearEvents()
-
-		draft.AttendeeLeft(users[5], users[:5])
-
-		assert.Equal(t, DraftStatusCancelled, draft.Status())
-		assert.Equal(t, DraftCancelReasonNotEnoughPlayers, draft.CancelReason())
-		assert.Equal(t, []string{EventActivitySessionDraftCancelled}, draftEventTypes(draft))
-	})
-
-	t.Run("new attendee joins the pool", func(t *testing.T) {
-		users := newUsers(3)
-		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		joined := append(users, uuid.New())
-
-		require.NoError(t, draft.Pick(session, users[0], joined[3], joined))
-		assert.Equal(t, DraftStatusActive, draft.Status(), "users[2] is still available")
-	})
-
-	t.Run("ignored once the draft ended", func(t *testing.T) {
-		users := newUsers(4)
-		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		require.NoError(t, draft.Cancel(session, session.CreatedByID(), "", nil))
-		draft.ClearEvents()
-
-		draft.AttendeeLeft(users[0], users[1:])
-
-		assert.Empty(t, draft.Events())
-	})
-}
-
-func TestTeamDraft_ReplaceCaptain(t *testing.T) {
-	// users: 0 = captain A, 1 = captain B, 2 picked by A, 3..5 available.
-	// Captain A then leaves, pausing the draft.
-	setup := func(t *testing.T) (*Session, *TeamDraft, []uuid.UUID, []uuid.UUID) {
-		t.Helper()
-		users := newUsers(6)
-		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		require.NoError(t, draft.Pick(session, users[0], users[2], users))
-		going := remove(users, users[0])
-		draft.AttendeeLeft(users[0], going)
-		require.Equal(t, DraftStatusPaused, draft.Status())
-		draft.ClearEvents()
-		return session, draft, users, going
-	}
-
-	t.Run("from the team resumes where it stopped", func(t *testing.T) {
-		session, draft, users, going := setup(t)
-
-		require.NoError(t, draft.ReplaceCaptain(session, session.CreatedByID(), "", DraftSideA, users[2], going))
-
-		assert.Equal(t, DraftStatusActive, draft.Status())
-		assert.Empty(t, draft.PausedReason())
-		assert.Equal(t, []uuid.UUID{users[2]}, draft.Roster(DraftSideA), "promoted, not listed twice")
-		assert.Empty(t, draft.Picks())
-		assert.Equal(t, users[1], *draft.CurrentCaptainID(), "turn 1 is B's")
-		assert.Equal(t, []string{EventActivitySessionDraftCaptainReplaced, EventActivitySessionDraftTurnChanged}, draftEventTypes(draft))
-	})
-
-	t.Run("from the pool", func(t *testing.T) {
-		session, draft, users, going := setup(t)
-
-		require.NoError(t, draft.ReplaceCaptain(session, session.CreatedByID(), "", DraftSideA, users[4], going))
-
-		assert.Equal(t, []uuid.UUID{users[4], users[2]}, draft.Roster(DraftSideA))
-		assert.NotContains(t, draft.Available(going), users[4])
-	})
-
-	rejections := []struct {
-		name    string
-		side    DraftSide
-		user    func(users []uuid.UUID) uuid.UUID
-		wantErr error
-	}{
-		{"team B still has its captain", DraftSideB, func(u []uuid.UUID) uuid.UUID { return u[3] }, ErrInvalidDraftCaptains},
-		{"the other captain", DraftSideA, func(u []uuid.UUID) uuid.UUID { return u[1] }, ErrInvalidDraftCaptains},
-		{"not going", DraftSideA, func(u []uuid.UUID) uuid.UUID { return u[0] }, ErrDraftCaptainNotConfirmed},
-		{"invalid position", DraftSide(2), func(u []uuid.UUID) uuid.UUID { return u[3] }, ErrInvalidDraftCaptains},
-	}
-	for _, tt := range rejections {
-		t.Run(tt.name, func(t *testing.T) {
-			session, draft, users, going := setup(t)
-			err := draft.ReplaceCaptain(session, session.CreatedByID(), "", tt.side, tt.user(users), going)
-			assert.ErrorIs(t, err, tt.wantErr)
-		})
-	}
-
-	t.Run("player from the other team", func(t *testing.T) {
-		users := newUsers(6)
-		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		require.NoError(t, draft.Pick(session, users[0], users[2], users))
-		require.NoError(t, draft.Pick(session, users[1], users[3], users)) // on Team B
-		going := remove(users, users[0])
-		draft.AttendeeLeft(users[0], going)
-
-		err := draft.ReplaceCaptain(session, session.CreatedByID(), "", DraftSideA, users[3], going)
-		assert.ErrorIs(t, err, ErrInvalidDraftCaptains)
-	})
-
-	t.Run("regular member", func(t *testing.T) {
-		session, draft, users, going := setup(t)
-		err := draft.ReplaceCaptain(session, uuid.New(), MemberRoleMember, DraftSideA, users[2], going)
-		assert.ErrorIs(t, err, ErrUnauthorized)
-	})
-
-	t.Run("not paused", func(t *testing.T) {
-		users := newUsers(5)
-		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		err := draft.ReplaceCaptain(session, session.CreatedByID(), "", DraftSideA, users[2], users)
-		assert.ErrorIs(t, err, ErrDraftNotPaused)
-	})
-
-	t.Run("both captains left: resumes after the second replacement", func(t *testing.T) {
-		users := newUsers(7)
-		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		going := remove(remove(users, users[0]), users[1])
-		draft.AttendeeLeft(users[0], remove(users, users[0]))
-		draft.AttendeeLeft(users[1], going)
-
-		require.NoError(t, draft.ReplaceCaptain(session, session.CreatedByID(), "", DraftSideA, users[2], going))
-		assert.Equal(t, DraftStatusPaused, draft.Status(), "Team B still has no captain")
-
-		require.NoError(t, draft.ReplaceCaptain(session, session.CreatedByID(), "", DraftSideB, users[3], going))
-		assert.Equal(t, DraftStatusActive, draft.Status())
-	})
-
-	t.Run("resuming with nobody left to pick completes", func(t *testing.T) {
-		users := newUsers(4)
-		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		require.NoError(t, draft.Pick(session, users[0], users[2], users))
-		going := remove(users, users[1])
-		draft.AttendeeLeft(users[1], going) // Team B's captain leaves; users[3] is the only one available
-
-		require.NoError(t, draft.ReplaceCaptain(session, session.CreatedByID(), "", DraftSideB, users[3], going))
-
-		assert.True(t, draft.IsCompleted())
-	})
+	require.NoError(t, draft.Pick(session, users[0], joined[3], joined))
+	assert.Equal(t, DraftStatusActive, draft.Status(), "users[2] is still available")
 }
 
 func TestTeamDraft_Cancel(t *testing.T) {
@@ -392,16 +209,6 @@ func TestTeamDraft_Cancel(t *testing.T) {
 	assert.Equal(t, DraftCancelReasonOrganizer, draft.CancelReason())
 	assert.ErrorIs(t, draft.Cancel(session, session.CreatedByID(), "", nil), ErrDraftNotActive)
 	assert.ErrorIs(t, draft.Pick(session, users[0], users[2], users), ErrDraftNotActive)
-
-	t.Run("works while paused", func(t *testing.T) {
-		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		draft.AttendeeLeft(users[0], users[1:])
-		require.Equal(t, DraftStatusPaused, draft.Status())
-
-		require.NoError(t, draft.Cancel(session, session.CreatedByID(), "", nil))
-		assert.Equal(t, DraftStatusCancelled, draft.Status())
-		assert.Empty(t, draft.PausedReason())
-	})
 }
 
 func TestTeamDraft_SessionEnded(t *testing.T) {
@@ -420,17 +227,6 @@ func TestTeamDraft_SessionEnded(t *testing.T) {
 		assert.Greater(t, draft.Version(), version)
 		assert.Equal(t, []string{EventActivitySessionDraftCancelled}, draftEventTypes(draft))
 		assert.ErrorIs(t, draft.Pick(session, users[0], users[2], users), ErrDraftNotActive)
-	})
-
-	t.Run("cancels a paused draft", func(t *testing.T) {
-		_, draft := newTestDraft(t, users, PickOrderSnake, nil)
-		draft.AttendeeLeft(users[0], users[1:])
-		require.Equal(t, DraftStatusPaused, draft.Status())
-
-		draft.SessionEnded(uuid.Nil)
-
-		assert.Equal(t, DraftStatusCancelled, draft.Status())
-		assert.Empty(t, draft.PausedReason())
 	})
 
 	t.Run("leaves a finished draft alone", func(t *testing.T) {
@@ -474,18 +270,8 @@ func TestTeamDraft_VersionBumpsOnEveryChange(t *testing.T) {
 	assert.Error(t, draft.Pick(session, users[0], users[3], users), "rejected pick")
 	assert.Equal(t, 2, draft.Version(), "a rejected command changes nothing")
 
-	draft.AttendeeLeft(users[5], remove(users, users[5]))
-	assert.Equal(t, 3, draft.Version())
-
-	going := remove(remove(users, users[5]), users[0])
-	draft.AttendeeLeft(users[0], going) // pause
-	assert.Equal(t, 4, draft.Version())
-
-	require.NoError(t, draft.ReplaceCaptain(session, session.CreatedByID(), "", DraftSideA, users[2], going))
-	assert.Equal(t, 5, draft.Version())
-
 	require.NoError(t, draft.Cancel(session, session.CreatedByID(), "", nil))
-	assert.Equal(t, 6, draft.Version())
+	assert.Equal(t, 3, draft.Version())
 }
 
 func TestSession_ApplyDraftTeams(t *testing.T) {

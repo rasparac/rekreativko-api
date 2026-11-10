@@ -88,7 +88,7 @@ func (h *Handler) StartDraft(w http.ResponseWriter, r *http.Request) {
 //	@Failure		401		{object}	api.Response[any]					"Unauthorized"
 //	@Failure		403		{object}	api.Response[any]					"Caller is not a draft captain"
 //	@Failure		404		{object}	api.Response[any]					"Session not found"
-//	@Failure		409		{object}	api.Response[any]					"No draft running, draft paused, not your turn, player not available, or session canceled/completed"
+//	@Failure		409		{object}	api.Response[any]					"No draft running, not your turn, player not available, or session canceled/completed"
 //	@Failure		500		{object}	api.Response[any]					"Internal server error"
 //	@Router			/api/v1/sessions/{id}/draft/picks [post]
 func (h *Handler) PickDraftPlayer(w http.ResponseWriter, r *http.Request) {
@@ -126,67 +126,6 @@ func (h *Handler) PickDraftPlayer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.WriteOkResponse(w, mapper.TeamDraftStateToResponse(state), "")
-}
-
-// ReplaceDraftCaptain handles PUT /api/v1/sessions/{id}/draft/captains
-//
-//	@Summary		Replace a captain who left
-//	@Description	While a draft is paused because a captain stopped going, the organizer names a new captain for that team: someone already on it, or still unpicked. The draft continues where it stopped (and completes if nobody is left to pick). Session creator or group admin/creator only.
-//	@Tags			Team draft
-//	@Accept			json
-//	@Produce		json
-//	@Security		GatewayKeyAuth && BearerAuth
-//	@Param			id		path		string								true	"Session ID"
-//	@Param			request	body		dtos.ReplaceDraftCaptainRequest		true	"Team position and new captain"
-//	@Success		200		{object}	api.Response[dtos.DraftResponse]	"Captain replaced"
-//	@Failure		400		{object}	api.Response[any]					"Invalid request"
-//	@Failure		401		{object}	api.Response[any]					"Unauthorized"
-//	@Failure		404		{object}	api.Response[any]					"Session not found"
-//	@Failure		409		{object}	api.Response[any]					"No draft running, or the draft is not paused"
-//	@Failure		422		{object}	api.Response[any]					"invalid_captains: that team has a captain, or the user is not going, is on the other team or is the other captain"
-//	@Failure		500		{object}	api.Response[any]					"Internal server error"
-//	@Router			/api/v1/sessions/{id}/draft/captains [put]
-func (h *Handler) ReplaceDraftCaptain(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	accountID := authcontext.GetAccountID(ctx)
-
-	sessionID, err := uuid.Parse(r.PathValue("id"))
-	if err != nil {
-		h.logger.Error(ctx, "invalid session ID", "error", err)
-		api.WriteBadRequestResponse(w, "invalid_session_id", "Invalid session ID")
-		return
-	}
-
-	var req dtos.ReplaceDraftCaptainRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
-		h.logger.Error(ctx, "failed to decode request body", "error", err)
-		api.WriteValidationErrorResponse(w, err)
-		return
-	}
-
-	session, err := h.sessionService.GetSession(ctx, sessionID, accountID)
-	if err != nil {
-		h.handleServiceError(ctx, w, err)
-		return
-	}
-
-	requesterRole, err := h.getUserRole(ctx, session.ActivityGroupID(), accountID)
-	if err != nil {
-		h.handleServiceError(ctx, w, err)
-		return
-	}
-
-	params := mapper.ReplaceDraftCaptainRequestToParams(&req, sessionID, accountID, requesterRole)
-
-	state, err := h.teamDraftService.ReplaceCaptain(ctx, *params)
-	if err != nil {
-		h.handleServiceError(ctx, w, err)
-		return
-	}
-
-	h.logger.Info(ctx, "draft captain replaced", "session_id", sessionID, "draft_id", state.Draft.ID())
-
-	api.WriteOkResponse(w, mapper.TeamDraftStateToResponse(state), "Captain replaced")
 }
 
 // GetDraft handles GET /api/v1/sessions/{id}/draft

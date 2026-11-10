@@ -309,26 +309,24 @@ mobile team's decisions D4-D9 (see the ticket design).
 - **Start** `POST /api/v1/sessions/{id}/draft` `{captain_ids: [A, B], pick_order?, min_players_per_team?, colors?}`
   - session creator or group admin/creator, team sports only, session scheduled or started, captains must be
   going, and enough people going (`PlayersNeeded` = 2 x min, or 2) else `not_enough_players`. At most one
-  running (active or paused) draft per session. The first captain leads Team A and picks first.
+  running draft per session. The first captain leads Team A and picks first.
 - **Pick order** lives on the draft (a session can be re-drafted): `snake` (A,B,B,A - default) or `alternate`
   (A,B,A,B). `PickOrder.sideForTurn(turn)` is the whole rule; the server enforces turns.
 - **Pick** `POST /api/v1/sessions/{id}/draft/picks` `{user_id}` - only the captain whose turn it is, only an
   unpicked person going. No team is ever full; there is no turn skipping.
 - **Picks live in the draft** (`session_team_draft_pick`) until it completes - the session's teams are untouched
-  while it runs (active or paused), and `POST /teams` / direct assign / unassign are rejected
+  while it runs, and `POST /teams` / direct assign / unassign are rejected
   (`draft_already_active`).
 - **Completes automatically** when everyone going has been picked. Completion replaces the session's teams with
   Team A (position 0) and Team B via `Session.ApplyDraftTeams` - old assignments get `team_unassigned`
   (teams_replaced), drafted players `team_assigned`.
 - **Attendance changes mid-draft:** a joiner is simply in the pool. Anyone who stops holding a spot (captain
   or not) **resets team formation**, cancelling the draft with `cancelled_reason: roster_changed` - see
-  "Team formation reset" below. The pause / `PUT /draft/captains` machinery (`paused_reason: captain_left`,
-  `draft.player_dropped`, `draft.captain_replaced`) is no longer reachable from attendance changes and is only
-  kept until it is removed (see its ticket).
-- **Cancel** `DELETE /api/v1/sessions/{id}/draft` - creator/admin, active or paused (`cancelled_reason:
+  "Team formation reset" below.
+- **Cancel** `DELETE /api/v1/sessions/{id}/draft` - creator/admin, while it runs (`cancelled_reason:
   organizer`); teams stay exactly as before.
 - **GET** `/api/v1/sessions/{id}/draft` - latest draft (any status). Response (mobile-aligned): `status`
-  active|paused|completed|cancelled, `paused_reason`, `cancelled_reason`, `captains[{user_id|null,
+  active|completed|cancelled, `cancelled_reason`, `captains[{user_id,
   team_position}]`, `turn{pick_number, total_picks, team_position, captain_user_id|null}` (null once ended),
   `turn_order` (team position of every turn from pick 0 to the last - `TeamDraft.TurnOrder`; `total_picks` =
   turns taken + people still available, so it changes as people join/leave), `teams[{position, user_ids}]`,
@@ -337,11 +335,10 @@ mobile team's decisions D4-D9 (see the ticket design).
 - **Concurrency:** every draft command and every attendance change takes the session advisory lock, so two picks
   for the same turn can't both win (`not_your_turn`).
 - **Events** `activity.session.draft.*` (all carry `version`, team positions 0/1): `started` (captains, pick
-  order), `turn_changed` (whose turn - "your turn" notifications), `player_picked`, `player_dropped`, `paused`
-  (captain who left, organizer), `captain_replaced` (`resumed`), `completed` (both rosters), `cancelled` (reason,
+  order), `turn_changed` (whose turn - "your turn" notifications), `player_picked`, `completed` (both rosters), `cancelled` (reason,
   `participant_user_ids` = people going; empty for `session_ended`).
 - **Errors:** `not_your_turn`, `player_not_available`, `not_draft_captain` (403), `draft_not_active`,
-  `draft_paused`, `draft_not_paused`, `draft_already_active`, `invalid_captains` (422), `not_enough_players`,
+  `draft_already_active`, `invalid_captains` (422), `not_enough_players`,
   `draft_not_found` (404), `unauthorized`.
 - A draft can't start while team voting is open (`voting_open`), and nobody can propose while a draft runs.
 - **Session ends** (cancelled, completed or auto-completed by the cron) -> a running draft is cancelled
@@ -393,7 +390,7 @@ teams. Product rules are the mobile team's D10-D16 plus backend decisions on the
   this is what keeps concurrent votes from being lost.
 - **Events** `activity.session.voting.*`: `opened` (first proposal), `proposal_created`, `vote_cast` (`changed`),
   `vote_retracted` (`voter_id`, previous `proposal_id` / `keep_current`), `proposal_withdrawn` (`proposal_id`,
-  `author_id`, `dropped_voter_ids`; followed by `cancelled` / `no_proposals` when it was the last), `player_removed`, `closed` (winner / kept_current), `cancelled` (reason); a winner also emits `teams_created`
+  `author_id`, `dropped_voter_ids`; followed by `cancelled` / `no_proposals` when it was the last), `closed` (winner / kept_current), `cancelled` (reason); a winner also emits `teams_created`
   and `team_assigned`. `opened`, `closed` and `cancelled` carry `participant_user_ids` (people going; empty on
   `cancelled` for `teams_replaced` / `session_ended`).
 
@@ -500,7 +497,6 @@ deep-link `screen` (`team_draft`, `team_voting`, `session_teams`).
 |---|---|---|
 | `draft.started` | `team_draft_captain_selected` | both captains (`team_position`) |
 | `draft.turn_changed` | `team_draft_your_turn` | the captain whose turn it is |
-| `draft.paused` | `team_draft_paused` | the organizer who started the draft |
 | `draft.completed` | `team_draft_completed` | every drafted player (`team_position`) |
 | `draft.cancelled` | `team_draft_cancelled` | people going (not for `session_ended`) |
 | `voting.opened` | `team_voting_opened` | people going (`proposal_id`) |
@@ -681,9 +677,8 @@ All activity tables use the `activity` schema for namespace isolation (DDD bound
      - name, optional color, position (unique per session)
 
    - **session_team_draft** / **session_team_draft_pick** - Captain drafts and their picks
-     - pick_order, status (active/paused/completed/cancelled), paused_reason, cancel_reason, captains (NULL =
-       vacant while paused), turn, version, min_players_per_team, team_colors
-     - Partial unique index: one active or paused draft per session
+     - pick_order, status (active/completed/cancelled), cancel_reason, captains, turn, version, min_players_per_team, team_colors
+     - Partial unique index: one active draft per session
 
    - **session_team_voting_round** / **session_team_proposal** / **session_team_proposal_member** /
      **session_team_vote** - Team voting rounds; proposals, members and votes exist only while the round is open

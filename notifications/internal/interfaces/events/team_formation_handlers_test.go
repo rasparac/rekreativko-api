@@ -120,26 +120,6 @@ func TestDraftTurnChangedHandler_NotifiesCaptain(t *testing.T) {
 	assert.Equal(t, 4, creator.calls[0].Data["pick_number"])
 }
 
-func TestDraftPausedHandler_NotifiesOrganizerOnly(t *testing.T) {
-	creator := &recordingCreator{}
-	h := &draftPausedHandler{notifications: creator, logger: logger.New("error", "json")}
-	eventID, sessionID, organizer, leaver := uuid.New(), uuid.New(), uuid.New(), uuid.New()
-
-	handle(t, h, teamPayload(t, eventID, "activity.session.draft.paused", map[string]any{
-		"session_id":    sessionID,
-		"draft_id":      uuid.New(),
-		"reason":        "captain_left",
-		"team_position": 0,
-		"captain_id":    leaver,
-		"started_by":    organizer,
-	}))
-
-	require.Equal(t, []uuid.UUID{organizer}, recipients(creator.calls))
-	requireTeamNotification(t, creator.calls[0], eventID, sessionID, domain.NotificationTypeTeamDraftPaused, domain.ScreenTeamDraft)
-	assert.Equal(t, leaver, creator.calls[0].Data["captain_id"])
-	assert.Equal(t, "captain_left", creator.calls[0].Data["reason"])
-}
-
 func TestDraftCompletedHandler_NotifiesEveryPlayerWithTheirTeam(t *testing.T) {
 	creator := &recordingCreator{}
 	h := &draftCompletedHandler{notifications: creator, logger: logger.New("error", "json")}
@@ -386,7 +366,6 @@ func TestTeamFormationHandlers_MalformedPayloadIsPermanent(t *testing.T) {
 	handlers := map[string]eventHandler{
 		"draft_started":      &draftStartedHandler{notifications: &recordingCreator{}, logger: log},
 		"draft_turn_changed": &draftTurnChangedHandler{notifications: &recordingCreator{}, logger: log},
-		"draft_paused":       &draftPausedHandler{notifications: &recordingCreator{}, logger: log},
 		"draft_completed":    &draftCompletedHandler{notifications: &recordingCreator{}, logger: log},
 		"draft_cancelled":    &draftCancelledHandler{notifications: &recordingCreator{}, logger: log},
 		"voting_opened":      &votingOpenedHandler{notifications: &recordingCreator{}, logger: log},

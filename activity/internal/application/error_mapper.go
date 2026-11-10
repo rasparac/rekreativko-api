@@ -177,10 +177,6 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.Conflict("teams_drafted", "The current teams were picked in a captain draft; reset the teams to propose new ones", err)
 	case errors.Is(err, domain.ErrDraftNotActive):
 		return domainerror.Conflict("draft_not_active", "No team draft is running for this session", err)
-	case errors.Is(err, domain.ErrDraftPaused):
-		return domainerror.Conflict("draft_paused", "The team draft is paused until a captain is replaced", err)
-	case errors.Is(err, domain.ErrDraftNotPaused):
-		return domainerror.Conflict("draft_not_paused", "The team draft is not waiting for a new captain", err)
 	case errors.Is(err, domain.ErrDraftNotFound):
 		return domainerror.NotFound("draft_not_found", "This session has no team draft", err)
 	case errors.Is(err, domain.ErrNotDraftCaptain):

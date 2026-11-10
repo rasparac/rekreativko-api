@@ -26,23 +26,6 @@ func StartDraftRequestToParams(
 	}
 }
 
-// ReplaceDraftCaptainRequestToParams converts ReplaceDraftCaptainRequest to
-// application params. The request validator guarantees TeamPosition is set.
-func ReplaceDraftCaptainRequestToParams(
-	req *dtos.ReplaceDraftCaptainRequest,
-	sessionID uuid.UUID,
-	requesterID uuid.UUID,
-	requesterRole string,
-) *application.ReplaceDraftCaptainParams {
-	return &application.ReplaceDraftCaptainParams{
-		SessionID:     sessionID,
-		RequesterID:   requesterID,
-		RequesterRole: requesterRole,
-		TeamPosition:  *req.TeamPosition,
-		UserID:        req.UserID,
-	}
-}
-
 // TeamDraftStateToResponse converts a draft and its available players to a DraftResponse
 func TeamDraftStateToResponse(state *application.TeamDraftState) *dtos.DraftResponse {
 	draft := state.Draft
@@ -52,7 +35,6 @@ func TeamDraftStateToResponse(state *application.TeamDraftState) *dtos.DraftResp
 		ID:                draft.ID(),
 		SessionID:         draft.SessionID(),
 		Status:            string(draft.Status()),
-		PausedReason:      optionalString(string(draft.PausedReason())),
 		CancelledReason:   optionalString(string(draft.CancelReason())),
 		PickOrder:         draft.PickOrder().String(),
 		MinPlayersPerTeam: draft.TeamConfig().MinPlayersPerTeam(),

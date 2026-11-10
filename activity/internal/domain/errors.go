@@ -112,8 +112,6 @@ var (
 	ErrNotProposalAuthor        = errors.New("only the author can withdraw a proposal")
 	ErrTeamsDrafted             = errors.New("the current teams were picked in a captain draft; reset the teams to propose new ones")
 	ErrDraftNotActive           = errors.New("no team draft is running for this session")
-	ErrDraftPaused              = errors.New("the team draft is paused until a captain is replaced")
-	ErrDraftNotPaused           = errors.New("the team draft is not paused")
 	ErrDraftNotFound            = errors.New("team draft not found")
 	ErrNotDraftCaptain          = errors.New("only a draft captain can pick players")
 	ErrNotYourTurn              = errors.New("it is not your turn to pick")

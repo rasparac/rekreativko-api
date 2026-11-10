@@ -25,18 +25,8 @@ type DraftPickRequest struct {
 	UserID uuid.UUID `json:"user_id" validate:"required" example:"123e4567-e89b-12d3-a456-426655440000"`
 }
 
-// ReplaceDraftCaptainRequest names a new captain for a team whose captain
-// left (while the draft is paused)
-type ReplaceDraftCaptainRequest struct {
-	// TeamPosition is the team without a captain: 0 = Team A, 1 = Team B.
-	TeamPosition *int `json:"team_position" validate:"required,min=0,max=1" example:"1"`
-	// UserID is the new captain: someone already on that team, or still unpicked.
-	UserID uuid.UUID `json:"user_id" validate:"required" example:"123e4567-e89b-12d3-a456-426655440000"`
-}
-
 // DraftCaptainResponse is one team's captain
 type DraftCaptainResponse struct {
-	// UserID is null while the captain left and the draft is paused.
 	UserID       *uuid.UUID `json:"user_id" example:"123e4567-e89b-12d3-a456-426655440000"`
 	TeamPosition int        `json:"team_position" example:"0"`
 }
@@ -47,9 +37,8 @@ type DraftTurnResponse struct {
 	PickNumber int `json:"pick_number" example:"5"`
 	// TotalPicks is how many picks the draft will have in all; it changes when
 	// people join or leave.
-	TotalPicks   int `json:"total_picks" example:"8"`
-	TeamPosition int `json:"team_position" example:"0"`
-	// CaptainUserID is null while that team's captain left (draft paused).
+	TotalPicks    int        `json:"total_picks" example:"8"`
+	TeamPosition  int        `json:"team_position" example:"0"`
 	CaptainUserID *uuid.UUID `json:"captain_user_id" example:"123e4567-e89b-12d3-a456-426655440000"`
 }
 
@@ -74,11 +63,9 @@ type DraftPickResponse struct {
 type DraftResponse struct {
 	ID        uuid.UUID `json:"id" example:"123e4567-e89b-12d3-a456-426655440000"`
 	SessionID uuid.UUID `json:"session_id" example:"123e4567-e89b-12d3-a456-426655440000"`
-	Status    string    `json:"status" example:"active" enums:"active,paused,completed,cancelled"`
-	// PausedReason is set while paused: "captain_left".
-	PausedReason *string `json:"paused_reason" example:"captain_left" enums:"captain_left"`
+	Status    string    `json:"status" example:"active" enums:"active,completed,cancelled"`
 	// CancelledReason is set for a cancelled draft.
-	CancelledReason   *string                `json:"cancelled_reason" example:"organizer" enums:"organizer,not_enough_players,session_ended"`
+	CancelledReason   *string                `json:"cancelled_reason" example:"organizer" enums:"organizer,session_ended"`
 	PickOrder         string                 `json:"pick_order" example:"snake" enums:"snake,alternate"`
 	MinPlayersPerTeam *int                   `json:"min_players_per_team,omitempty" example:"5"`
 	Colors            []string               `json:"colors,omitempty" example:"#FFFFFF,#000000"`

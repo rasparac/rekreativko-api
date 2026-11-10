@@ -367,16 +367,6 @@ type DraftPickParams struct {
 	UserID    uuid.UUID // the player picked
 }
 
-// ReplaceDraftCaptainParams contains parameters for naming a new captain for a
-// side whose captain left (the draft is paused until then)
-type ReplaceDraftCaptainParams struct {
-	SessionID     uuid.UUID
-	RequesterID   uuid.UUID
-	RequesterRole string
-	TeamPosition  int       // 0 = Team A, 1 = Team B
-	UserID        uuid.UUID // the new captain: from that team or the pool
-}
-
 // CancelDraftParams contains parameters for cancelling a captain draft
 type CancelDraftParams struct {
 	SessionID     uuid.UUID

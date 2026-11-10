@@ -33,18 +33,6 @@ func TestDraftCancelledEvent_Participants(t *testing.T) {
 		assert.Equal(t, session.CreatedByID(), e.CancelledBy)
 	})
 
-	t.Run("not enough players carries who is still going", func(t *testing.T) {
-		users := newUsers(6)
-		_, draft := newTestDraft(t, users, PickOrderSnake, intPtr(3))
-		draft.ClearEvents()
-
-		draft.AttendeeLeft(users[5], users[:5])
-
-		e := lastEvent[*DraftCancelledEvent](t, draft.Events())
-		assert.Equal(t, users[:5], e.ParticipantUserIDs)
-		assert.Equal(t, uuid.Nil, e.CancelledBy)
-	})
-
 	t.Run("session ended carries nobody", func(t *testing.T) {
 		users := newUsers(4)
 		session, draft := newTestDraft(t, users, PickOrderSnake, nil)
@@ -92,18 +80,6 @@ func TestVotingEvents_Participants(t *testing.T) {
 		e := lastEvent[*VotingClosedEvent](t, round.Events())
 		assert.Equal(t, users, e.ParticipantUserIDs)
 		assert.Equal(t, proposal.ID(), *e.WinnerProposalID)
-	})
-
-	t.Run("not enough players carries who is still going", func(t *testing.T) {
-		users := newUsers(6)
-		round, _ := openVoting(t, newTestTeamSession(t, newTestTeamConfig(t, intPtr(3))), users)
-		round.ClearEvents()
-
-		round.AttendeeLeft(users[5], users[:5])
-
-		e := lastEvent[*VotingCancelledEvent](t, round.Events())
-		assert.Equal(t, VotingCancelReasonNotEnoughPlayers, e.Reason)
-		assert.Equal(t, users[:5], e.ParticipantUserIDs)
 	})
 
 	t.Run("teams replaced and session ended carry nobody", func(t *testing.T) {

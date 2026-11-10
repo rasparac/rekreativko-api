@@ -39,15 +39,6 @@ func (e *sessionTeamTestEnv) startDraft(session *domain.Session, captainA, capta
 	})
 }
 
-func (e *sessionTeamTestEnv) replaceCaptain(session *domain.Session, position int, userID uuid.UUID) (*application.TeamDraftState, error) {
-	return e.draftSvc.ReplaceCaptain(e.ctx, application.ReplaceDraftCaptainParams{
-		SessionID:    session.ID(),
-		RequesterID:  session.CreatedByID(),
-		TeamPosition: position,
-		UserID:       userID,
-	})
-}
-
 func (e *sessionTeamTestEnv) pick(session *domain.Session, captainID, userID uuid.UUID) (*application.TeamDraftState, error) {
 	return e.draftSvc.Pick(e.ctx, application.DraftPickParams{
 		SessionID: session.ID(),

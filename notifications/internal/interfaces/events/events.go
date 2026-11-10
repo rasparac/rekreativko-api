@@ -163,16 +163,6 @@ type draftTurnChangedEvent struct {
 	PickNumber   int       `json:"pick_number"`
 }
 
-type draftPausedEvent struct {
-	EventID      uuid.UUID `json:"event_id"`
-	SessionID    uuid.UUID `json:"session_id"`
-	DraftID      uuid.UUID `json:"draft_id"`
-	Reason       string    `json:"reason"`
-	TeamPosition int       `json:"team_position"`
-	CaptainID    uuid.UUID `json:"captain_id"` // the captain who left
-	StartedBy    uuid.UUID `json:"started_by"` // the organizer who can resolve it
-}
-
 type draftCompletedEvent struct {
 	EventID   uuid.UUID      `json:"event_id"`
 	SessionID uuid.UUID      `json:"session_id"`

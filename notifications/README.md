@@ -136,7 +136,6 @@ Each delivery handler picks the channel from the event's `code_type` (`DeliveryT
 |---|---|---|
 | `activity.session.draft.started` | `team_draft_captain_selected` | both captains |
 | `activity.session.draft.turn_changed` | `team_draft_your_turn` | the captain whose turn it is |
-| `activity.session.draft.paused` | `team_draft_paused` | the organizer who started the draft |
 | `activity.session.draft.completed` | `team_draft_completed` | every drafted player |
 | `activity.session.draft.cancelled` | `team_draft_cancelled` | people going (not when the session ended) |
 | `activity.session.voting.opened` | `team_voting_opened` | people going, except the author |

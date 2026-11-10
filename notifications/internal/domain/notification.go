@@ -38,7 +38,6 @@ const (
 	// so the client can deep-link to the right view.
 	NotificationTypeTeamDraftCaptainSelected NotificationType = "team_draft_captain_selected"
 	NotificationTypeTeamDraftYourTurn        NotificationType = "team_draft_your_turn"
-	NotificationTypeTeamDraftPaused          NotificationType = "team_draft_paused"
 	NotificationTypeTeamDraftCompleted       NotificationType = "team_draft_completed"
 	NotificationTypeTeamDraftCancelled       NotificationType = "team_draft_cancelled"
 	NotificationTypeTeamVotingOpened         NotificationType = "team_voting_opened"

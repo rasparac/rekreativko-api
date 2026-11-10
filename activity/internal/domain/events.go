@@ -55,19 +55,15 @@ const (
 	EventActivitySessionTeamsReset        = "activity.session.teams_reset"
 
 	// Team draft events
-	EventActivitySessionDraftStarted         = "activity.session.draft.started"
-	EventActivitySessionDraftPlayerPicked    = "activity.session.draft.player_picked"
-	EventActivitySessionDraftTurnChanged     = "activity.session.draft.turn_changed"
-	EventActivitySessionDraftPlayerDropped   = "activity.session.draft.player_dropped"
-	EventActivitySessionDraftCompleted       = "activity.session.draft.completed"
-	EventActivitySessionDraftPaused          = "activity.session.draft.paused"
-	EventActivitySessionDraftCaptainReplaced = "activity.session.draft.captain_replaced"
+	EventActivitySessionDraftStarted      = "activity.session.draft.started"
+	EventActivitySessionDraftPlayerPicked = "activity.session.draft.player_picked"
+	EventActivitySessionDraftTurnChanged  = "activity.session.draft.turn_changed"
+	EventActivitySessionDraftCompleted    = "activity.session.draft.completed"
 
 	// Team voting events
 	EventActivitySessionVotingOpened            = "activity.session.voting.opened"
 	EventActivitySessionVotingProposalAdded     = "activity.session.voting.proposal_created"
 	EventActivitySessionVotingVoteCast          = "activity.session.voting.vote_cast"
-	EventActivitySessionVotingPlayerRemoved     = "activity.session.voting.player_removed"
 	EventActivitySessionVotingVoteRetracted     = "activity.session.voting.vote_retracted"
 	EventActivitySessionVotingProposalWithdrawn = "activity.session.voting.proposal_withdrawn"
 	EventActivitySessionVotingClosed            = "activity.session.voting.closed"
@@ -1299,61 +1295,6 @@ func NewDraftTurnChangedEvent(d *TeamDraft) *DraftTurnChangedEvent {
 	}
 }
 
-// DraftPlayerDroppedEvent is raised when a picked player stops going.
-type DraftPlayerDroppedEvent struct {
-	draftEventBase
-	UserID       uuid.UUID `json:"user_id"`
-	TeamPosition int       `json:"team_position"`
-}
-
-func NewDraftPlayerDroppedEvent(d *TeamDraft, pick DraftPick) *DraftPlayerDroppedEvent {
-	return &DraftPlayerDroppedEvent{
-		draftEventBase: newDraftEventBase(d, EventActivitySessionDraftPlayerDropped),
-		UserID:         pick.userID,
-		TeamPosition:   int(pick.side),
-	}
-}
-
-// DraftPausedEvent is raised when a captain stops going - the organizer must
-// name a replacement (or cancel).
-type DraftPausedEvent struct {
-	draftEventBase
-	Reason       DraftPauseReason `json:"reason"`
-	TeamPosition int              `json:"team_position"`
-	CaptainID    uuid.UUID        `json:"captain_id"` // the captain who left
-	StartedBy    uuid.UUID        `json:"started_by"` // the organizer who can resolve it
-}
-
-func NewDraftPausedEvent(d *TeamDraft, side DraftSide, captainID uuid.UUID) *DraftPausedEvent {
-	return &DraftPausedEvent{
-		draftEventBase: newDraftEventBase(d, EventActivitySessionDraftPaused),
-		Reason:         d.pausedReason,
-		TeamPosition:   int(side),
-		CaptainID:      captainID,
-		StartedBy:      d.startedBy,
-	}
-}
-
-// DraftCaptainReplacedEvent is raised when the organizer names a new captain.
-// Resumed is true when that filled the last vacancy and picking continues.
-type DraftCaptainReplacedEvent struct {
-	draftEventBase
-	TeamPosition int       `json:"team_position"`
-	CaptainID    uuid.UUID `json:"captain_id"` // the new captain
-	ReplacedBy   uuid.UUID `json:"replaced_by"`
-	Resumed      bool      `json:"resumed"`
-}
-
-func NewDraftCaptainReplacedEvent(d *TeamDraft, side DraftSide, captainID, replacedBy uuid.UUID, resumed bool) *DraftCaptainReplacedEvent {
-	return &DraftCaptainReplacedEvent{
-		draftEventBase: newDraftEventBase(d, EventActivitySessionDraftCaptainReplaced),
-		TeamPosition:   int(side),
-		CaptainID:      captainID,
-		ReplacedBy:     replacedBy,
-		Resumed:        resumed,
-	}
-}
-
 // DraftCompletedEvent carries both final rosters (index = team position). The
 // resulting teams follow as teams_created + team_assigned events.
 type DraftCompletedEvent struct {
@@ -1369,7 +1310,7 @@ func NewDraftCompletedEvent(d *TeamDraft) *DraftCompletedEvent {
 }
 
 // DraftCancelledEvent is raised when a draft stops without result. CancelledBy
-// is uuid.Nil when it was cancelled automatically (not_enough_players).
+// is uuid.Nil when the session was auto-completed.
 // ParticipantUserIDs are the people going at that moment, so consumers can
 // notify them without querying activity; empty when the session ended (its
 // own session_cancelled event already reaches everyone).
@@ -1512,20 +1453,6 @@ func NewProposalWithdrawnEvent(r *TeamVotingRound, p *TeamProposal, droppedVoter
 	}
 }
 
-// VotingPlayerRemovedEvent is raised when someone stops going mid-vote: they
-// drop out of every proposal and lose their vote.
-type VotingPlayerRemovedEvent struct {
-	votingEventBase
-	UserID uuid.UUID `json:"user_id"`
-}
-
-func NewVotingPlayerRemovedEvent(r *TeamVotingRound, userID uuid.UUID) *VotingPlayerRemovedEvent {
-	return &VotingPlayerRemovedEvent{
-		votingEventBase: newVotingEventBase(r, EventActivitySessionVotingPlayerRemoved),
-		UserID:          userID,
-	}
-}
-
 // VotingClosedEvent is raised when the organizer closes voting. Either
 // WinnerProposalID is set (its teams follow as teams_created + team_assigned
 // events) or KeptCurrent is true (nothing changes). ParticipantUserIDs are
@@ -1549,9 +1476,8 @@ func NewVotingClosedEvent(r *TeamVotingRound, closedBy uuid.UUID, participants [
 }
 
 // VotingCancelledEvent is raised when a round ends without result.
-// ParticipantUserIDs are the people going when it was cancelled for
-// not_enough_players; empty for teams_replaced and session_ended, which
-// consumers learn about from their own events.
+// ParticipantUserIDs is empty: consumers learn about teams_replaced and
+// session_ended from their own events.
 type VotingCancelledEvent struct {
 	votingEventBase
 	Reason             VotingCancelReason `json:"reason"`

@@ -341,13 +341,10 @@ CREATE TABLE IF NOT EXISTS activity.session_team_draft(
     session_id uuid NOT NULL REFERENCES activity.session(id),
     -- 'snake' (A,B,B,A) or 'alternate' (A,B,A,B)
     pick_order varchar(20) NOT NULL,
-    -- active | paused (a captain left) | completed | cancelled
+    -- active | completed | cancelled
     status varchar(20) NOT NULL DEFAULT 'active',
-    -- captain_left while paused
-    paused_reason varchar(50) DEFAULT NULL,
-    -- NULL while that side's captain left and the draft is paused
-    captain_a_id uuid DEFAULT NULL,
-    captain_b_id uuid DEFAULT NULL,
+    captain_a_id uuid NOT NULL,
+    captain_b_id uuid NOT NULL,
     -- team setup applied when the draft completes (always 2 teams)
     min_players_per_team smallint DEFAULT NULL CHECK (min_players_per_team IS NULL OR min_players_per_team > 0),
     team_colors text[] DEFAULT NULL,
@@ -361,9 +358,9 @@ CREATE TABLE IF NOT EXISTS activity.session_team_draft(
     cancel_reason varchar(50) DEFAULT NULL
 );
 
--- at most one running (active or paused) draft per session
+-- at most one running draft per session
 CREATE UNIQUE INDEX uq_session_team_draft_active ON activity.session_team_draft(session_id)
-WHERE (status IN ('active', 'paused'));
+WHERE (status = 'active');
 
 -- latest draft of a session
 CREATE INDEX idx_session_team_draft_session ON activity.session_team_draft(session_id, started_at DESC);

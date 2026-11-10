@@ -43,7 +43,6 @@ type Subscriber struct {
 	sessionInviteExpiredHandler  *sessionInviteExpiredHandler
 	draftStartedHandler          *draftStartedHandler
 	draftTurnChangedHandler      *draftTurnChangedHandler
-	draftPausedHandler           *draftPausedHandler
 	draftCompletedHandler        *draftCompletedHandler
 	draftCancelledHandler        *draftCancelledHandler
 	votingOpenedHandler          *votingOpenedHandler
@@ -85,7 +84,6 @@ func NewSubscriber(
 		sessionInviteExpiredHandler:  &sessionInviteExpiredHandler{notifications: notifications, logger: logger},
 		draftStartedHandler:          &draftStartedHandler{notifications: notifications, logger: logger},
 		draftTurnChangedHandler:      &draftTurnChangedHandler{notifications: notifications, logger: logger},
-		draftPausedHandler:           &draftPausedHandler{notifications: notifications, logger: logger},
 		draftCompletedHandler:        &draftCompletedHandler{notifications: notifications, logger: logger},
 		draftCancelledHandler:        &draftCancelledHandler{notifications: notifications, logger: logger},
 		votingOpenedHandler:          &votingOpenedHandler{notifications: notifications, logger: logger},
@@ -127,7 +125,6 @@ func (s *Subscriber) Subscribe(ctx context.Context) error {
 		{"activity.session_invite.expired", s.sessionInviteExpiredHandler.Handle},
 		{"activity.session.draft.started", s.draftStartedHandler.Handle},
 		{"activity.session.draft.turn_changed", s.draftTurnChangedHandler.Handle},
-		{"activity.session.draft.paused", s.draftPausedHandler.Handle},
 		{"activity.session.draft.completed", s.draftCompletedHandler.Handle},
 		{"activity.session.draft.cancelled", s.draftCancelledHandler.Handle},
 		{"activity.session.voting.opened", s.votingOpenedHandler.Handle},

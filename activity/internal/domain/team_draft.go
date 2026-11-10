@@ -60,29 +60,21 @@ type DraftStatus string
 
 const (
 	DraftStatusActive    DraftStatus = "active"
-	DraftStatusPaused    DraftStatus = "paused" // a captain left; waiting for the organizer to name a new one
 	DraftStatusCompleted DraftStatus = "completed"
 	DraftStatusCancelled DraftStatus = "cancelled"
-)
-
-type DraftPauseReason string
-
-const (
-	DraftPauseReasonCaptainLeft DraftPauseReason = "captain_left"
 )
 
 type DraftCancelReason string
 
 const (
-	DraftCancelReasonOrganizer        DraftCancelReason = "organizer"          // creator/admin cancelled it
-	DraftCancelReasonNotEnoughPlayers DraftCancelReason = "not_enough_players" // going count fell below TeamConfig.PlayersNeeded
-	DraftCancelReasonSessionEnded     DraftCancelReason = "session_ended"      // session was cancelled or completed mid-draft
-	DraftCancelReasonRosterChanged    DraftCancelReason = "roster_changed"     // someone stopped going: team formation was reset
-	DraftCancelReasonTeamsReset       DraftCancelReason = "teams_reset"        // an organizer reset team formation
+	DraftCancelReasonOrganizer     DraftCancelReason = "organizer"      // creator/admin cancelled it
+	DraftCancelReasonSessionEnded  DraftCancelReason = "session_ended"  // session was cancelled or completed mid-draft
+	DraftCancelReasonRosterChanged DraftCancelReason = "roster_changed" // someone stopped going: team formation was reset
+	DraftCancelReasonTeamsReset    DraftCancelReason = "teams_reset"    // an organizer reset team formation
 )
 
 // DraftPick is one player picked by a captain. PickNumber is the turn it was
-// made on, so it stays unique even after a picked player drops out.
+// made on.
 type DraftPick struct {
 	pickNumber int
 	side       DraftSide
@@ -105,10 +97,8 @@ func (p DraftPick) PickedAt() time.Time { return p.pickedAt }
 // (Session.ApplyDraftTeams), so cancelling never changes them. There is no
 // turn timeout; the organizer cancels a stuck draft.
 //
-// A captain who stops going pauses the draft and leaves their side's captain
-// vacant (uuid.Nil) until the organizer names a replacement. If fewer people
-// are going than the teams need (TeamConfig.PlayersNeeded), the draft is
-// cancelled.
+// Anyone who stops going resets team formation, which cancels the draft (see
+// Reset and Session.ResetTeams).
 //
 // Every method that depends on who is going takes confirmed - the user IDs
 // currently going/promoted - read by the caller under the session lock.
@@ -118,9 +108,8 @@ type TeamDraft struct {
 	activityGroupID *uuid.UUID
 	pickOrder       PickOrder
 	status          DraftStatus
-	pausedReason    DraftPauseReason
 	cancelReason    DraftCancelReason
-	captains        [2]uuid.UUID // index = DraftSide; uuid.Nil = vacant (paused)
+	captains        [2]uuid.UUID // index = DraftSide
 	teamConfig      TeamConfig   // always 2 teams; min players and colors as requested
 	turn            int          // 0-based index of the next turn
 	version         int          // bumped on every change, so clients can drop stale snapshots
@@ -202,7 +191,7 @@ func NewTeamDraft(input TeamDraftInput) (*TeamDraft, error) {
 	}
 
 	d.addEvent(NewDraftStartedEvent(d))
-	d.settle(input.Confirmed, true, now)
+	d.settle(input.Confirmed, now)
 
 	return d, nil
 }
@@ -214,7 +203,6 @@ func ReconstructTeamDraft(
 	activityGroupID *uuid.UUID,
 	pickOrder PickOrder,
 	status DraftStatus,
-	pausedReason DraftPauseReason,
 	cancelReason DraftCancelReason,
 	captains [2]uuid.UUID,
 	teamConfig TeamConfig,
@@ -231,7 +219,6 @@ func ReconstructTeamDraft(
 		activityGroupID: activityGroupID,
 		pickOrder:       pickOrder,
 		status:          status,
-		pausedReason:    pausedReason,
 		cancelReason:    cancelReason,
 		captains:        captains,
 		teamConfig:      teamConfig,
@@ -274,113 +261,12 @@ func (d *TeamDraft) Pick(session *Session, captainID, userID uuid.UUID, confirme
 	d.addEvent(NewDraftPlayerPickedEvent(d, pick, captainID))
 
 	d.turn++
-	d.settle(confirmed, true, now)
+	d.settle(confirmed, now)
 
 	return nil
 }
 
-// ReplaceCaptain names a new captain for a side left vacant by a captain who
-// stopped going. The new captain must be going and either on that side
-// already or still unpicked. Once both sides have a captain the draft resumes
-// where it stopped (and completes if nobody is left to pick).
-func (d *TeamDraft) ReplaceCaptain(
-	session *Session,
-	requesterID uuid.UUID,
-	requesterRole MemberRole,
-	side DraftSide,
-	userID uuid.UUID,
-	confirmed []uuid.UUID,
-) error {
-	if !session.canManageSession(requesterID, requesterRole) {
-		return ErrUnauthorized
-	}
-
-	if d.status != DraftStatusPaused {
-		if d.status == DraftStatusActive {
-			return ErrDraftNotPaused
-		}
-		return ErrDraftNotActive
-	}
-
-	if err := session.requireTeamsChangeable(); err != nil {
-		return err
-	}
-
-	if !side.IsValid() || d.captains[side] != uuid.Nil {
-		return ErrInvalidDraftCaptains
-	}
-
-	if !slices.Contains(confirmed, userID) {
-		return ErrDraftCaptainNotConfirmed
-	}
-
-	pickIndex := slices.IndexFunc(d.picks, func(p DraftPick) bool { return p.userID == userID })
-	switch {
-	case pickIndex >= 0 && d.picks[pickIndex].side != side:
-		return ErrInvalidDraftCaptains // on the other team
-	case pickIndex < 0 && !slices.Contains(d.Available(confirmed), userID):
-		return ErrInvalidDraftCaptains // the other captain
-	case pickIndex >= 0:
-		// Promoted from their own team: the captain is listed separately.
-		d.picks = slices.Delete(d.picks, pickIndex, pickIndex+1)
-	}
-
-	d.captains[side] = userID
-	d.version++
-
-	now := time.Now().UTC()
-	resumed := d.captains[side.other()] != uuid.Nil
-	if resumed {
-		d.status = DraftStatusActive
-		d.pausedReason = ""
-	}
-
-	d.addEvent(NewDraftCaptainReplacedEvent(d, side, userID, requesterID, resumed))
-
-	if resumed {
-		d.settle(confirmed, true, now)
-	}
-
-	return nil
-}
-
-// AttendeeLeft reacts to userID no longer going (not_going/maybe, RSVP
-// cancelled, removed); confirmed no longer contains them. Too few people left
-// cancels the draft; a captain leaving pauses it; a picked player is dropped
-// from their side; anyone leaving may complete it (nobody left to pick).
-func (d *TeamDraft) AttendeeLeft(userID uuid.UUID, confirmed []uuid.UUID) {
-	if !d.IsRunning() {
-		return
-	}
-
-	// The pool shrank even when nothing else changes, so the state a client
-	// renders is always different.
-	d.version++
-	now := time.Now().UTC()
-
-	if !d.teamConfig.HasEnoughPlayers(len(confirmed)) {
-		d.cancel(DraftCancelReasonNotEnoughPlayers, uuid.Nil, confirmed, now)
-		return
-	}
-
-	if side, isCaptain := d.captainSide(userID); isCaptain {
-		d.captains[side] = uuid.Nil
-		d.status = DraftStatusPaused
-		d.pausedReason = DraftPauseReasonCaptainLeft
-		d.addEvent(NewDraftPausedEvent(d, side, userID))
-		return
-	}
-
-	if i := slices.IndexFunc(d.picks, func(p DraftPick) bool { return p.userID == userID }); i >= 0 {
-		dropped := d.picks[i]
-		d.picks = slices.Delete(d.picks, i, i+1)
-		d.addEvent(NewDraftPlayerDroppedEvent(d, dropped))
-	}
-
-	d.settle(confirmed, false, now)
-}
-
-// Cancel stops a running (active or paused) draft; the session's teams stay
+// Cancel stops a running draft; the session's teams stay
 // as they were. confirmed (the people going) is who gets told.
 func (d *TeamDraft) Cancel(session *Session, requesterID uuid.UUID, requesterRole MemberRole, confirmed []uuid.UUID) error {
 	if !session.canManageSession(requesterID, requesterRole) {
@@ -425,20 +311,14 @@ func (d *TeamDraft) Reset(reason DraftCancelReason, by uuid.UUID) {
 func (d *TeamDraft) cancel(reason DraftCancelReason, by uuid.UUID, participants []uuid.UUID, now time.Time) {
 	d.status = DraftStatusCancelled
 	d.cancelReason = reason
-	d.pausedReason = ""
 	d.endedAt = &now
 
 	d.addEvent(NewDraftCancelledEvent(d, by, participants))
 }
 
-// settle completes an active draft once nobody is left to pick. announceTurn
-// emits turn_changed (after a start, a pick or a resume, someone new must be
-// told it's their turn).
-func (d *TeamDraft) settle(confirmed []uuid.UUID, announceTurn bool, now time.Time) {
-	if d.status != DraftStatusActive {
-		return
-	}
-
+// settle completes the draft once nobody is left to pick; otherwise the next
+// captain is told it's their turn.
+func (d *TeamDraft) settle(confirmed []uuid.UUID, now time.Time) {
 	if len(d.Available(confirmed)) == 0 {
 		d.status = DraftStatusCompleted
 		d.endedAt = &now
@@ -446,26 +326,17 @@ func (d *TeamDraft) settle(confirmed []uuid.UUID, announceTurn bool, now time.Ti
 		return
 	}
 
-	if announceTurn {
-		d.addEvent(NewDraftTurnChangedEvent(d))
-	}
+	d.addEvent(NewDraftTurnChangedEvent(d))
 }
 
 func (d *TeamDraft) requireActive() error {
-	switch d.status {
-	case DraftStatusActive:
-		return nil
-	case DraftStatusPaused:
-		return ErrDraftPaused
-	default:
+	if d.status != DraftStatusActive {
 		return ErrDraftNotActive
 	}
+	return nil
 }
 
 func (d *TeamDraft) captainSide(userID uuid.UUID) (DraftSide, bool) {
-	if userID == uuid.Nil {
-		return 0, false
-	}
 	switch userID {
 	case d.captains[DraftSideA]:
 		return DraftSideA, true
@@ -492,13 +363,10 @@ func (d *TeamDraft) Available(confirmed []uuid.UUID) []uuid.UUID {
 	return available
 }
 
-// Roster returns a side's players: the captain first (when not vacant), then
-// picks in order.
+// Roster returns a side's players: the captain first, then picks in order.
 func (d *TeamDraft) Roster(side DraftSide) []uuid.UUID {
 	roster := make([]uuid.UUID, 0, len(d.picks)+1)
-	if d.captains[side] != uuid.Nil {
-		roster = append(roster, d.captains[side])
-	}
+	roster = append(roster, d.captains[side])
 	for _, p := range d.picks {
 		if p.side == side {
 			roster = append(roster, p.userID)
@@ -533,23 +401,19 @@ func (d *TeamDraft) CurrentSide() DraftSide {
 	return d.pickOrder.sideForTurn(d.turn)
 }
 
-// CurrentCaptainID is the captain whose turn it is: nil once the draft ended,
-// or while paused with that side's captain vacant.
+// CurrentCaptainID is the captain whose turn it is: nil once the draft ended.
 func (d *TeamDraft) CurrentCaptainID() *uuid.UUID {
 	if !d.IsRunning() {
 		return nil
 	}
 	captain := d.captains[d.CurrentSide()]
-	if captain == uuid.Nil {
-		return nil
-	}
 	return &captain
 }
 
-// IsRunning reports whether the draft is still going (active or paused) - a
-// running draft blocks manual team changes and a second draft.
+// IsRunning reports whether the draft is still going - a running draft blocks
+// manual team changes and a second draft.
 func (d *TeamDraft) IsRunning() bool {
-	return d.status == DraftStatusActive || d.status == DraftStatusPaused
+	return d.status == DraftStatusActive
 }
 
 func (d *TeamDraft) IsCompleted() bool { return d.status == DraftStatusCompleted }
@@ -559,7 +423,6 @@ func (d *TeamDraft) SessionID() uuid.UUID             { return d.sessionID }
 func (d *TeamDraft) ActivityGroupID() *uuid.UUID      { return d.activityGroupID }
 func (d *TeamDraft) PickOrder() PickOrder             { return d.pickOrder }
 func (d *TeamDraft) Status() DraftStatus              { return d.status }
-func (d *TeamDraft) PausedReason() DraftPauseReason   { return d.pausedReason }
 func (d *TeamDraft) CancelReason() DraftCancelReason  { return d.cancelReason }
 func (d *TeamDraft) Captains() [2]uuid.UUID           { return d.captains }
 func (d *TeamDraft) TeamConfig() TeamConfig           { return d.teamConfig }

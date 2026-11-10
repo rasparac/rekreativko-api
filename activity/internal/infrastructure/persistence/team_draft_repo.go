@@ -45,9 +45,8 @@ func (m *teamDraftManager) CreateDraft(ctx context.Context, draft *domain.TeamDr
 	query := `
 		INSERT INTO activity.session_team_draft (
 			id, session_id, pick_order, status, captain_a_id, captain_b_id,
-			min_players_per_team, team_colors, turn, started_by, started_at, ended_at, cancel_reason, version,
-			paused_reason
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			min_players_per_team, team_colors, turn, started_by, started_at, ended_at, cancel_reason, version
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`
 
 	captains := draft.Captains()
@@ -60,8 +59,8 @@ func (m *teamDraftManager) CreateDraft(ctx context.Context, draft *domain.TeamDr
 		draft.SessionID(),
 		draft.PickOrder().String(),
 		string(draft.Status()),
-		nullCaptain(captains[domain.DraftSideA]),
-		nullCaptain(captains[domain.DraftSideB]),
+		captains[domain.DraftSideA],
+		captains[domain.DraftSideB],
 		nullInt32(config.MinPlayersPerTeam()),
 		nullColors(config.Colors()),
 		draft.Turn(),
@@ -70,7 +69,6 @@ func (m *teamDraftManager) CreateDraft(ctx context.Context, draft *domain.TeamDr
 		draft.EndedAt(),
 		nullCancelReason(draft.CancelReason()),
 		draft.Version(),
-		nullPauseReason(draft.PausedReason()),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create team draft: %w", err)
@@ -87,8 +85,7 @@ func (m *teamDraftManager) UpdateDraft(ctx context.Context, draft *domain.TeamDr
 	result, err := q.Exec(
 		ctx,
 		`UPDATE activity.session_team_draft
-		SET status = $2, turn = $3, ended_at = $4, cancel_reason = $5, version = $6,
-			paused_reason = $7, captain_a_id = $8, captain_b_id = $9
+		SET status = $2, turn = $3, ended_at = $4, cancel_reason = $5, version = $6
 		WHERE id = $1`,
 		draft.ID(),
 		string(draft.Status()),
@@ -96,9 +93,6 @@ func (m *teamDraftManager) UpdateDraft(ctx context.Context, draft *domain.TeamDr
 		draft.EndedAt(),
 		nullCancelReason(draft.CancelReason()),
 		draft.Version(),
-		nullPauseReason(draft.PausedReason()),
-		nullCaptain(draft.Captains()[domain.DraftSideA]),
-		nullCaptain(draft.Captains()[domain.DraftSideB]),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update team draft: %w", err)
@@ -135,7 +129,7 @@ func (m *teamDraftManager) insertPicks(ctx context.Context, draft *domain.TeamDr
 	return nil
 }
 
-// GetActiveDraft returns the session's running (active or paused) draft, or
+// GetActiveDraft returns the session's running draft, or
 // domain.ErrDraftNotFound when there is none.
 func (m *teamDraftManager) DeleteSessionDrafts(ctx context.Context, sessionID uuid.UUID) error {
 	q := m.tx.Querier(ctx)
@@ -154,7 +148,7 @@ func (m *teamDraftManager) DeleteSessionDrafts(ctx context.Context, sessionID uu
 }
 
 func (m *teamDraftManager) GetActiveDraft(ctx context.Context, sessionID uuid.UUID) (*domain.TeamDraft, error) {
-	return m.getDraft(ctx, `WHERE d.session_id = $1 AND d.status IN ('active', 'paused')`, sessionID)
+	return m.getDraft(ctx, `WHERE d.session_id = $1 AND d.status = 'active'`, sessionID)
 }
 
 // GetLatestDraft returns the session's most recent draft in any status, or
@@ -166,7 +160,7 @@ func (m *teamDraftManager) GetLatestDraft(ctx context.Context, sessionID uuid.UU
 func (m *teamDraftManager) getDraft(ctx context.Context, where string, sessionID uuid.UUID) (*domain.TeamDraft, error) {
 	query := `
 		SELECT
-			d.id, d.session_id, s.activity_group_id, d.pick_order, d.status, d.paused_reason,
+			d.id, d.session_id, s.activity_group_id, d.pick_order, d.status,
 			d.captain_a_id, d.captain_b_id, d.min_players_per_team, d.team_colors,
 			d.turn, d.version, d.started_by, d.started_at, d.ended_at, d.cancel_reason
 		FROM activity.session_team_draft d
@@ -174,19 +168,19 @@ func (m *teamDraftManager) getDraft(ctx context.Context, where string, sessionID
 	` + where
 
 	var (
-		id, draftSessionID, startedBy       uuid.UUID
-		activityGroupID, captainA, captainB uuid.NullUUID
-		pickOrder, status                   string
-		playersPerTeam                      sql.NullInt32
-		colors                              []string
-		turn, version                       int
-		startedAt                           time.Time
-		endedAt                             *time.Time
-		cancelReason, pausedReason          sql.NullString
+		id, draftSessionID, startedBy, captainA, captainB uuid.UUID
+		activityGroupID                                   uuid.NullUUID
+		pickOrder, status                                 string
+		playersPerTeam                                    sql.NullInt32
+		colors                                            []string
+		turn, version                                     int
+		startedAt                                         time.Time
+		endedAt                                           *time.Time
+		cancelReason                                      sql.NullString
 	)
 
 	err := m.tx.Querier(ctx).QueryRow(ctx, query, sessionID).Scan(
-		&id, &draftSessionID, &activityGroupID, &pickOrder, &status, &pausedReason,
+		&id, &draftSessionID, &activityGroupID, &pickOrder, &status,
 		&captainA, &captainB, &playersPerTeam, &colors,
 		&turn, &version, &startedBy, &startedAt, &endedAt, &cancelReason,
 	)
@@ -219,9 +213,8 @@ func (m *teamDraftManager) getDraft(ctx context.Context, where string, sessionID
 		groupID,
 		domain.PickOrder(pickOrder),
 		domain.DraftStatus(status),
-		domain.DraftPauseReason(pausedReason.String),
 		domain.DraftCancelReason(cancelReason.String),
-		[2]uuid.UUID{captainA.UUID, captainB.UUID}, // NULL = vacant = uuid.Nil
+		[2]uuid.UUID{captainA, captainB},
 		domain.ReconstructTeamConfig(2, ppt, colors),
 		turn,
 		version,
@@ -279,18 +272,6 @@ func nullColors(colors []string) []string {
 		return nil
 	}
 	return colors
-}
-
-// nullCaptain stores a vacant captain (uuid.Nil, while paused) as NULL.
-func nullCaptain(id uuid.UUID) uuid.NullUUID {
-	return uuid.NullUUID{UUID: id, Valid: id != uuid.Nil}
-}
-
-func nullPauseReason(reason domain.DraftPauseReason) sql.NullString {
-	if reason == "" {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: string(reason), Valid: true}
 }
 
 func nullCancelReason(reason domain.DraftCancelReason) sql.NullString {

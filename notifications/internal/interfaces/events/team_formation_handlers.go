@@ -130,34 +130,6 @@ func (h *draftTurnChangedHandler) Handle(ctx context.Context, payload []byte) er
 		})
 }
 
-// draftPausedHandler tells the organizer who started the draft that a captain
-// left and a replacement is needed.
-type draftPausedHandler struct {
-	notifications notificationCreator
-	logger        *logger.Logger
-}
-
-func (h *draftPausedHandler) Handle(ctx context.Context, payload []byte) error {
-	var event draftPausedEvent
-	if err := decodeEvent(payload, &event); err != nil {
-		return err
-	}
-	ctx = api.WithEventID(ctx, event.EventID.String())
-
-	return notifyEach(ctx, h.notifications, h.logger, event.EventID, []uuid.UUID{event.StartedBy}, uuid.Nil,
-		domain.NotificationTypeTeamDraftPaused,
-		func(uuid.UUID) map[string]any {
-			return map[string]any{
-				"session_id":    event.SessionID,
-				"draft_id":      event.DraftID,
-				"reason":        event.Reason,
-				"team_position": event.TeamPosition,
-				"captain_id":    event.CaptainID,
-				"screen":        domain.ScreenTeamDraft,
-			}
-		})
-}
-
 // draftCompletedHandler tells every drafted player (captains included) which
 // team they ended up on.
 type draftCompletedHandler struct {

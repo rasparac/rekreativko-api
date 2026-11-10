@@ -21,12 +21,11 @@ const (
 type VotingCancelReason string
 
 const (
-	VotingCancelReasonNotEnoughPlayers VotingCancelReason = "not_enough_players" // going count fell below PlayersNeeded
-	VotingCancelReasonTeamsReplaced    VotingCancelReason = "teams_replaced"     // teams were recreated while voting
-	VotingCancelReasonSessionEnded     VotingCancelReason = "session_ended"      // session was cancelled or completed while voting
-	VotingCancelReasonNoProposals      VotingCancelReason = "no_proposals"       // the last proposal was withdrawn
-	VotingCancelReasonRosterChanged    VotingCancelReason = "roster_changed"     // someone stopped going: team formation was reset
-	VotingCancelReasonTeamsReset       VotingCancelReason = "teams_reset"        // an organizer reset team formation
+	VotingCancelReasonTeamsReplaced VotingCancelReason = "teams_replaced" // teams were recreated while voting
+	VotingCancelReasonSessionEnded  VotingCancelReason = "session_ended"  // session was cancelled or completed while voting
+	VotingCancelReasonNoProposals   VotingCancelReason = "no_proposals"   // the last proposal was withdrawn
+	VotingCancelReasonRosterChanged VotingCancelReason = "roster_changed" // someone stopped going: team formation was reset
+	VotingCancelReasonTeamsReset    VotingCancelReason = "teams_reset"    // an organizer reset team formation
 )
 
 // Every write of a round rewrites its proposals under the session lock that
@@ -126,16 +125,6 @@ func (p *TeamProposal) ID() uuid.UUID        { return p.id }
 func (p *TeamProposal) AuthorID() uuid.UUID  { return p.authorID }
 func (p *TeamProposal) CreatedAt() time.Time { return p.createdAt }
 func (p *TeamProposal) Teams() [][]uuid.UUID { return p.teams }
-
-func (p *TeamProposal) remove(userID uuid.UUID) bool {
-	for i, team := range p.teams {
-		if j := slices.Index(team, userID); j >= 0 {
-			p.teams[i] = slices.Delete(team, j, j+1)
-			return true
-		}
-	}
-	return false
-}
 
 // TeamVotingRound is one round of team proposals and voting for a session
 // (mobile decisions D10-D16). A round opens with its first proposal; everyone
@@ -586,29 +575,6 @@ func (r *TeamVotingRound) Close(
 	return winning, nil
 }
 
-// AttendeeLeft reacts to userID no longer going. Too few people left cancels
-// the round; otherwise they drop out of every proposal (which may leave a team
-// below the minimum - the organizer fixes that after) and lose their vote.
-func (r *TeamVotingRound) AttendeeLeft(userID uuid.UUID, confirmed []uuid.UUID) {
-	if r.status != VotingStatusOpen {
-		return
-	}
-
-	r.version++
-
-	if len(confirmed) < r.PlayersNeeded() {
-		r.cancel(VotingCancelReasonNotEnoughPlayers, confirmed)
-		return
-	}
-
-	for _, p := range r.proposals {
-		p.remove(userID)
-	}
-	delete(r.votes, userID)
-
-	r.addEvent(NewVotingPlayerRemovedEvent(r, userID))
-}
-
 // TeamsReplaced cancels an open round when the session's teams were recreated
 // underneath it: its team count and "keep current" option no longer match.
 func (r *TeamVotingRound) TeamsReplaced() {
@@ -703,7 +669,7 @@ func (r *TeamVotingRound) minPerTeam() int {
 	return *r.minPlayersPerTeam
 }
 
-// PlayersNeeded is how many must be going for voting to continue: team count
+// PlayersNeeded is how many must be going to open a round: team count
 // x minimum when the session has teams, one per team otherwise.
 func (r *TeamVotingRound) PlayersNeeded() int {
 	return r.teamCount * r.minPerTeam()

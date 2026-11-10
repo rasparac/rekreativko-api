@@ -102,7 +102,6 @@ type (
 	teamDraftService interface {
 		StartDraft(ctx context.Context, params application.StartDraftParams) (*application.TeamDraftState, error)
 		Pick(ctx context.Context, params application.DraftPickParams) (*application.TeamDraftState, error)
-		ReplaceCaptain(ctx context.Context, params application.ReplaceDraftCaptainParams) (*application.TeamDraftState, error)
 		CancelDraft(ctx context.Context, params application.CancelDraftParams) (*application.TeamDraftState, error)
 		GetDraft(ctx context.Context, sessionID uuid.UUID) (*application.TeamDraftState, error)
 	}
@@ -289,10 +288,6 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"POST /api/v1/sessions/{id}/draft/picks",
 		middlewares.ThenFunc(h.PickDraftPlayer),
-	)
-	mux.Handle(
-		"PUT /api/v1/sessions/{id}/draft/captains",
-		middlewares.ThenFunc(h.ReplaceDraftCaptain),
 	)
 	mux.Handle(
 		"POST /api/v1/sessions/{id}/draft",
