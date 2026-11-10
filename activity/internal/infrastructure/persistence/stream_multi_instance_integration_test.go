@@ -100,7 +100,7 @@ func publishOutbox(t *testing.T, env *sessionTeamTestEnv, publisher events.Messa
 	require.NoError(t, rows.Err())
 
 	for _, r := range pending {
-		require.NoError(t, publisher.Publish(env.ctx, r.topic, r.payload))
+		require.NoError(t, publisher.Publish(env.ctx, r.topic, r.id.String(), r.payload))
 		_, err := env.txManager.Querier(env.ctx).Exec(env.ctx,
 			`UPDATE activity.event_outbox SET published_at = NOW() WHERE event_id = $1`, r.id)
 		require.NoError(t, err)
