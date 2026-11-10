@@ -79,7 +79,7 @@ func (h *Handler) InviteMember(w http.ResponseWriter, r *http.Request) {
 // RequestToJoinGroup handles POST /api/v1/activity-groups/{groupId}/join-requests
 //
 //	@Summary		Request to join an activity group
-//	@Description	Lets the authenticated user self-request to join a public activity group. Creates a pending membership - an admin or the creator must still approve it before it becomes confirmed.
+//	@Description	Lets the authenticated user self-request to join a public activity group. Creates a pending membership - an admin or the creator must still approve it before it becomes confirmed. Someone who left the group or was rejected may ask again; someone a manager removed may not.
 //	@Tags			Members
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
@@ -87,9 +87,9 @@ func (h *Handler) InviteMember(w http.ResponseWriter, r *http.Request) {
 //	@Success		201		{object}	api.Response[dtos.RequestToJoinGroupResponse]	"Join request created successfully"
 //	@Failure		400		{object}	api.Response[any]								"Invalid request"
 //	@Failure		401		{object}	api.Response[any]								"Unauthorized"
-//	@Failure		403		{object}	api.Response[any]								"Activity group is not open for join requests"
+//	@Failure		403		{object}	api.Response[any]								"Activity group is not open for join requests (activity_group_not_joinable), or a manager removed the caller (removed_from_group)"
 //	@Failure		404		{object}	api.Response[any]								"Activity group not found"
-//	@Failure		409		{object}	api.Response[any]								"Already participating in this group, or the group is full"
+//	@Failure		409		{object}	api.Response[any]								"Already pending or a member of this group (already_participating), or the group is full (activity_group_full)"
 //	@Failure		500		{object}	api.Response[any]								"Internal server error"
 //	@Router			/api/v1/activity-groups/{groupId}/join-requests [post]
 func (h *Handler) RequestToJoinGroup(w http.ResponseWriter, r *http.Request) {

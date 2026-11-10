@@ -65,6 +65,9 @@ func (ms MemberStatus) IsActive() bool {
 	return ms == MemberStatusPending || ms == MemberStatusConfirmed
 }
 
+// CanReJoin reports whether someone whose membership ended with this status
+// may ask to join the group again: after leaving or being rejected they may,
+// after a manager removed them they may not (decided in rekreativko-api-6ev).
 func (ms MemberStatus) CanReJoin() bool {
 	return ms == MemberStatusLeft || ms == MemberStatusRejected
 }
@@ -136,6 +139,40 @@ func NewCreatorMember(activityGroupID, userID uuid.UUID) *Member {
 	}
 
 	return p
+}
+
+// RequireCanRejoin tells why this person can't ask to join again: a manager
+// removed them, or they are already pending or confirmed.
+func (p *Member) RequireCanRejoin() error {
+	switch {
+	case p.status.CanReJoin():
+		return nil
+	case p.status == MemberStatusRemoved:
+		return ErrRemovedFromGroup
+	default:
+		return ErrAlreadyParticipating
+	}
+}
+
+// RequestRejoin turns the ended membership of someone who left or was rejected
+// into a new join request, starting over as a plain member: a group holds one
+// row per person, so the old row is reused. managerUserIDs is only for the
+// raised event's payload, as in NewJoinRequest.
+func (p *Member) RequestRejoin(managerUserIDs []uuid.UUID) error {
+	if err := p.RequireCanRejoin(); err != nil {
+		return err
+	}
+
+	p.role = MemberRoleMember
+	p.status = MemberStatusPending
+	p.isPriority = false
+	p.joinedAt = time.Now().UTC()
+	p.decidedAt = nil
+	p.leftAt = nil
+
+	p.addEvent(NewMemberJoinRequestedEvent(p, managerUserIDs))
+
+	return nil
 }
 
 // NewJoinRequest creates a pending Member from a self-serve join request.
@@ -319,10 +356,6 @@ func (p *Member) changeRole(
 	))
 
 	return nil
-}
-
-func (p *Member) CanReJoin() bool {
-	return p.status == MemberStatusLeft || p.status == MemberStatusRemoved
 }
 
 func (p *Member) SetPriority(

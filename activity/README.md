@@ -38,7 +38,7 @@ Routes, grouped by resource (all under `/api/v1`):
 
 **Sessions**: `POST /sessions`, `GET /sessions`, `GET /sessions/discover`, `GET /sessions/{id}`, `PUT /sessions/{id}`, `POST /sessions/{id}/start`, `POST /sessions/{id}/complete`, `DELETE /sessions/{id}` (cancel), `PATCH /sessions/{id}/visibility`.
 
-**Members**: `POST /activity-groups/{groupId}/members` (invite), `POST /activity-groups/{groupId}/join-requests`, `GET /activity-groups/{groupId}/members`, `GET .../members/{userId}`, `POST .../members/{userId}/approve`, `POST .../members/{userId}/reject`, `PATCH .../members/{userId}/role`, `DELETE .../members/{userId}`, `POST /activity-groups/{groupId}/leave`.
+**Members**: `POST /activity-groups/{groupId}/members` (invite), `POST /activity-groups/{groupId}/join-requests`, `GET /activity-groups/{groupId}/members`, `GET .../members/{userId}`, `POST .../members/{userId}/approve`, `POST .../members/{userId}/reject`, `PATCH .../members/{userId}/role`, `DELETE .../members/{userId}`, `POST /activity-groups/{groupId}/leave`. Someone who left or was rejected can send a new join request (it re-opens their old member row as pending, as a plain member); someone a manager removed gets `403 removed_from_group`, and anyone pending or confirmed `409 already_participating`.
 
 **Invites**: `POST /activity-groups/{groupId}/invites`, `GET /invites`, `POST /invites/{id}/accept`, `POST /invites/{id}/decline`.
 

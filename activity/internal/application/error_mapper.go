@@ -254,6 +254,8 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.Conflict("activity_group_full", "Activity group has reached its member capacity", err)
 	case errors.Is(err, domain.ErrAlreadyParticipating):
 		return domainerror.Conflict("already_participating", "You already have a pending request or membership in this activity group", err)
+	case errors.Is(err, domain.ErrRemovedFromGroup):
+		return domainerror.Forbidden("removed_from_group", "You were removed from this activity group and can't ask to join again", err)
 	case errors.Is(err, domain.ErrUnauthorized):
 		return domainerror.Unauthorized("unauthorized", "Unauthorized to perform this action", err)
 	}

@@ -113,8 +113,10 @@ func (m *memberManager) UpdateMember(ctx context.Context, member *domain.Member)
 			status = $2,
 			is_priority = $3,
 			decided_at = $4,
-			left_at = $5
-		WHERE id = $6
+			left_at = $5,
+			-- a request to join again starts the pending queue over
+			joined_at = $6
+		WHERE id = $7
 	`
 
 	q := m.tx.Querier(ctx)
@@ -127,6 +129,7 @@ func (m *memberManager) UpdateMember(ctx context.Context, member *domain.Member)
 		model.isPriority,
 		model.decidedAt,
 		model.leftAt,
+		model.joinedAt,
 		model.id,
 	)
 	if err != nil {

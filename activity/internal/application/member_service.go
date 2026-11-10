@@ -202,15 +202,23 @@ func (s *MemberService) RequestToJoinGroup(
 			return domain.ErrActivityGroupNotJoinable
 		}
 
-		// Reject if the user already has any relationship with this group
-		// (pending request, confirmed member, etc).
+		// Someone who left or was rejected asks again on their old row (a group
+		// holds one per person); anyone else with a row - pending, confirmed,
+		// removed by a manager - can't ask.
 		existingMember, err := s.memberRepo.GetMemberByGroupAndUser(
 			tCtx,
 			params.ActivityGroupID,
 			params.UserID,
 		)
-		if err == nil && existingMember != nil {
-			return domain.ErrAlreadyParticipating
+		switch {
+		case errors.Is(err, domain.ErrMemberNotFound):
+			existingMember = nil
+		case err != nil:
+			return fmt.Errorf("get member: %w", err)
+		default:
+			if err := existingMember.RequireCanRejoin(); err != nil {
+				return err
+			}
 		}
 
 		// Enforce capacity up front so users aren't left waiting on a request
@@ -250,10 +258,21 @@ func (s *MemberService) RequestToJoinGroup(
 			}
 		}
 
-		member = domain.NewJoinRequest(params.ActivityGroupID, params.UserID, managerUserIDs)
+		if existingMember != nil {
+			member = existingMember
+			if err := member.RequestRejoin(managerUserIDs); err != nil {
+				return err
+			}
 
-		if err := s.memberRepo.CreateMember(tCtx, member); err != nil {
-			return fmt.Errorf("persist member: %w", err)
+			if err := s.memberRepo.UpdateMember(tCtx, member); err != nil {
+				return fmt.Errorf("persist member: %w", err)
+			}
+		} else {
+			member = domain.NewJoinRequest(params.ActivityGroupID, params.UserID, managerUserIDs)
+
+			if err := s.memberRepo.CreateMember(tCtx, member); err != nil {
+				return fmt.Errorf("persist member: %w", err)
+			}
 		}
 
 		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, member.Events()); err != nil {

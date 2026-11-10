@@ -132,6 +132,65 @@ func TestMember_Leave(t *testing.T) {
 	})
 }
 
+// Decided in rekreativko-api-6ev: after leaving or being rejected someone may
+// ask to join again; after a manager removed them they may not.
+func TestMember_RequestRejoin(t *testing.T) {
+	ended := map[string]func(t *testing.T) *Member{
+		"left": func(t *testing.T) *Member {
+			m := newConfirmedMember()
+			require.NoError(t, m.Leave())
+			return m
+		},
+		"rejected": func(t *testing.T) *Member {
+			m := NewJoinRequest(uuid.New(), uuid.New(), nil)
+			require.NoError(t, m.Reject(uuid.New(), MemberRoleAdmin))
+			return m
+		},
+	}
+
+	for name, end := range ended {
+		t.Run(name+": a new pending request on the same row", func(t *testing.T) {
+			m := end(t)
+			id := m.ID()
+			m.ClearEvents()
+
+			require.NoError(t, m.RequestRejoin([]uuid.UUID{uuid.New()}))
+
+			assert.Equal(t, id, m.ID())
+			assert.True(t, m.IsPending())
+			assert.Nil(t, m.DecidedAt())
+			assert.Equal(t, []string{EventActivityGroupMemberJoinRequested}, memberEventTypes(m))
+		})
+	}
+
+	t.Run("an admin who left asks again as a plain member", func(t *testing.T) {
+		m := newConfirmedMember()
+		require.NoError(t, m.PromoteToAdmin(uuid.New(), MemberRoleCreator))
+		require.NoError(t, m.SetPriority(uuid.New(), MemberRoleCreator))
+		require.NoError(t, m.Leave())
+
+		require.NoError(t, m.RequestRejoin(nil))
+
+		assert.Equal(t, MemberRoleMember, m.Role())
+		assert.False(t, m.IsPriority())
+	})
+
+	t.Run("not after a manager removed them", func(t *testing.T) {
+		m := newConfirmedMember()
+		require.NoError(t, m.Remove(uuid.New(), MemberRoleCreator))
+		m.ClearEvents()
+
+		assert.ErrorIs(t, m.RequestRejoin(nil), ErrRemovedFromGroup)
+		assert.Equal(t, MemberStatusRemoved, m.Status())
+		assert.Empty(t, m.Events())
+	})
+
+	t.Run("not while pending or confirmed", func(t *testing.T) {
+		assert.ErrorIs(t, NewJoinRequest(uuid.New(), uuid.New(), nil).RequestRejoin(nil), ErrAlreadyParticipating)
+		assert.ErrorIs(t, newConfirmedMember().RequestRejoin(nil), ErrAlreadyParticipating)
+	})
+}
+
 func TestMember_Remove(t *testing.T) {
 	remover := uuid.New()
 

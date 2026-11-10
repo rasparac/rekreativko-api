@@ -35,6 +35,7 @@ var (
 	ErrMemberAlreadyAdmin    = errors.New("member is already an admin")
 	ErrMemberNotAdmin        = errors.New("member is not an admin")
 	ErrAlreadyParticipating  = errors.New("user is already participating in this activity")
+	ErrRemovedFromGroup      = errors.New("a manager removed this user from the activity group")
 	ErrCreatorCannotLeave    = errors.New("creator cannot leave their own activity")
 	ErrNotConfirmed          = errors.New("member is not confirmed")
 	ErrNotPendingStatus      = errors.New("member status is not pending")
