@@ -251,8 +251,8 @@ func (s *TeamVotingService) RetractVote(ctx context.Context, params RetractVoteP
 // (no_proposals) instead of leaving the session in an empty vote.
 func (s *TeamVotingService) WithdrawProposal(ctx context.Context, params WithdrawProposalParams) (*TeamVotingState, error) {
 	return s.changeOpenRound(ctx, "WithdrawProposal", params.SessionID, params.RequesterID,
-		func(round *domain.TeamVotingRound, _ []uuid.UUID) error {
-			return round.WithdrawProposal(params.RequesterID, params.ProposalID)
+		func(round *domain.TeamVotingRound, confirmedIDs []uuid.UUID) error {
+			return round.WithdrawProposal(params.RequesterID, params.ProposalID, confirmedIDs)
 		},
 		s.votingRepo.UpdateRound)
 }

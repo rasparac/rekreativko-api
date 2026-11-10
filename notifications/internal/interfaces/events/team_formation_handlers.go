@@ -251,9 +251,10 @@ func (h *votingClosedHandler) Handle(ctx context.Context, payload []byte) error 
 		})
 }
 
-// votingCancelledHandler tells everyone going that voting was cancelled
-// because too few people are going. Other reasons carry no participants
-// (teams_replaced) or are covered by session_cancelled (session_ended).
+// votingCancelledHandler tells everyone going, except whoever cancelled it,
+// that voting was cancelled: an organizer replaced the teams (teams_replaced)
+// or the author withdrew the last proposal (no_proposals). The other reasons
+// are notified elsewhere (see cancelNotifiedElsewhere).
 type votingCancelledHandler struct {
 	notifications notificationCreator
 	logger        *logger.Logger
@@ -270,14 +271,15 @@ func (h *votingCancelledHandler) Handle(ctx context.Context, payload []byte) err
 		return nil
 	}
 
-	return notifyEach(ctx, h.notifications, h.logger, event.EventID, event.ParticipantUserIDs, uuid.Nil,
+	return notifyEach(ctx, h.notifications, h.logger, event.EventID, event.ParticipantUserIDs, event.CancelledBy,
 		domain.NotificationTypeTeamVotingCancelled,
 		func(uuid.UUID) map[string]any {
 			return map[string]any{
-				"session_id": event.SessionID,
-				"round_id":   event.RoundID,
-				"reason":     event.Reason,
-				"screen":     domain.ScreenSessionTeams,
+				"session_id":   event.SessionID,
+				"round_id":     event.RoundID,
+				"reason":       event.Reason,
+				"cancelled_by": event.CancelledBy,
+				"screen":       domain.ScreenSessionTeams,
 			}
 		})
 }

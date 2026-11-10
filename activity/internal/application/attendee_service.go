@@ -572,6 +572,12 @@ func (s *AttendeeService) AssignAttendeeTeam(
 			return err
 		}
 
+		// People would be voting on teams that changed under them, and a
+		// winning proposal would undo the change: the vote ends first.
+		if err := s.formation.requireNoOpenVoting(tCtx, params.SessionID); err != nil {
+			return err
+		}
+
 		attendee, err = s.attendeeRepo.GetAttendeeBySessionAndUser(tCtx, params.SessionID, params.UserID)
 		if err != nil {
 			return fmt.Errorf("get attendee: %w", err)
@@ -650,6 +656,12 @@ func (s *AttendeeService) UnassignAttendeeTeam(
 		}
 
 		if err := s.formation.requireNoActiveDraft(tCtx, params.SessionID); err != nil {
+			return err
+		}
+
+		// People would be voting on teams that changed under them, and a
+		// winning proposal would undo the change: the vote ends first.
+		if err := s.formation.requireNoOpenVoting(tCtx, params.SessionID); err != nil {
 			return err
 		}
 

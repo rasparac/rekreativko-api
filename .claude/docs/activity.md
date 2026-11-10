@@ -501,7 +501,7 @@ deep-link `screen` (`team_draft`, `team_voting`, `session_teams`).
 | `draft.cancelled` | `team_draft_cancelled` | people going (not for `session_ended`) |
 | `voting.opened` | `team_voting_opened` | people going (`proposal_id`) |
 | `voting.closed` | `team_voting_closed` | people going (`winner_proposal_id` / `kept_current`) |
-| `voting.cancelled` | `team_voting_cancelled` | people going, only for `not_enough_players` |
+| `voting.cancelled` | `team_voting_cancelled` | people going except who cancelled it, for `teams_replaced` and `no_proposals` |
 | `teams_reset` | `team_formation_reset` | everyone going afterwards, except who caused it (`reason`: `roster_changed` / `organizer`) |
 | `voting.tied` | `team_voting_tied` | session managers (group admins/creator + session creator) except the one who pressed Close |
 | `attendee.team_changed` | `team_changed` | the moved attendee (manual moves only) |

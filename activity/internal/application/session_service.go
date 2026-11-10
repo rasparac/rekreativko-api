@@ -419,7 +419,7 @@ func (s *SessionService) CreateTeams(
 		}
 
 		// An open voting round no longer matches the new teams.
-		votingEvents, err := s.formation.teamsReplaced(tCtx, params.SessionID)
+		votingEvents, err := s.formation.teamsReplaced(tCtx, params.SessionID, params.RequesterID)
 		if err != nil {
 			return err
 		}

@@ -82,21 +82,28 @@ func TestVotingEvents_Participants(t *testing.T) {
 		assert.Equal(t, proposal.ID(), *e.WinnerProposalID)
 	})
 
-	t.Run("teams replaced and session ended carry nobody", func(t *testing.T) {
-		for name, end := range map[string]func(*TeamVotingRound){
-			"teams_replaced": (*TeamVotingRound).TeamsReplaced,
-			"session_ended":  (*TeamVotingRound).SessionEnded,
-		} {
-			t.Run(name, func(t *testing.T) {
-				users := newUsers(4)
-				round, _ := openVoting(t, newTestSessionOfType(t, ActivityTypeBasketball), users)
-				round.ClearEvents()
+	t.Run("teams replaced carries the people going and who replaced them", func(t *testing.T) {
+		users := newUsers(4)
+		session := newTestSessionOfType(t, ActivityTypeBasketball)
+		round, _ := openVoting(t, session, users)
+		round.ClearEvents()
 
-				end(round)
+		round.TeamsReplaced(session.CreatedByID(), users)
 
-				e := lastEvent[*VotingCancelledEvent](t, round.Events())
-				assert.Empty(t, e.ParticipantUserIDs)
-			})
-		}
+		e := lastEvent[*VotingCancelledEvent](t, round.Events())
+		assert.Equal(t, users, e.ParticipantUserIDs)
+		assert.Equal(t, session.CreatedByID(), e.CancelledBy)
+	})
+
+	t.Run("session ended carries nobody", func(t *testing.T) {
+		users := newUsers(4)
+		round, _ := openVoting(t, newTestSessionOfType(t, ActivityTypeBasketball), users)
+		round.ClearEvents()
+
+		round.SessionEnded()
+
+		e := lastEvent[*VotingCancelledEvent](t, round.Events())
+		assert.Empty(t, e.ParticipantUserIDs)
+		assert.Equal(t, uuid.Nil, e.CancelledBy)
 	})
 }

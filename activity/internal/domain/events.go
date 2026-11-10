@@ -1475,19 +1475,23 @@ func NewVotingClosedEvent(r *TeamVotingRound, closedBy uuid.UUID, participants [
 	}
 }
 
-// VotingCancelledEvent is raised when a round ends without result.
-// ParticipantUserIDs is empty: consumers learn about teams_replaced and
-// session_ended from their own events.
+// VotingCancelledEvent is raised when a round ends without result. For
+// teams_replaced and no_proposals, CancelledBy is who replaced the teams or
+// withdrew the last proposal and ParticipantUserIDs are the people going, so
+// consumers can tell them. Both are empty for session_ended, roster_changed
+// and teams_reset, which consumers learn about from their own events.
 type VotingCancelledEvent struct {
 	votingEventBase
 	Reason             VotingCancelReason `json:"reason"`
+	CancelledBy        uuid.UUID          `json:"cancelled_by"`
 	ParticipantUserIDs []uuid.UUID        `json:"participant_user_ids"`
 }
 
-func NewVotingCancelledEvent(r *TeamVotingRound, participants []uuid.UUID) *VotingCancelledEvent {
+func NewVotingCancelledEvent(r *TeamVotingRound, cancelledBy uuid.UUID, participants []uuid.UUID) *VotingCancelledEvent {
 	return &VotingCancelledEvent{
 		votingEventBase:    newVotingEventBase(r, EventActivitySessionVotingCancelled),
 		Reason:             r.cancelReason,
+		CancelledBy:        cancelledBy,
 		ParticipantUserIDs: slices.Clone(participants),
 	}
 }

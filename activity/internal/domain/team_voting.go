@@ -473,8 +473,9 @@ func (r *TeamVotingRound) RetractVote(voterID uuid.UUID, confirmed []uuid.UUID) 
 // WithdrawProposal removes the author's own proposal from an open round. The
 // votes for it are dropped (those voters are back to "not voted"). Withdrawing
 // the last proposal ends the round - cancelled with VotingCancelReasonNoProposals
-// - so the session is not left in an empty vote.
-func (r *TeamVotingRound) WithdrawProposal(requesterID, proposalID uuid.UUID) error {
+// - so the session is not left in an empty vote; confirmed (the people going)
+// is who gets told.
+func (r *TeamVotingRound) WithdrawProposal(requesterID, proposalID uuid.UUID, confirmed []uuid.UUID) error {
 	if r.status != VotingStatusOpen {
 		return ErrVotingNotOpen
 	}
@@ -503,7 +504,7 @@ func (r *TeamVotingRound) WithdrawProposal(requesterID, proposalID uuid.UUID) er
 
 	if len(r.proposals) == 0 {
 		r.version++
-		r.cancel(VotingCancelReasonNoProposals, nil)
+		r.cancel(VotingCancelReasonNoProposals, requesterID, confirmed)
 	}
 
 	return nil
@@ -576,14 +577,15 @@ func (r *TeamVotingRound) Close(
 }
 
 // TeamsReplaced cancels an open round when the session's teams were recreated
-// underneath it: its team count and "keep current" option no longer match.
-func (r *TeamVotingRound) TeamsReplaced() {
+// underneath it: its team count and "keep current" option no longer match. by
+// replaced them; confirmed (the people going) is who gets told.
+func (r *TeamVotingRound) TeamsReplaced(by uuid.UUID, confirmed []uuid.UUID) {
 	if r.status != VotingStatusOpen {
 		return
 	}
 
 	r.version++
-	r.cancel(VotingCancelReasonTeamsReplaced, nil)
+	r.cancel(VotingCancelReasonTeamsReplaced, by, confirmed)
 }
 
 // Reset cancels an open round because team formation was reset (see
@@ -595,7 +597,7 @@ func (r *TeamVotingRound) Reset(reason VotingCancelReason) {
 	}
 
 	r.version++
-	r.cancel(reason, nil)
+	r.cancel(reason, uuid.Nil, nil)
 }
 
 // SessionEnded cancels an open round because its session was cancelled or
@@ -606,16 +608,16 @@ func (r *TeamVotingRound) SessionEnded() {
 	}
 
 	r.version++
-	r.cancel(VotingCancelReasonSessionEnded, nil)
+	r.cancel(VotingCancelReasonSessionEnded, uuid.Nil, nil)
 }
 
-func (r *TeamVotingRound) cancel(reason VotingCancelReason, participants []uuid.UUID) {
+func (r *TeamVotingRound) cancel(reason VotingCancelReason, by uuid.UUID, participants []uuid.UUID) {
 	now := time.Now().UTC()
 	r.status = VotingStatusCancelled
 	r.cancelReason = reason
 	r.endedAt = &now
 
-	r.addEvent(NewVotingCancelledEvent(r, participants))
+	r.addEvent(NewVotingCancelledEvent(r, by, participants))
 
 	r.clear()
 }

@@ -52,7 +52,8 @@ func (c teamFormation) requireNoActiveDraft(ctx context.Context, sessionID uuid.
 	}
 }
 
-// requireNoOpenVoting rejects starting a draft while a voting round is open.
+// requireNoOpenVoting rejects starting a draft, or changing teams by hand,
+// while a voting round is open.
 func (c teamFormation) requireNoOpenVoting(ctx context.Context, sessionID uuid.UUID) error {
 	_, err := c.votingRepo.GetOpenRound(ctx, sessionID)
 	switch {
@@ -226,15 +227,20 @@ func (c teamFormation) applyWinningProposal(
 	})
 }
 
-// teamsReplaced cancels an open voting round after the session's teams were
-// recreated by hand (POST /teams). Returns the events to insert.
-func (c teamFormation) teamsReplaced(ctx context.Context, sessionID uuid.UUID) ([]domainevent.Event, error) {
+// teamsReplaced cancels an open voting round after by recreated the session's
+// teams by hand (POST /teams). Returns the events to insert.
+func (c teamFormation) teamsReplaced(ctx context.Context, sessionID, by uuid.UUID) ([]domainevent.Event, error) {
 	round, err := c.openVoting(ctx, sessionID)
 	if err != nil || round == nil {
 		return nil, err
 	}
 
-	round.TeamsReplaced()
+	_, confirmedIDs, err := c.confirmedAttendees(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	round.TeamsReplaced(by, confirmedIDs)
 
 	if err := c.votingRepo.UpdateRound(ctx, round); err != nil {
 		return nil, fmt.Errorf("persist voting round: %w", err)

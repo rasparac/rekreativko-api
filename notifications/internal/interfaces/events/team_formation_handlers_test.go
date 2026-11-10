@@ -164,21 +164,6 @@ func TestDraftCancelledHandler(t *testing.T) {
 		assert.Equal(t, "organizer", creator.calls[0].Data["reason"])
 	})
 
-	t.Run("not enough players notifies everyone still going", func(t *testing.T) {
-		creator := &recordingCreator{}
-		h := &draftCancelledHandler{notifications: creator, logger: logger.New("error", "json")}
-		going := []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
-
-		handle(t, h, teamPayload(t, uuid.New(), "activity.session.draft.cancelled", map[string]any{
-			"session_id":           uuid.New(),
-			"reason":               "not_enough_players",
-			"cancelled_by":         uuid.Nil,
-			"participant_user_ids": going,
-		}))
-
-		assert.Equal(t, going, recipients(creator.calls))
-	})
-
 	t.Run("session ended is left to session_cancelled", func(t *testing.T) {
 		creator := &recordingCreator{}
 		h := &draftCancelledHandler{notifications: creator, logger: logger.New("error", "json")}
@@ -235,23 +220,27 @@ func TestVotingClosedHandler_NotifiesEveryoneButTheCloser(t *testing.T) {
 }
 
 func TestVotingCancelledHandler(t *testing.T) {
-	t.Run("not enough players notifies everyone still going", func(t *testing.T) {
-		creator := &recordingCreator{}
-		h := &votingCancelledHandler{notifications: creator, logger: logger.New("error", "json")}
-		eventID, sessionID := uuid.New(), uuid.New()
-		going := []uuid.UUID{uuid.New(), uuid.New()}
+	for _, reason := range []string{"teams_replaced", "no_proposals"} {
+		t.Run(reason+" notifies everyone going but who cancelled it", func(t *testing.T) {
+			creator := &recordingCreator{}
+			h := &votingCancelledHandler{notifications: creator, logger: logger.New("error", "json")}
+			eventID, sessionID, canceller := uuid.New(), uuid.New(), uuid.New()
+			others := []uuid.UUID{uuid.New(), uuid.New()}
 
-		handle(t, h, teamPayload(t, eventID, "activity.session.voting.cancelled", map[string]any{
-			"session_id":           sessionID,
-			"round_id":             uuid.New(),
-			"reason":               "not_enough_players",
-			"participant_user_ids": going,
-		}))
+			handle(t, h, teamPayload(t, eventID, "activity.session.voting.cancelled", map[string]any{
+				"session_id":           sessionID,
+				"round_id":             uuid.New(),
+				"reason":               reason,
+				"cancelled_by":         canceller,
+				"participant_user_ids": append([]uuid.UUID{canceller}, others...),
+			}))
 
-		require.Equal(t, going, recipients(creator.calls))
-		requireTeamNotification(t, creator.calls[0], eventID, sessionID, domain.NotificationTypeTeamVotingCancelled, domain.ScreenSessionTeams)
-		assert.Equal(t, "not_enough_players", creator.calls[0].Data["reason"])
-	})
+			require.Equal(t, others, recipients(creator.calls))
+			requireTeamNotification(t, creator.calls[0], eventID, sessionID, domain.NotificationTypeTeamVotingCancelled, domain.ScreenSessionTeams)
+			assert.Equal(t, reason, creator.calls[0].Data["reason"])
+			assert.Equal(t, canceller, creator.calls[0].Data["cancelled_by"])
+		})
+	}
 
 	t.Run("session ended is left to session_cancelled", func(t *testing.T) {
 		creator := &recordingCreator{}

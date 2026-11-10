@@ -140,7 +140,7 @@ Each delivery handler picks the channel from the event's `code_type` (`DeliveryT
 | `activity.session.draft.cancelled` | `team_draft_cancelled` | people going (not when the session ended) |
 | `activity.session.voting.opened` | `team_voting_opened` | people going, except the author |
 | `activity.session.voting.closed` | `team_voting_closed` | people going |
-| `activity.session.voting.cancelled` | `team_voting_cancelled` | people going, only for `not_enough_players` |
+| `activity.session.voting.cancelled` | `team_voting_cancelled` | people going except who cancelled it, for `teams_replaced` (an organizer replaced the teams) and `no_proposals` (the last proposal was withdrawn) |
 | `activity.session.voting.tied` | `team_voting_tied` | session managers except the one who pressed Close |
 | `activity.session.attendee.team_changed` | `team_changed` | the moved attendee (manual moves only) |
 | `activity.session.teams_reset` | `team_formation_reset` | everyone still going except who caused it (a leaver, or the organizer who deleted the teams). The draft/voting cancellations it causes (`roster_changed`, `teams_reset`) are not notified separately. |

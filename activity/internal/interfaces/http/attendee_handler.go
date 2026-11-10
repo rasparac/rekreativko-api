@@ -433,7 +433,7 @@ func (h *Handler) RemoveAttendee(w http.ResponseWriter, r *http.Request) {
 //	@Failure		400			{object}	api.Response[any]					"Invalid request"
 //	@Failure		401			{object}	api.Response[any]					"Unauthorized"
 //	@Failure		404			{object}	api.Response[any]					"Session, attendee or team not found"
-//	@Failure		409			{object}	api.Response[any]					"Session has no teams, attendee not going, a captain draft is running, or session canceled/completed"
+//	@Failure		409			{object}	api.Response[any]					"Session has no teams, attendee not going, a captain draft is running (draft_already_active), team voting is open (voting_open), or session canceled/completed"
 //	@Failure		500			{object}	api.Response[any]					"Internal server error"
 //	@Router			/api/v1/sessions/{sessionId}/rsvp/{userId}/team [put]
 func (h *Handler) AssignAttendeeTeam(w http.ResponseWriter, r *http.Request) {
@@ -499,7 +499,7 @@ func (h *Handler) AssignAttendeeTeam(w http.ResponseWriter, r *http.Request) {
 //	@Failure		400			{object}	api.Response[any]					"Invalid request"
 //	@Failure		401			{object}	api.Response[any]					"Unauthorized"
 //	@Failure		404			{object}	api.Response[any]					"Session or attendee not found"
-//	@Failure		409			{object}	api.Response[any]					"Session has no teams, or session canceled/completed"
+//	@Failure		409			{object}	api.Response[any]					"Session has no teams, a captain draft is running (draft_already_active), team voting is open (voting_open), or session canceled/completed"
 //	@Failure		500			{object}	api.Response[any]					"Internal server error"
 //	@Router			/api/v1/sessions/{sessionId}/rsvp/{userId}/team [delete]
 func (h *Handler) UnassignAttendeeTeam(w http.ResponseWriter, r *http.Request) {

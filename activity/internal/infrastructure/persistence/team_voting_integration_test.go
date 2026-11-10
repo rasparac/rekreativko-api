@@ -461,6 +461,40 @@ func TestTeamVoting_AWriteTouchesOnlyWhatChanged(t *testing.T) {
 	})
 }
 
+// Decided in rekreativko-api-5uj: a change by hand during a vote would change
+// what people voted on, and a winning proposal would undo it.
+func TestTeamVoting_ManualTeamChangesWaitUntilTheVoteEnds(t *testing.T) {
+	env := setupSessionTeamTest(t)
+	session, u := env.draftSession(t, 4)
+	withTeams, err := env.createTeams(session, nil, nil, nil)
+	require.NoError(t, err)
+	teamA, teamB := withTeams.Teams()[0].ID(), withTeams.Teams()[1].ID()
+	require.NoError(t, env.assign(session, u[0], teamA))
+
+	_, err = env.propose(session, u[1], u[:2], u[2:])
+	require.NoError(t, err)
+
+	unassign := func(userID uuid.UUID) error {
+		_, err := env.svc.UnassignAttendeeTeam(env.ctx, application.UnassignAttendeeTeamParams{
+			SessionID: session.ID(), UserID: userID, RequesterID: session.CreatedByID(),
+		})
+		return err
+	}
+
+	assert.ErrorIs(t, env.assign(session, u[1], teamB), domain.ErrVotingOpen, "assign")
+	assert.ErrorIs(t, env.assign(session, u[0], teamB), domain.ErrVotingOpen, "move")
+	assert.ErrorIs(t, unassign(u[0]), domain.ErrVotingOpen, "unassign")
+	assert.Equal(t, teamA, *env.teamOf(t, session, u[0]), "nothing changed")
+
+	// once the vote is over, changes by hand work again
+	require.NoError(t, env.voteKeepCurrent(session, u[0]))
+	_, err = env.closeVoting(session, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, env.assign(session, u[0], teamB))
+	require.NoError(t, unassign(u[0]))
+}
+
 func TestTeamVoting_RetractVote(t *testing.T) {
 	env := setupSessionTeamTest(t)
 	session, u := env.draftSession(t, 4)

@@ -203,6 +203,7 @@ type votingCancelledEvent struct {
 	SessionID          uuid.UUID   `json:"session_id"`
 	RoundID            uuid.UUID   `json:"round_id"`
 	Reason             string      `json:"reason"`
+	CancelledBy        uuid.UUID   `json:"cancelled_by"`
 	ParticipantUserIDs []uuid.UUID `json:"participant_user_ids"`
 }
 
