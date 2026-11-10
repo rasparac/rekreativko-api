@@ -18,9 +18,9 @@ Every service writes domain events to its own schema's `event_outbox` table in t
 
 **Publish pass** (on startup, on each wake-up, and every `OUTBOX_POLL_INTERVAL` as the fallback), for each affected schema, in one transaction:
 1. `SELECT event_id, event_type, payload FROM <schema>.event_outbox WHERE published_at IS NULL AND failed_at IS NULL ORDER BY created_at ASC LIMIT <OUTBOX_READ_LIMIT> FOR UPDATE SKIP LOCKED`
-2. For each row: publish to NATS (subject = `event_type`), then mark `published_at = NOW()`.
+2. For each row: publish to NATS (subject = `event_type`, message id = `event_id`), then mark `published_at = NOW()`.
 3. On publish failure: the failure is recorded (`retry_count`, `last_error`) and the event is retried on later polls; after `OUTBOX_MAX_RETRIES` it is dead-lettered (`failed_at` set) so it can't block younger events. At-least-once delivery — consumers must tolerate redelivery.
-4. **If publish succeeds but the `MarkEventAsPublished` update fails**, the transaction rolls back and the batch is redelivered next cycle (same at-least-once tradeoff, different failure point).
+4. **If publish succeeds but the `MarkEventAsPublished` update fails**, the transaction rolls back and the batch is published again next cycle. The `EVENTS` stream deduplicates by message id within its 1-minute `Duplicates` window, so a republish inside it is stored once (the broker's `published message` line then has `duplicate: true`); one later than that is stored again, so consumers must still be idempotent.
 5. A wake-up keeps publishing while batches come back full, but stops at the first failure, so a failing event is retried at the poll's pace instead of burning its retries back to back.
 
 Latency from commit to NATS is therefore milliseconds in the normal case; `OUTBOX_POLL_INTERVAL` only bounds the worst case when a `NOTIFY` is missed.

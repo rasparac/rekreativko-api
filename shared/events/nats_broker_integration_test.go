@@ -63,7 +63,7 @@ func TestNatsBroker_DeadLettersAfterMaxDeliveries(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, b.Publish(context.Background(), "test.failing.event", []byte(`{"hello":"world"}`)))
+	require.NoError(t, b.Publish(context.Background(), "test.failing.event", "", []byte(`{"hello":"world"}`)))
 
 	msg := readDLQ(t, b, "dlq.test.failing.event")
 
@@ -74,6 +74,34 @@ func TestNatsBroker_DeadLettersAfterMaxDeliveries(t *testing.T) {
 	assert.Equal(t, "3", msg.Headers().Get(headerDLQNumDelivered))
 	assert.Equal(t, "always fails", msg.Headers().Get(headerDLQError))
 	assert.Len(t, deliveries, maxDeliver, "handler ran exactly maxDeliver times")
+}
+
+// The outbox republishes an event it published but could not mark (at-least-once);
+// with the event_id as message id the stream stores it once.
+func TestNatsBroker_RepublishingTheSameMessageIDStoresItOnce(t *testing.T) {
+	url := startNATS(t)
+	b, err := NewNatsBroker(url, "test-svc", logger.New("error", "json"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = b.Close(context.Background()) })
+
+	ctx := context.Background()
+	stored := func() uint64 {
+		t.Helper()
+		stream, err := b.js.Stream(ctx, eventsStream)
+		require.NoError(t, err)
+		info, err := stream.Info(ctx)
+		require.NoError(t, err)
+		return info.State.Msgs
+	}
+
+	require.NoError(t, b.Publish(ctx, "test.dedup.event", "event-1", []byte(`{"n":1}`)))
+	require.NoError(t, b.Publish(ctx, "test.dedup.event", "event-1", []byte(`{"n":1}`)))
+	assert.Equal(t, uint64(1), stored(), "the same message id is stored once")
+
+	require.NoError(t, b.Publish(ctx, "test.dedup.event", "event-2", []byte(`{"n":2}`)))
+	require.NoError(t, b.Publish(ctx, "test.dedup.event", "", []byte(`{"n":3}`)))
+	require.NoError(t, b.Publish(ctx, "test.dedup.event", "", []byte(`{"n":3}`)))
+	assert.Equal(t, uint64(4), stored(), "other ids, and no id, are not deduplicated")
 }
 
 func TestNatsBroker_PermanentErrorDeadLettersImmediately(t *testing.T) {
@@ -89,7 +117,7 @@ func TestNatsBroker_PermanentErrorDeadLettersImmediately(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, b.Publish(context.Background(), "test.bad.payload", []byte(`not json`)))
+	require.NoError(t, b.Publish(context.Background(), "test.bad.payload", "", []byte(`not json`)))
 
 	msg := readDLQ(t, b, "dlq.test.bad.payload")
 
@@ -121,7 +149,7 @@ func TestNatsBroker_SubscribeBroadcast_ReachesEveryInstance(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = publisher.Close(context.Background()) })
 
-	require.NoError(t, publisher.Publish(context.Background(), "test.broadcast.hello", []byte(`{"n":1}`)))
+	require.NoError(t, publisher.Publish(context.Background(), "test.broadcast.hello", "", []byte(`{"n":1}`)))
 
 	for i, got := range instances {
 		select {

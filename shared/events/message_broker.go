@@ -3,7 +3,10 @@ package events
 import "context"
 
 type MessageBroker interface {
-	Publish(ctx context.Context, topic string, payload []byte) error
+	// Publish sends payload on topic. A second publish with the same msgID
+	// within the stream's Duplicates window is stored only once; an empty
+	// msgID is never deduplicated.
+	Publish(ctx context.Context, topic, msgID string, payload []byte) error
 
 	Subscribe(ctx context.Context, topic string, handler MessageHandler) error
 

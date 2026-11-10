@@ -49,13 +49,15 @@ func (f *fakeReader) MarkEventAsFailed(_ context.Context, _ string, id uuid.UUID
 type fakeBroker struct {
 	failFor map[string]struct{}
 	sent    []string
+	msgIDs  []string
 }
 
-func (b *fakeBroker) Publish(_ context.Context, topic string, _ []byte) error {
+func (b *fakeBroker) Publish(_ context.Context, topic, msgID string, _ []byte) error {
 	if _, fail := b.failFor[topic]; fail {
 		return errors.New("broker rejected payload")
 	}
 	b.sent = append(b.sent, topic)
+	b.msgIDs = append(b.msgIDs, msgID)
 	return nil
 }
 
@@ -99,6 +101,7 @@ func TestPublishFromSchema_PublishesAndMarksEvents(t *testing.T) {
 	assert.Equal(t, 0, failed)
 	assert.Equal(t, 2, published)
 	assert.Equal(t, []uuid.UUID{a, b}, r.published)
+	assert.Equal(t, []string{a.String(), b.String()}, br.msgIDs, "the event_id is the message id, so a republish is deduplicated")
 	assert.Equal(t, 1, tx.calls, "batch must run in a single transaction")
 }
 

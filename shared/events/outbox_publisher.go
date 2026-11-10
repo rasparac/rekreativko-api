@@ -174,7 +174,8 @@ func (op *outboxPublisher) publishFromSchema(ctx context.Context, schema string)
 			ctx := api.WithEventID(ctx, event.EventID.String())
 
 			start := time.Now()
-			err := op.broker.Publish(ctx, event.EventType, event.Payload)
+			// the event_id lets the stream drop a republish of the same event
+			err := op.broker.Publish(ctx, event.EventType, event.EventID.String(), event.Payload)
 			op.metrics.EventPublishDuration.WithLabelValues(event.EventType, schema).Observe(time.Since(start).Seconds())
 			if err != nil {
 				failedCount++

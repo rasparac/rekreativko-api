@@ -125,15 +125,15 @@ func NewNatsBroker(
 	return nb, nil
 }
 
-func (b *natsBroker) Publish(ctx context.Context, topic string, payload []byte) error {
+func (b *natsBroker) Publish(ctx context.Context, topic, msgID string, payload []byte) error {
 	subject := "events." + topic
 
-	ack, err := b.js.Publish(
-		ctx,
-		subject,
-		payload,
-		jetstream.WithExpectStream(eventsStream),
-	)
+	opts := []jetstream.PublishOpt{jetstream.WithExpectStream(eventsStream)}
+	if msgID != "" {
+		opts = append(opts, jetstream.WithMsgID(msgID))
+	}
+
+	ack, err := b.js.Publish(ctx, subject, payload, opts...)
 	if err != nil {
 		b.logger.Error(
 			ctx,
@@ -150,6 +150,8 @@ func (b *natsBroker) Publish(ctx context.Context, topic string, payload []byte) 
 		"subject", subject,
 		"stream", ack.Stream,
 		"sequence", ack.Sequence,
+		// true when the stream already had this msgID: nothing new was stored
+		"duplicate", ack.Duplicate,
 	)
 
 	return nil
@@ -285,8 +287,11 @@ func (b *natsBroker) createStreams(ctx context.Context) error {
 			Retention:   jetstream.LimitsPolicy,
 			MaxAge:      7 * 24 * time.Hour,
 			MaxBytes:    1024 * 1024 * 1024, // 1GB
-			Duplicates:  1 * time.Minute,
-			Replicas:    1,
+			// The outbox publishes with the event_id as message id, so an event
+			// republished within this window (published, but marking it failed)
+			// is stored once.
+			Duplicates: 1 * time.Minute,
+			Replicas:   1,
 		},
 	)
 	if err != nil {

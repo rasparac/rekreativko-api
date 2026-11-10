@@ -19,7 +19,7 @@ type fakeBroker struct {
 	handlers map[string]events.MessageHandler
 }
 
-func (f *fakeBroker) Publish(context.Context, string, []byte) error { return nil }
+func (f *fakeBroker) Publish(context.Context, string, string, []byte) error { return nil }
 
 func (f *fakeBroker) Subscribe(_ context.Context, topic string, handler events.MessageHandler) error {
 	f.handlers[topic] = handler
