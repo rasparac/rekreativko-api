@@ -52,6 +52,11 @@ const (
 // attempt within milliseconds.
 var retryDelays = []time.Duration{time.Second, 5 * time.Second}
 
+// dlqPublishDelays is how long deadLetter waits before each retry of a failed
+// dead-letter publish - len+1 attempts in all - to ride out a brief NATS flap.
+// Kept short: the consumer loop waits for it.
+var dlqPublishDelays = []time.Duration{100 * time.Millisecond, 500 * time.Millisecond}
+
 var deadLetteredTotal = promauto.NewCounterVec(
 	prometheus.CounterOpts{
 		Subsystem: "events",
@@ -428,10 +433,11 @@ func retryDelay(numDelivered uint64) time.Duration {
 }
 
 // deadLetter copies the message to the DLQ stream, with headers describing why
-// it failed, and then terminates it so this consumer never sees it again. If
-// the DLQ publish itself fails the message is still terminated (retrying could
-// loop forever on a broker problem); the failure is logged and counted with
-// dlq_published="false".
+// it failed, and then terminates it so this consumer never sees it again. A
+// failed DLQ publish is retried a few times (dlqPublishDelays); if it still
+// fails the message is terminated anyway (retrying for longer could stall the
+// consumer on a broker problem), logged and counted with dlq_published="false",
+// which the DeadLetterPublishFailed alert watches.
 func (b *natsBroker) deadLetter(
 	ctx context.Context,
 	log *logger.Logger,
@@ -461,12 +467,17 @@ func (b *natsBroker) deadLetter(
 	// deduplicated. Set as the header jetstream.WithMsgID would set.
 	dlqMsg.Header.Set(jetstream.MsgIDHeader, fmt.Sprintf("%s-%d", metadata.Consumer, metadata.Sequence.Stream))
 
-	published := true
-	if _, err := b.dlq.PublishMsg(ctx, dlqMsg); err != nil {
-		published = false
+	err := b.publishDeadLetter(ctx, dlqMsg)
+	published := err == nil
+	if err != nil {
+		// No payload here: it may hold personal data, which Loki can't erase.
+		// The message stays in the EVENTS stream for its retention (7 days),
+		// found by stream_sequence (nats stream get EVENTS <seq>).
 		log.Error(ctx, "failed to publish message to dead-letter stream, dropping it",
 			"error", err,
+			"attempts", len(dlqPublishDelays)+1,
 			"dlq_subject", dlqMsg.Subject,
+			"reason", reason,
 			"stream_sequence", metadata.Sequence.Stream,
 		)
 	} else {
@@ -482,6 +493,24 @@ func (b *natsBroker) deadLetter(
 
 	if err := msg.Term(); err != nil {
 		log.Error(ctx, "failed to terminate message", "error", err)
+	}
+}
+
+// publishDeadLetter publishes msg to the DLQ stream, retrying after each of
+// dlqPublishDelays. A retry is safe: the message id makes the stream drop a
+// second copy of one that did arrive.
+func (b *natsBroker) publishDeadLetter(ctx context.Context, msg *nats.Msg) error {
+	for attempt := 0; ; attempt++ {
+		_, err := b.dlq.PublishMsg(ctx, msg)
+		if err == nil || attempt >= len(dlqPublishDelays) {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return errors.Join(err, ctx.Err())
+		case <-time.After(dlqPublishDelays[attempt]):
+		}
 	}
 }
 

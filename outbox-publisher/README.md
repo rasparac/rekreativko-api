@@ -64,6 +64,6 @@ each oldest first, `OUTBOX_PURGE_BATCH` at a time, until a batch comes back shor
 
 ## Known issues
 
-- A dead-lettered event (`failed_at` set) is not retried or alerted on; it stays in the table for manual inspection until `OUTBOX_DEAD_LETTER_RETENTION` passes. See the dead-letter hardening ticket for the publish-failure path.
+- A dead-lettered event (`failed_at` set) is not retried or alerted on; it stays in the table for manual inspection until `OUTBOX_DEAD_LETTER_RETENTION` passes (`OutboxPublishFailures` fires while publishes keep failing). Consumers dead-letter separately, to the NATS `DLQ` stream - see `.claude/rules/events.md`.
 - The `NOTIFY` trigger is part of each service's `000001` schema (the project is not production-ready, so no separate migration). A database created before it needs its migration re-applied; until then the publisher simply falls back to polling.
 - Running several replicas is safe (`FOR UPDATE SKIP LOCKED`), but every replica `LISTEN`s and wakes on every commit, so extra replicas add wake-ups, not throughput on a single schema's ordering.

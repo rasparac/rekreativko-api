@@ -26,4 +26,8 @@ paths:
   checked first). A redelivery must not create a second row or raise a second event.
 - **Errors**: a payload that can never succeed (bad JSON, missing id, unknown referenced row) returns
   `events.Permanent(err)` and goes to the dead-letter stream. Any other error is returned as is and retried.
+  If even the dead-letter publish fails (it is retried twice), the message is dropped, counted as
+  `events_dead_lettered_total{dlq_published="false"}` and alerted (`DeadLetterPublishFailed`); it can then only be
+  recovered from the `EVENTS` stream within 7 days, by the `stream_sequence` in the log line (`nats stream get
+  EVENTS <seq>`). That line never carries the payload (personal data).
 - Tracing one event through every hop: `.claude/rules/observability.md`.

@@ -42,15 +42,29 @@ func (m *fakeMsg) Term() error { m.termed = true; return nil }
 
 type fakeDLQ struct {
 	published []*nats.Msg
-	err       error
+	err       error // every publish fails with it
+	failures  int   // the first failures publishes fail, the rest succeed
+	attempts  int
 }
 
 func (f *fakeDLQ) PublishMsg(_ context.Context, msg *nats.Msg, opts ...jetstream.PublishOpt) (*jetstream.PubAck, error) {
+	f.attempts++
 	if f.err != nil {
 		return nil, f.err
 	}
+	if f.failures > 0 {
+		f.failures--
+		return nil, errors.New("nats flap")
+	}
 	f.published = append(f.published, msg)
 	return &jetstream.PubAck{}, nil
+}
+
+// fastDLQRetries makes dead-letter publish retries immediate for the test.
+func fastDLQRetries(t *testing.T) {
+	orig := dlqPublishDelays
+	dlqPublishDelays = []time.Duration{time.Millisecond, time.Millisecond}
+	t.Cleanup(func() { dlqPublishDelays = orig })
 }
 
 func newTestBroker(dlq *fakeDLQ) *natsBroker {
@@ -141,13 +155,47 @@ func TestProcessMessage_WrappedPermanentErrorIsDetected(t *testing.T) {
 }
 
 func TestProcessMessage_DLQPublishFailureStillTerminates(t *testing.T) {
+	fastDLQRetries(t)
 	dlq := &fakeDLQ{err: errors.New("nats down")}
 	msg := &fakeMsg{numDelivered: maxDeliver}
+	dropped := counterValue(deadLetteredTotal.WithLabelValues("svc", "t", dlqReasonMaxDeliveries, "false"))
 
 	newTestBroker(dlq).processMessage(context.Background(), "t", msg, handlerReturning(errors.New("boom")))
 
+	assert.Equal(t, len(dlqPublishDelays)+1, dlq.attempts, "retried, but a bounded number of times")
 	assert.True(t, msg.termed, "must terminate even if the DLQ is unreachable, to avoid looping forever")
 	assert.Nil(t, msg.nakDelay)
+	assert.Equal(t, dropped+1, counterValue(deadLetteredTotal.WithLabelValues("svc", "t", dlqReasonMaxDeliveries, "false")),
+		"counted as dlq_published=false, which DeadLetterPublishFailed alerts on")
+}
+
+func TestProcessMessage_DLQPublishIsRetriedThroughABriefFlap(t *testing.T) {
+	fastDLQRetries(t)
+	dlq := &fakeDLQ{failures: len(dlqPublishDelays)}
+	msg := &fakeMsg{numDelivered: maxDeliver}
+	stored := counterValue(deadLetteredTotal.WithLabelValues("svc", "t", dlqReasonMaxDeliveries, "true"))
+
+	newTestBroker(dlq).processMessage(context.Background(), "t", msg, handlerReturning(errors.New("boom")))
+
+	assert.Len(t, dlq.published, 1, "the last attempt got through")
+	assert.Equal(t, len(dlqPublishDelays)+1, dlq.attempts)
+	assert.True(t, msg.termed)
+	assert.Equal(t, stored+1, counterValue(deadLetteredTotal.WithLabelValues("svc", "t", dlqReasonMaxDeliveries, "true")))
+}
+
+func TestPublishDeadLetter_StopsWhenTheContextEnds(t *testing.T) {
+	orig := dlqPublishDelays
+	dlqPublishDelays = []time.Duration{time.Hour}
+	t.Cleanup(func() { dlqPublishDelays = orig })
+
+	dlq := &fakeDLQ{err: errors.New("nats down")}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := newTestBroker(dlq).publishDeadLetter(ctx, nats.NewMsg("dlq.t"))
+
+	require.ErrorIs(t, err, context.Canceled, "a shutting-down consumer does not wait out the delay")
+	assert.Equal(t, 1, dlq.attempts)
 }
 
 func TestSanitizeHeaderValue_TruncatesAndStripsLineBreaks(t *testing.T) {

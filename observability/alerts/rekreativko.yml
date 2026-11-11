@@ -56,6 +56,18 @@ groups:
           summary: "Outbox publisher is failing to publish events"
           description: "The outbox publisher has had a non-zero event failure rate for the last 5 minutes (current value: {{ $value | humanize }}/s)."
 
+  - name: rekreativko.events
+    rules:
+      # The counter series appears with its first increment, so this compares the
+      # value instead of increase(); it stays firing until the service restarts.
+      - alert: DeadLetterPublishFailed
+        expr: sum by (service, topic) (events_dead_lettered_total{dlq_published="false"}) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} dropped a failed {{ $labels.topic }} event"
+          description: "{{ $labels.service }} gave up on a {{ $labels.topic }} event and could not copy it to the DLQ stream either, so nothing will retry it. It is only left in the EVENTS stream, for 7 days: find the 'failed to publish message to dead-letter stream' log line (it has the stream_sequence and event_id) and recover it with 'nats stream get EVENTS <stream_sequence>'."
+
   - name: rekreativko.erasure
     rules:
       - alert: AccountErasureIncomplete
