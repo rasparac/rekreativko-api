@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -14,24 +15,32 @@ import (
 )
 
 type (
+	// domainEventManager is the outbox's read side: the outbox-publisher reads
+	// and marks the events of every schema in OUTBOX_SCHEMAS.
 	domainEventManager struct {
 		txManager *postgres.TransactionManager
 		logger    *logger.Logger
 	}
 
-	// EventWriter represents an interface for writing domain events to a persistent store.
-	// It defines a method for inserting events into the store.
-	// This interface can be implemented by various storage backends, such as databases or message queues.
-	// Insert MUST be called within a transaction to ensure consistency.
+	// EventWriter stores domain events in one service's outbox. InsertEvents
+	// MUST be called within the transaction of the change that raised them
+	// (transactional outbox).
 	EventWriter interface {
-		// InsertEvent inserts a domain events into the store.
-		InsertEvents(
-			ctx context.Context,
-			schema string,
-			event []Event,
-		) error
+		InsertEvents(ctx context.Context, events ...Event) error
+	}
+
+	// eventWriter writes to the event_outbox of the schema it was built for: a
+	// service only ever writes its own.
+	eventWriter struct {
+		txManager *postgres.TransactionManager
+		logger    *logger.Logger
+		schema    string
 	}
 )
+
+// schemaName is what a schema may be called: it is put into the SQL as is,
+// so it is checked once, when the writer is built.
+var schemaName = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
 
 func NewDomainEventManager(
 	txManager *postgres.TransactionManager,
@@ -43,14 +52,37 @@ func NewDomainEventManager(
 	}
 }
 
-func (tm *domainEventManager) InsertEvents(
-	ctx context.Context,
-	schema string,
-	events []Event,
-) error {
+// NewEventWriter returns the writer for schema's event_outbox. Each service
+// builds one in its main.go.
+func NewEventWriter(txManager *postgres.TransactionManager, logger *logger.Logger, schema string) (EventWriter, error) {
+	if !schemaName.MatchString(schema) {
+		return nil, fmt.Errorf("invalid outbox schema name %q", schema)
+	}
+
+	return &eventWriter{
+		txManager: txManager,
+		logger:    logger.WithName("domainevent"),
+		schema:    schema,
+	}, nil
+}
+
+// MustNewEventWriter is NewEventWriter for a schema known to be valid (a
+// constant, in tests); it panics otherwise.
+func MustNewEventWriter(txManager *postgres.TransactionManager, logger *logger.Logger, schema string) EventWriter {
+	w, err := NewEventWriter(txManager, logger, schema)
+	if err != nil {
+		panic(err)
+	}
+	return w
+}
+
+// InsertEvents stores events in one statement; none is a no-op.
+func (w *eventWriter) InsertEvents(ctx context.Context, events ...Event) error {
 	if len(events) == 0 {
 		return nil
 	}
+
+	schema := w.schema
 
 	var (
 		eventValues  = make([]any, 0, len(events)*5)
@@ -94,7 +126,7 @@ func (tm *domainEventManager) InsertEvents(
 		strings.Join(placeHolders, ","),
 	)
 
-	_, err := tm.txManager.Querier(ctx).Exec(ctx, insertEventQuery, eventValues...)
+	_, err := w.txManager.Querier(ctx).Exec(ctx, insertEventQuery, eventValues...)
 	if err != nil {
 		return err
 	}
@@ -103,7 +135,7 @@ func (tm *domainEventManager) InsertEvents(
 	// event_id to the request that raised it. The transaction may still roll
 	// back - the event exists only if "outbox event published" follows.
 	for _, event := range events {
-		tm.logger.Debug(api.WithEventID(ctx, event.GetEventID().String()), "event stored in outbox",
+		w.logger.Debug(api.WithEventID(ctx, event.GetEventID().String()), "event stored in outbox",
 			"schema", schema, "event_type", event.GetEventType(), "aggregate_id", event.GetAggregateID())
 	}
 

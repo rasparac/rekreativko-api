@@ -162,11 +162,8 @@ func (s *ActivityGroupService) CreateActivityGroup(
 		}
 
 		// Publish domain events
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			group.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, group.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -324,11 +321,8 @@ func (s *ActivityGroupService) UpdateActivityGroup(
 		}
 
 		// Publish domain events
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			group.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, group.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -388,11 +382,8 @@ func (s *ActivityGroupService) ActivateActivityGroup(
 			return fmt.Errorf("persist activation: %w", err)
 		}
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			group.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, group.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -460,11 +451,8 @@ func (s *ActivityGroupService) CancelActivityGroup(
 		}
 		log.Debug(tCtx, "cancelled group sessions", "count", cancelledSessions)
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			group.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, group.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -532,11 +520,8 @@ func (s *ActivityGroupService) DeleteActivityGroup(
 		}
 		log.Debug(tCtx, "deleted group sessions", "count", deletedSessions)
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			group.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, group.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}

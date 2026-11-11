@@ -121,7 +121,7 @@ func (s *InviteService) SendInvite(
 			return fmt.Errorf("persist invite: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, invite.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, invite.Events()...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 
@@ -188,7 +188,7 @@ func (s *InviteService) AcceptInvite(
 		// One insert for the invite's accepted event and the new member's
 		// joined event.
 		events := slices.Concat(invite.Events(), member.Events())
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, events); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, events...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 		invite.ClearEvents()
@@ -287,7 +287,7 @@ func (s *InviteService) DeclineInvite(
 			return fmt.Errorf("persist invite decline: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, invite.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, invite.Events()...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 		invite.ClearEvents()
@@ -338,7 +338,7 @@ func (s *InviteService) ExpireStaleInvites(ctx context.Context) (int, error) {
 				return fmt.Errorf("persist invite expiry: %w", err)
 			}
 
-			if err := s.eventWriter.InsertEvents(tCtx, activitySchema, invite.Events()); err != nil {
+			if err := s.eventWriter.InsertEvents(tCtx, invite.Events()...); err != nil {
 				return fmt.Errorf("insert domain events: %w", err)
 			}
 			invite.ClearEvents()

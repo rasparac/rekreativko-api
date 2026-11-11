@@ -16,9 +16,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// notificationsSchema is where this service's outbox lives.
-const notificationsSchema = "notifications"
-
 type (
 	accountStates interface {
 		MarkDeleted(ctx context.Context, accountID uuid.UUID, deletedAt time.Time) error
@@ -101,11 +98,8 @@ func (s *AccountLifecycleService) EraseAccount(ctx context.Context, accountID uu
 			return nil
 		}
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			notificationsSchema,
-			[]domainevent.Event{domain.NewAccountErasedEvent(accountID)},
-		)
+		err = s.eventWriter.InsertEvents(tCtx, domain.NewAccountErasedEvent(accountID))
+
 		if err != nil {
 			return fmt.Errorf("insert events: %w", err)
 		}

@@ -121,11 +121,8 @@ func (s *SessionTemplateService) CreateSessionTemplate(
 		}
 
 		// Publish domain events
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			template.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, template.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -242,11 +239,8 @@ func (s *SessionTemplateService) UpdateSessionTemplate(
 		}
 
 		// Publish domain events
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			template.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, template.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -307,11 +301,8 @@ func (s *SessionTemplateService) ActivateSessionTemplate(
 			return fmt.Errorf("persist activation: %w", err)
 		}
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			template.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, template.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -372,11 +363,8 @@ func (s *SessionTemplateService) DeactivateSessionTemplate(
 			return fmt.Errorf("persist deactivation: %w", err)
 		}
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			template.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, template.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -434,11 +422,8 @@ func (s *SessionTemplateService) DeleteSessionTemplate(
 			return fmt.Errorf("delete session template: %w", err)
 		}
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			template.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, template.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}

@@ -41,7 +41,7 @@ func setupErasureTest(t *testing.T) *erasureTestEnv {
 	txManager := db.CreateTransactionManager()
 	logger := testutil.CreateLogger()
 	hasher := token.NewPasswordHasher(bcrypt.MinCost)
-	events := domainevent.NewDomainEventManager(txManager, logger)
+	events := domainevent.MustNewEventWriter(txManager, logger, "identity")
 
 	accounts := persistence.NewAccountManager(db.Pool, txManager, logger)
 	codes := persistence.NewVerificationCodeManager(db.Pool, txManager, logger)

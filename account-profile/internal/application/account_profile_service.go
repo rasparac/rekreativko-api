@@ -20,8 +20,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const accountProfileSchema = "account_profile"
-
 type (
 	service struct {
 		logger         *logger.Logger
@@ -74,11 +72,8 @@ func (s *service) CreateProfile(ctx context.Context, createProfile CreateProfile
 			return fmt.Errorf("create account profile: %w", err)
 		}
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			accountProfileSchema,
-			newProfile.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, newProfile.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("publish events: %w", err)
 		}
@@ -299,11 +294,8 @@ func (s *service) UpdateProfile(ctx context.Context, accountID uuid.UUID, toUpda
 			return fmt.Errorf("update profile: %w", err)
 		}
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			accountProfileSchema,
-			profile.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, profile.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("publish events: %w", err)
 		}

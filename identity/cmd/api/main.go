@@ -92,7 +92,10 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	txManager := postgres.NewTransactionManager(pg.Pool)
 
-	domainEventMgr := domainevent.NewDomainEventManager(txManager, log)
+	eventWriter, err := domainevent.NewEventWriter(txManager, log, "identity")
+	if err != nil {
+		return err
+	}
 
 	tokenGen := token.NewGenerator(
 		[]byte(cfg.JWT.Secret),
@@ -151,7 +154,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		verificationCodeRepo,
 		identityRefreshTokenRepo,
 		txManager,
-		domainEventMgr,
+		eventWriter,
 		tokenGen,
 		log,
 		verificationCodeGenerator,
@@ -169,7 +172,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		verificationCodeRepo,
 		persistence.NewAccountErasureManager(pg.Pool, txManager, log),
 		txManager,
-		domainEventMgr,
+		eventWriter,
 		log,
 		appMetrics,
 		application.ErasurePolicy{

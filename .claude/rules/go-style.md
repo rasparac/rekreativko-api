@@ -26,7 +26,9 @@ Match the surrounding code first; these are the conventions it follows.
 ## Application services
 
 - One public method = one use case = one `txManager.WithTransaction`. Write the aggregate's events with
-  `eventWriter.InsertEvents(tCtx, schema, aggregate.Events())` inside that transaction, then `ClearEvents()`.
+  `eventWriter.InsertEvents(tCtx, aggregate.Events()...)` inside that transaction, then `ClearEvents()`; events
+  of several aggregates go in one call. The writer is bound to the service's schema in `main.go`
+  (`domainevent.NewEventWriter(txManager, log, "<schema>")`; tests use `MustNewEventWriter`).
 - Depend on small interfaces declared next to the consumer (`accountStates`, `rsvpCanceller`), not on
   concrete repositories, so unit tests can use fakes.
 - Each public method opens a span: `ctx, span := s.tracer.Start(ctx, "activity.service.CancelRSVP")`, with

@@ -119,7 +119,7 @@ func (s *SessionInviteService) SendInvite(
 			return fmt.Errorf("persist session invite: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, invite.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, invite.Events()...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 		invite.ClearEvents()
@@ -214,7 +214,7 @@ func (s *SessionInviteService) AcceptInvite(
 		// One insert for the invite's accepted event and the new attendee's
 		// RSVP event.
 		events := slices.Concat(invite.Events(), attendee.Events())
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, events); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, events...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 		invite.ClearEvents()
@@ -268,7 +268,7 @@ func (s *SessionInviteService) DeclineInvite(
 			return fmt.Errorf("persist session invite decline: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, invite.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, invite.Events()...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 		invite.ClearEvents()
@@ -315,7 +315,7 @@ func (s *SessionInviteService) ExpireStaleInvites(ctx context.Context) (int, err
 				return fmt.Errorf("persist session invite expiry: %w", err)
 			}
 
-			if err := s.eventWriter.InsertEvents(tCtx, activitySchema, invite.Events()); err != nil {
+			if err := s.eventWriter.InsertEvents(tCtx, invite.Events()...); err != nil {
 				return fmt.Errorf("insert domain events: %w", err)
 			}
 			invite.ClearEvents()

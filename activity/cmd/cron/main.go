@@ -55,7 +55,10 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	// accounts deleted or erased in identity (epic dh7)
 	accountStates := persistence.NewAccountStateManager(txManager)
-	domainEventMgr := domainevent.NewDomainEventManager(txManager, log)
+	eventWriter, err := domainevent.NewEventWriter(txManager, log, "activity")
+	if err != nil {
+		return err
+	}
 
 	// Initialize telemetry
 	telemetryConfig := telemetry.Config{
@@ -96,7 +99,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		sessionTemplateRepo,
 		sessionRepo,
 		activityGroupRepo,
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 		lookaheadWindow,
 	)
@@ -114,7 +117,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		groupInviteRepo,
 		memberRepo,
 		accountStates,
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 	)
 
@@ -131,7 +134,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		sessionRepo,
 		attendeeRepo,
 		accountStates,
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 	)
 
@@ -151,7 +154,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		sessionInviteRepo,
 		persistence.NewTeamDraftRepository(txManager, log),
 		persistence.NewTeamVotingRepository(txManager, log),
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 	)
 

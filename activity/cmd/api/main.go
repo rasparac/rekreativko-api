@@ -94,7 +94,10 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	// accounts deleted or erased in identity (epic dh7)
 	accountStates := persistence.NewAccountStateManager(txManager)
 
-	domainEventMgr := domainevent.NewDomainEventManager(txManager, log)
+	eventWriter, err := domainevent.NewEventWriter(txManager, log, "activity")
+	if err != nil {
+		return err
+	}
 
 	telemetryConfig := telemetry.Config{
 		ServiceName:       cfg.Service.Name,
@@ -160,7 +163,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		txManager,
 		sessionTemplateRepo,
 		memberRepo,
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 	)
 	sessionService := application.NewSessionService(
@@ -173,7 +176,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		sessionInviteRepo,
 		teamDraftRepo,
 		teamVotingRepo,
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 	)
 	activityGroupService := application.NewActivityGroupService(
@@ -182,7 +185,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		activityGroupRepo,
 		memberRepo,
 		sessionService,
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 	)
 	memberService := application.NewMemberService(
@@ -191,7 +194,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		memberRepo,
 		activityGroupRepo,
 		accountStates,
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 	)
 	attendeeService := application.NewAttendeeService(
@@ -203,7 +206,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		teamDraftRepo,
 		teamVotingRepo,
 		accountStates,
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 	)
 	teamDraftService := application.NewTeamDraftService(
@@ -213,7 +216,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		attendeeRepo,
 		teamDraftRepo,
 		teamVotingRepo,
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 	)
 	teamVotingService := application.NewTeamVotingService(
@@ -224,7 +227,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		attendeeRepo,
 		teamDraftRepo,
 		teamVotingRepo,
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 	)
 	inviteService := application.NewInviteService(
@@ -233,7 +236,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		inviteRepo,
 		memberRepo,
 		accountStates,
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 	)
 	sessionInviteService := application.NewSessionInviteService(
@@ -243,7 +246,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		sessionRepo,
 		attendeeRepo,
 		accountStates,
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 	)
 	accountLifecycleService := application.NewAccountLifecycleService(
@@ -253,7 +256,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		sessionInviteService,
 		memberService,
 		txManager,
-		domainEventMgr,
+		eventWriter,
 		log,
 		appMetrics,
 	)

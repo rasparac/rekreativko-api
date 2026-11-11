@@ -220,7 +220,7 @@ func (s *SessionGeneratorService) generateSessionsForTemplate(
 
 			// Publish domain events
 			if len(session.Events()) > 0 {
-				if err := s.eventWriter.InsertEvents(txCtx, "activity", session.Events()); err != nil {
+				if err := s.eventWriter.InsertEvents(txCtx, session.Events()...); err != nil {
 					return fmt.Errorf("failed to insert events: %w", err)
 				}
 			}

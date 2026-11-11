@@ -60,8 +60,6 @@ type (
 	}
 )
 
-const schema = "identity"
-
 type Service struct {
 	accountRepository          accountReaderWriter
 	verificationCodeRepository verificationCodeReaderWriter
@@ -189,7 +187,7 @@ func (s *Service) DeleteAccount(ctx context.Context, accountID uuid.UUID) error 
 		}
 
 		events := account.Events()
-		err = s.domainWriter.InsertEvents(tCtx, schema, events)
+		err = s.domainWriter.InsertEvents(tCtx, events...)
 		if err != nil {
 			return fmt.Errorf("insert events: %w", err)
 		}
@@ -326,11 +324,8 @@ func (s *Service) Register(ctx context.Context, req RegistrationParams) (uuid.UU
 			allEvents = append(allEvents, verificationCode.Events()...)
 		}
 
-		err = s.domainWriter.InsertEvents(
-			tCtx,
-			schema,
-			allEvents,
-		)
+		err = s.domainWriter.InsertEvents(tCtx, allEvents...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -459,7 +454,7 @@ func (s *Service) Login(ctx context.Context, req LoginParams) (*domain.RefreshTo
 		allEvents = append(allEvents, locked.Events()...)
 		allEvents = append(allEvents, token.Events()...)
 
-		err = s.domainWriter.InsertEvents(tCtx, schema, allEvents)
+		err = s.domainWriter.InsertEvents(tCtx, allEvents...)
 		if err != nil {
 			return fmt.Errorf("insert events: %w", err)
 		}
@@ -509,7 +504,7 @@ func (s *Service) recordFailedLogin(ctx context.Context, accountID uuid.UUID) er
 			return fmt.Errorf("update account, failed login: %w", err)
 		}
 
-		if err := s.domainWriter.InsertEvents(tCtx, schema, account.Events()); err != nil {
+		if err := s.domainWriter.InsertEvents(tCtx, account.Events()...); err != nil {
 			return fmt.Errorf("insert events: %w", err)
 		}
 		account.ClearEvents()
@@ -550,7 +545,7 @@ func (s *Service) Logout(ctx context.Context, req LogoutParams) (*EmptyResponse,
 		}
 
 		events := token.Events()
-		err = s.domainWriter.InsertEvents(txCtx, schema, events)
+		err = s.domainWriter.InsertEvents(txCtx, events...)
 		if err != nil {
 			return fmt.Errorf("insert events: %w", err)
 		}
@@ -651,7 +646,7 @@ func (s *Service) VerifyAccount(ctx context.Context, req VerifyAccountParams) (u
 		allEvents = append(allEvents, account.Events()...)
 		allEvents = append(allEvents, verificationCode.Events()...)
 
-		err = s.domainWriter.InsertEvents(tCtx, schema, allEvents)
+		err = s.domainWriter.InsertEvents(tCtx, allEvents...)
 		if err != nil {
 			return fmt.Errorf("insert events: %w", err)
 		}
@@ -730,7 +725,7 @@ func (s *Service) RefreshToken(ctx context.Context, req RefreshTokenParams) (*do
 		allEvents = append(allEvents, newTokenEvents...)
 		allEvents = append(allEvents, oldTokenEvents...)
 
-		err = s.domainWriter.InsertEvents(tCtx, schema, allEvents)
+		err = s.domainWriter.InsertEvents(tCtx, allEvents...)
 		if err != nil {
 			return fmt.Errorf("insert events: %w", err)
 		}
@@ -808,11 +803,8 @@ func (s *Service) ResendVerificationCode(ctx context.Context, req ResendVerifica
 			return fmt.Errorf("create new verification code: %w", err)
 		}
 
-		err = s.domainWriter.InsertEvents(
-			tCtx,
-			schema,
-			verificationCode.Events(),
-		)
+		err = s.domainWriter.InsertEvents(tCtx, verificationCode.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert events: %w", err)
 		}

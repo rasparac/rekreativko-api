@@ -118,7 +118,7 @@ func (s *ErasureService) EraseDueAccounts(ctx context.Context, now time.Time) (i
 			events = append(events, account.Events()...)
 		}
 
-		if err := s.domainWriter.InsertEvents(tCtx, schema, events); err != nil {
+		if err := s.domainWriter.InsertEvents(tCtx, events...); err != nil {
 			return fmt.Errorf("insert events: %w", err)
 		}
 

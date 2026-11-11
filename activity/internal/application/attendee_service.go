@@ -242,7 +242,7 @@ func (s *AttendeeService) CreateRSVP(
 		}
 
 		// Publish domain events
-		if err := s.eventWriter.InsertEvents(txCtx, activitySchema, attendee.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(txCtx, attendee.Events()...); err != nil {
 			log.Error(txCtx, "failed to publish events", "error", err)
 			return fmt.Errorf("failed to publish events: %w", err)
 		}
@@ -338,7 +338,7 @@ func (s *AttendeeService) ApproveAttendee(
 			return fmt.Errorf("persist attendee approval: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, attendee.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, attendee.Events()...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 		attendee.ClearEvents()
@@ -407,7 +407,7 @@ func (s *AttendeeService) RejectAttendee(
 			return fmt.Errorf("persist attendee rejection: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, attendee.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, attendee.Events()...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 		attendee.ClearEvents()
@@ -486,7 +486,7 @@ func (s *AttendeeService) RemoveAttendee(
 			return fmt.Errorf("delete attendee: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, attendee.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, attendee.Events()...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 		attendee.ClearEvents()
@@ -591,7 +591,7 @@ func (s *AttendeeService) AssignAttendeeTeam(
 			return fmt.Errorf("persist team assignment: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, attendee.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, attendee.Events()...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 		attendee.ClearEvents()
@@ -678,7 +678,7 @@ func (s *AttendeeService) UnassignAttendeeTeam(
 			return fmt.Errorf("persist team unassignment: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, attendee.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, attendee.Events()...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 		attendee.ClearEvents()
@@ -782,7 +782,7 @@ func (s *AttendeeService) UpdateRSVP(
 		}
 
 		// Publish domain events
-		if err := s.eventWriter.InsertEvents(txCtx, activitySchema, attendee.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(txCtx, attendee.Events()...); err != nil {
 			log.Error(txCtx, "failed to publish events", "error", err)
 			return fmt.Errorf("failed to publish events: %w", err)
 		}
@@ -875,7 +875,7 @@ func (s *AttendeeService) CancelRSVP(
 			return fmt.Errorf("failed to delete attendee: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(txCtx, activitySchema, attendee.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(txCtx, attendee.Events()...); err != nil {
 			log.Error(txCtx, "failed to publish events", "error", err)
 			return fmt.Errorf("failed to publish events: %w", err)
 		}
@@ -1148,7 +1148,7 @@ func (s *AttendeeService) resetTeamFormationAfterLeaving(ctx context.Context, se
 		return fmt.Errorf("reset team formation: %w", err)
 	}
 
-	if err := s.eventWriter.InsertEvents(ctx, activitySchema, events); err != nil {
+	if err := s.eventWriter.InsertEvents(ctx, events...); err != nil {
 		return fmt.Errorf("insert team formation events: %w", err)
 	}
 
@@ -1186,7 +1186,7 @@ func (s *AttendeeService) promoteNextPending(
 	}
 
 	// Publish events
-	if err := s.eventWriter.InsertEvents(ctx, activitySchema, pending.Events()); err != nil {
+	if err := s.eventWriter.InsertEvents(ctx, pending.Events()...); err != nil {
 		log.Error(ctx, "failed to publish promotion events", "error", err)
 		return err
 	}

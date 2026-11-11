@@ -36,7 +36,7 @@ func TestRegister_AccountVerificationRequired(t *testing.T) {
 				persistence.NewVerificationCodeManager(db.Pool, txManager, logger),
 				persistence.NewRefreshTokenManager(db.Pool, txManager, logger),
 				txManager,
-				domainevent.NewDomainEventManager(txManager, logger),
+				domainevent.MustNewEventWriter(txManager, logger, "identity"),
 				token.NewGenerator([]byte("test-secret-test-secret-test-secret"), time.Minute, time.Hour),
 				logger,
 				token.NewVerificationCodeGenerator(6),

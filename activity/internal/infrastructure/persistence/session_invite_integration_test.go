@@ -44,7 +44,7 @@ func setupSessionInviteTest(t *testing.T) *sessionInviteTestEnv {
 	groupRepo := persistence.NewActivityGroupRepository(txManager, logger)
 	draftRepo := persistence.NewTeamDraftRepository(txManager, logger)
 	votingRepo := persistence.NewTeamVotingRepository(txManager, logger)
-	eventWriter := domainevent.NewDomainEventManager(txManager, logger)
+	eventWriter := domainevent.MustNewEventWriter(txManager, logger, "activity")
 
 	return &sessionInviteTestEnv{
 		ctx:          context.Background(),

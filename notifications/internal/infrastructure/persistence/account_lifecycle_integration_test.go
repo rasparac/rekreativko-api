@@ -41,7 +41,7 @@ func setupAccountLifecycleTest(t *testing.T) *accountLifecycleTestEnv {
 	accounts := application.NewAccountLifecycleService(
 		persistence.NewAccountStateManager(txManager),
 		txManager,
-		domainevent.NewDomainEventManager(txManager, logger),
+		domainevent.MustNewEventWriter(txManager, logger, "notifications"),
 		logger,
 		testMetrics,
 	)

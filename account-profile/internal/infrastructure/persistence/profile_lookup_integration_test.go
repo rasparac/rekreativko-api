@@ -27,7 +27,7 @@ func TestGetProfiles_LookupReturnsEveryRequestedProfile(t *testing.T) {
 	txManager := db.CreateTransactionManager()
 	logger := testutil.CreateLogger()
 	ctx := context.Background()
-	svc := application.NewService(logger, txManager, persistence.NewAccountProfileManager(txManager, logger), domainevent.NewDomainEventManager(txManager, logger), testMetrics())
+	svc := application.NewService(logger, txManager, persistence.NewAccountProfileManager(txManager, logger), domainevent.MustNewEventWriter(txManager, logger, "account_profile"), testMetrics())
 
 	const roster = 25
 	query := url.Values{}

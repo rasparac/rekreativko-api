@@ -167,11 +167,8 @@ func (s *AccountLifecycleService) EraseAccount(ctx context.Context, accountID uu
 			return nil
 		}
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			[]domainevent.Event{domain.NewAccountErasedEvent(accountID)},
-		)
+		err = s.eventWriter.InsertEvents(tCtx, domain.NewAccountErasedEvent(accountID))
+
 		if err != nil {
 			return fmt.Errorf("insert events: %w", err)
 		}

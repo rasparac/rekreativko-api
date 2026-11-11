@@ -273,7 +273,7 @@ func (s *TeamDraftService) CancelDraft(ctx context.Context, params CancelDraftPa
 			return fmt.Errorf("persist draft: %w", err)
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, draft.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, draft.Events()...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 		draft.ClearEvents()
@@ -348,7 +348,7 @@ func (s *TeamDraftService) finishCommand(
 		events = append(events, teamEvents...)
 	}
 
-	if err := s.eventWriter.InsertEvents(ctx, activitySchema, events); err != nil {
+	if err := s.eventWriter.InsertEvents(ctx, events...); err != nil {
 		return fmt.Errorf("insert domain events: %w", err)
 	}
 

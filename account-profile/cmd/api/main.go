@@ -91,7 +91,10 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	txManager := postgres.NewTransactionManager(pg.Pool)
 
-	domainEventMgr := domainevent.NewDomainEventManager(txManager, log)
+	eventWriter, err := domainevent.NewEventWriter(txManager, log, "account_profile")
+	if err != nil {
+		return err
+	}
 
 	accountProfileRepo := persistence.NewAccountProfileManager(txManager, log)
 
@@ -99,7 +102,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		log,
 		txManager,
 		accountProfileRepo,
-		domainEventMgr,
+		eventWriter,
 		appMetrics,
 	)
 
@@ -117,7 +120,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	accountErasureService := application.NewAccountErasureService(
 		persistence.NewAccountErasureManager(txManager),
 		txManager,
-		domainEventMgr,
+		eventWriter,
 		log,
 		appMetrics,
 	)

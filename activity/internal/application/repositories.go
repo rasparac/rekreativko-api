@@ -9,8 +9,6 @@ import (
 	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 )
 
-const activitySchema = "activity"
-
 // ActivityGroupRepository defines the interface for activity group persistence
 type ActivityGroupRepository interface {
 	CreateActivityGroup(ctx context.Context, group *domain.ActivityGroup) error

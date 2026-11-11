@@ -34,7 +34,7 @@ func setupAccountLifecycleTest(t *testing.T) *accountLifecycleTestEnv {
 	db := setupCapacityRaceTestDB(t)
 	txManager := db.CreateTransactionManager()
 	logger := testutil.CreateLogger()
-	eventWriter := domainevent.NewDomainEventManager(txManager, logger)
+	eventWriter := domainevent.MustNewEventWriter(txManager, logger, "activity")
 	accountStates := persistence.NewAccountStateManager(txManager)
 
 	sessionRepo := persistence.NewSessionManager(txManager, logger)

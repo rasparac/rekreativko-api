@@ -88,10 +88,15 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	notificationRepo := persistence.NewNotificationRepository(txManager, log)
 
+	eventWriter, err := domainevent.NewEventWriter(txManager, log, "notifications")
+	if err != nil {
+		return err
+	}
+
 	accountLifecycleService := application.NewAccountLifecycleService(
 		persistence.NewAccountStateManager(txManager),
 		txManager,
-		domainevent.NewDomainEventManager(txManager, log),
+		eventWriter,
 		log,
 		appMetrics,
 	)

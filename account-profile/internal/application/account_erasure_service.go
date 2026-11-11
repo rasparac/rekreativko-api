@@ -78,11 +78,8 @@ func (s *AccountErasureService) EraseAccount(ctx context.Context, accountID uuid
 			return nil
 		}
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			accountProfileSchema,
-			[]domainevent.Event{domain.NewAccountErasedEvent(accountID)},
-		)
+		err = s.eventWriter.InsertEvents(tCtx, domain.NewAccountErasedEvent(accountID))
+
 		if err != nil {
 			return fmt.Errorf("insert events: %w", err)
 		}

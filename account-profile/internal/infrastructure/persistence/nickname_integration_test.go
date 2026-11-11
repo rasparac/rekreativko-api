@@ -25,7 +25,7 @@ func TestProfileService_NicknameIsUnique(t *testing.T) {
 
 	txManager := db.CreateTransactionManager()
 	logger := testutil.CreateLogger()
-	svc := application.NewService(logger, txManager, persistence.NewAccountProfileManager(txManager, logger), domainevent.NewDomainEventManager(txManager, logger), testMetrics())
+	svc := application.NewService(logger, txManager, persistence.NewAccountProfileManager(txManager, logger), domainevent.MustNewEventWriter(txManager, logger, "account_profile"), testMetrics())
 	ctx := context.Background()
 
 	newProfile := func(t *testing.T) uuid.UUID {

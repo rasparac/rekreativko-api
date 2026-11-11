@@ -60,7 +60,7 @@ func TestMemberService_RequestToJoinAgain(t *testing.T) {
 
 	groupRepo := persistence.NewActivityGroupRepository(txManager, logger)
 	memberRepo := persistence.NewMemberRepository(txManager, logger)
-	eventWriter := domainevent.NewDomainEventManager(txManager, logger)
+	eventWriter := domainevent.MustNewEventWriter(txManager, logger, "activity")
 	svc := application.NewMemberService(logger, txManager, memberRepo, groupRepo, persistence.NewAccountStateManager(txManager), eventWriter, testMetrics())
 
 	ctx := context.Background()
@@ -156,7 +156,7 @@ func TestInvites_BringBackFormerMembers(t *testing.T) {
 
 	groupRepo := persistence.NewActivityGroupRepository(txManager, logger)
 	memberRepo := persistence.NewMemberRepository(txManager, logger)
-	eventWriter := domainevent.NewDomainEventManager(txManager, logger)
+	eventWriter := domainevent.MustNewEventWriter(txManager, logger, "activity")
 	accounts := persistence.NewAccountStateManager(txManager)
 	members := application.NewMemberService(logger, txManager, memberRepo, groupRepo, accounts, eventWriter, testMetrics())
 	invites := application.NewInviteService(logger, txManager, persistence.NewGroupInviteRepository(txManager, logger), memberRepo, accounts, eventWriter, testMetrics())
@@ -255,7 +255,7 @@ func TestMemberService_ApproveMember_Concurrent_DoesNotOverbook(t *testing.T) {
 
 	groupRepo := persistence.NewActivityGroupRepository(txManager, logger)
 	memberRepo := persistence.NewMemberRepository(txManager, logger)
-	eventWriter := domainevent.NewDomainEventManager(txManager, logger)
+	eventWriter := domainevent.MustNewEventWriter(txManager, logger, "activity")
 
 	svc := application.NewMemberService(logger, txManager, memberRepo, groupRepo, persistence.NewAccountStateManager(txManager), eventWriter, testMetrics())
 

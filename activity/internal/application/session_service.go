@@ -218,11 +218,8 @@ func (s *SessionService) CreateSession(
 		}
 
 		// Publish domain events
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			session.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, session.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -432,7 +429,7 @@ func (s *SessionService) CreateTeams(
 		}
 		events = append(events, votingEvents...)
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, events); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, events...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 
@@ -503,7 +500,7 @@ func (s *SessionService) ResetTeams(ctx context.Context, params ResetTeamsParams
 			return err
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, events); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, events...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 
@@ -671,11 +668,8 @@ func (s *SessionService) UpdateSession(
 		}
 
 		// Publish domain events
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			session.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, session.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -751,11 +745,8 @@ func (s *SessionService) StartSession(
 			return fmt.Errorf("persist session start: %w", err)
 		}
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			session.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, session.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -834,11 +825,8 @@ func (s *SessionService) CompleteSession(
 			return err
 		}
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			append(session.Events(), formationEvents...),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, append(session.Events(), formationEvents...)...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -914,7 +902,7 @@ func (s *SessionService) ExpireCompletedSessions(ctx context.Context) (int, erro
 				return err
 			}
 
-			if err := s.eventWriter.InsertEvents(tCtx, activitySchema, append(session.Events(), formationEvents...)); err != nil {
+			if err := s.eventWriter.InsertEvents(tCtx, append(session.Events(), formationEvents...)...); err != nil {
 				return fmt.Errorf("insert domain events: %w", err)
 			}
 			session.ClearEvents()
@@ -1020,11 +1008,8 @@ func (s *SessionService) CancelSession(
 			return err
 		}
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			append(session.Events(), formationEvents...),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, append(session.Events(), formationEvents...)...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -1105,7 +1090,7 @@ func (s *SessionService) CancelGroupSessions(
 				return err
 			}
 
-			if err := s.eventWriter.InsertEvents(tCtx, activitySchema, append(session.Events(), formationEvents...)); err != nil {
+			if err := s.eventWriter.InsertEvents(tCtx, append(session.Events(), formationEvents...)...); err != nil {
 				return fmt.Errorf("insert domain events: %w", err)
 			}
 			session.ClearEvents()
@@ -1257,11 +1242,8 @@ func (s *SessionService) SetSessionVisibility(
 			return fmt.Errorf("persist session visibility: %w", err)
 		}
 
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			session.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, session.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}

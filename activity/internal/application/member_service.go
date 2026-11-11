@@ -129,11 +129,8 @@ func (s *MemberService) InviteMember(
 		}
 
 		// Publish domain events
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			member.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, member.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -263,7 +260,7 @@ func (s *MemberService) RequestToJoinGroup(
 			}
 		}
 
-		if err := s.eventWriter.InsertEvents(tCtx, activitySchema, member.Events()); err != nil {
+		if err := s.eventWriter.InsertEvents(tCtx, member.Events()...); err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
 		member.ClearEvents()
@@ -338,11 +335,8 @@ func (s *MemberService) RemoveMember(
 		}
 
 		// Publish domain events
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			member.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, member.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -419,11 +413,8 @@ func (s *MemberService) PromoteMember(
 		}
 
 		// Publish domain events
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			member.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, member.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -500,11 +491,8 @@ func (s *MemberService) DemoteMember(
 		}
 
 		// Publish domain events
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			member.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, member.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -608,11 +596,8 @@ func (s *MemberService) ApproveMember(
 		}
 
 		// Publish domain events
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			member.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, member.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -689,11 +674,8 @@ func (s *MemberService) RejectMember(
 		}
 
 		// Publish domain events
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			member.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, member.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}
@@ -761,11 +743,8 @@ func (s *MemberService) LeaveMember(
 		}
 
 		// Publish domain events
-		err = s.eventWriter.InsertEvents(
-			tCtx,
-			activitySchema,
-			member.Events(),
-		)
+		err = s.eventWriter.InsertEvents(tCtx, member.Events()...)
+
 		if err != nil {
 			return fmt.Errorf("insert domain events: %w", err)
 		}

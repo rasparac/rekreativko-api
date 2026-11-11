@@ -524,7 +524,7 @@ func (s *TeamVotingService) GetVoting(ctx context.Context, sessionID uuid.UUID) 
 }
 
 func (s *TeamVotingService) insertEvents(ctx context.Context, events []domainevent.Event) error {
-	if err := s.eventWriter.InsertEvents(ctx, activitySchema, events); err != nil {
+	if err := s.eventWriter.InsertEvents(ctx, events...); err != nil {
 		return fmt.Errorf("insert domain events: %w", err)
 	}
 	return nil

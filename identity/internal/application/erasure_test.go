@@ -83,7 +83,7 @@ func (f *fakeTx) WithTransaction(ctx context.Context, fn func(ctx context.Contex
 
 type fakeWriter struct{ events []domainevent.Event }
 
-func (f *fakeWriter) InsertEvents(_ context.Context, _ string, events []domainevent.Event) error {
+func (f *fakeWriter) InsertEvents(_ context.Context, events ...domainevent.Event) error {
 	f.events = append(f.events, events...)
 	return nil
 }
