@@ -40,7 +40,7 @@ Routes, grouped by resource (all under `/api/v1`):
 
 **Members**: `POST /activity-groups/{groupId}/members` (invite), `POST /activity-groups/{groupId}/join-requests`, `GET /activity-groups/{groupId}/members`, `GET .../members/{userId}`, `POST .../members/{userId}/approve`, `POST .../members/{userId}/reject`, `PATCH .../members/{userId}/role`, `DELETE .../members/{userId}`, `POST /activity-groups/{groupId}/leave`. Someone who left or was rejected can send a new join request (it re-opens their old member row as pending, as a plain member); someone a manager removed gets `403 removed_from_group`, and anyone pending or confirmed `409 already_participating`.
 
-**Invites**: `POST /activity-groups/{groupId}/invites`, `GET /invites`, `POST /invites/{id}/accept`, `POST /invites/{id}/decline`.
+**Invites**: `POST /activity-groups/{groupId}/invites`, `GET /invites`, `POST /invites/{id}/accept`, `POST /invites/{id}/decline`. A manager can invite back, or add directly (`POST .../members`), anyone who left, was rejected or was removed - accepting re-opens their old member row as a confirmed plain member; someone pending or confirmed gets `409 user_already_member`.
 
 **RSVP / attendees**: `POST/PUT/DELETE/GET /sessions/{sessionId}/rsvp`, `GET /sessions/{sessionId}/attendees`, `POST .../rsvp/{userId}/approve`, `POST .../rsvp/{userId}/reject`, `DELETE .../rsvp/{userId}` (remove a confirmed attendee — distinct from the no-`{userId}` self-cancel route).
 

@@ -121,23 +121,11 @@ func (s *MemberService) InviteMember(
 			return err
 		}
 
-		// Check if user is already a member
-		existingMember, err := s.memberRepo.GetMemberByGroupAndUser(
-			tCtx,
-			params.ActivityGroupID,
-			params.UserID,
-		)
-		if err == nil && existingMember != nil {
-			return fmt.Errorf("user is already a member of this group")
-		}
-
-		// Create new member from invite
-		member = domain.NewMemberFromInvite(params.ActivityGroupID, params.UserID)
-
-		// Persist to database
-		err = s.memberRepo.CreateMember(tCtx, member)
+		// A new member, or someone who left, was rejected or was removed added
+		// back; someone pending or confirmed is refused (user_already_member).
+		member, err = addInvitedMember(tCtx, s.memberRepo, params.ActivityGroupID, params.UserID)
 		if err != nil {
-			return fmt.Errorf("persist member: %w", err)
+			return err
 		}
 
 		// Publish domain events

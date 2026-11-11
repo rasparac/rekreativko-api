@@ -14,7 +14,7 @@ import (
 // InviteMember handles POST /api/v1/activity-groups/{groupId}/members
 //
 //	@Summary		Invite a member to an activity group
-//	@Description	Invites a user to join an activity group
+//	@Description	Adds a user to an activity group as a confirmed member. Someone who left, was rejected or was removed is added back (their old membership is re-opened); someone pending or confirmed gets 409 user_already_member.
 //	@Tags			Members
 //	@Accept			json
 //	@Produce		json
@@ -25,6 +25,7 @@ import (
 //	@Failure		400		{object}	api.Response[any]				"Invalid request"
 //	@Failure		401		{object}	api.Response[any]				"Unauthorized"
 //	@Failure		403		{object}	api.Response[any]				"Forbidden"
+//	@Failure		409		{object}	api.Response[any]				"User already pending or a member (user_already_member)"
 //	@Failure		500		{object}	api.Response[any]				"Internal server error"
 //	@Router			/api/v1/activity-groups/{groupId}/members [post]
 func (h *Handler) InviteMember(w http.ResponseWriter, r *http.Request) {

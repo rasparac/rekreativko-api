@@ -208,6 +208,27 @@ func NewMemberFromInvite(activityGroupID, userID uuid.UUID) *Member {
 	return m
 }
 
+// RejoinFromInvite makes someone whose membership ended a confirmed member
+// again because a manager invited them: unlike RequestRejoin this includes
+// someone a manager removed - the manager is the one asking. It starts over as
+// a plain member on the same row (a group holds one row per person).
+func (p *Member) RejoinFromInvite() error {
+	if p.status.IsActive() {
+		return ErrUserAlreadyMember
+	}
+
+	p.role = MemberRoleMember
+	p.status = MemberStatusConfirmed
+	p.isPriority = false
+	p.joinedAt = time.Now().UTC()
+	p.decidedAt = nil
+	p.leftAt = nil
+
+	p.addEvent(NewMemberJoinedEvent(p, true))
+
+	return nil
+}
+
 func NewMemberFromInviteLink(activityGroupID, userID uuid.UUID) *Member {
 	m := &Member{
 		id:              uuid.New(),

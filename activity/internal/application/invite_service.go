@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -90,14 +91,10 @@ func (s *InviteService) SendInvite(
 			return err
 		}
 
-		// Reject if the invited user is already a member
-		existingMember, err := s.memberRepo.GetMemberByGroupAndUser(
-			tCtx,
-			params.ActivityGroupID,
-			params.InvitedUserID,
-		)
-		if err == nil && existingMember != nil {
-			return domain.ErrUserAlreadyMember
+		// Only someone pending or confirmed can't be invited; whoever left, was
+		// rejected or was removed can be invited back.
+		if err := requireNotActiveMember(tCtx, s.memberRepo, params.ActivityGroupID, params.InvitedUserID); err != nil {
+			return err
 		}
 
 		// Reject if there's already a pending invite for this user in this group
@@ -183,10 +180,9 @@ func (s *InviteService) AcceptInvite(
 			return fmt.Errorf("persist invite acceptance: %w", err)
 		}
 
-		member = domain.NewMemberFromInvite(invite.ActivityGroupID(), userID)
-
-		if err := s.memberRepo.CreateMember(tCtx, member); err != nil {
-			return fmt.Errorf("persist member: %w", err)
+		member, err = addInvitedMember(tCtx, s.memberRepo, invite.ActivityGroupID(), userID)
+		if err != nil {
+			return err
 		}
 
 		// One insert for the invite's accepted event and the new member's
@@ -210,6 +206,48 @@ func (s *InviteService) AcceptInvite(
 	log.Debug(ctx, "invite accepted", "member_id", member.ID())
 
 	return member, nil
+}
+
+// requireNotActiveMember refuses to invite someone who is already pending or
+// confirmed in the group.
+func requireNotActiveMember(ctx context.Context, members MemberRepository, groupID, userID uuid.UUID) error {
+	existing, err := members.GetMemberByGroupAndUser(ctx, groupID, userID)
+	switch {
+	case errors.Is(err, domain.ErrMemberNotFound):
+		return nil
+	case err != nil:
+		return fmt.Errorf("get member: %w", err)
+	case existing.Status().IsActive():
+		return domain.ErrUserAlreadyMember
+	default:
+		return nil
+	}
+}
+
+// addInvitedMember makes userID a confirmed member because a manager invited
+// them: a new row, or their old one re-opened when they had left, were
+// rejected or were removed (a group holds one row per person).
+func addInvitedMember(ctx context.Context, members MemberRepository, groupID, userID uuid.UUID) (*domain.Member, error) {
+	existing, err := members.GetMemberByGroupAndUser(ctx, groupID, userID)
+	switch {
+	case errors.Is(err, domain.ErrMemberNotFound):
+		member := domain.NewMemberFromInvite(groupID, userID)
+		if err := members.CreateMember(ctx, member); err != nil {
+			return nil, fmt.Errorf("persist member: %w", err)
+		}
+		return member, nil
+	case err != nil:
+		return nil, fmt.Errorf("get member: %w", err)
+	}
+
+	if err := existing.RejoinFromInvite(); err != nil {
+		return nil, err
+	}
+	if err := members.UpdateMember(ctx, existing); err != nil {
+		return nil, fmt.Errorf("persist member: %w", err)
+	}
+
+	return existing, nil
 }
 
 // DeclineInvite declines a pending invite; no membership is created

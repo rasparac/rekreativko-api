@@ -146,6 +146,98 @@ func TestMemberService_RequestToJoinAgain(t *testing.T) {
 	})
 }
 
+// rekreativko-api-wwq: a manager can invite back anyone whose membership ended
+// - by an invite they accept, or by adding them directly - but not someone
+// who is pending or confirmed.
+func TestInvites_BringBackFormerMembers(t *testing.T) {
+	db := setupCapacityRaceTestDB(t)
+	txManager := db.CreateTransactionManager()
+	logger := testutil.CreateLogger()
+
+	groupRepo := persistence.NewActivityGroupRepository(txManager, logger)
+	memberRepo := persistence.NewMemberRepository(txManager, logger)
+	eventWriter := domainevent.NewDomainEventManager(txManager, logger)
+	accounts := persistence.NewAccountStateManager(txManager)
+	members := application.NewMemberService(logger, txManager, memberRepo, groupRepo, accounts, eventWriter, testMetrics())
+	invites := application.NewInviteService(logger, txManager, persistence.NewGroupInviteRepository(txManager, logger), memberRepo, accounts, eventWriter, testMetrics())
+
+	ctx := context.Background()
+	title, err := domain.NewTitle("Invite Back Test Group")
+	require.NoError(t, err)
+	location, err := domain.NewActivityGroupLocation("Belgrade", "RS")
+	require.NoError(t, err)
+	group, err := domain.NewActivityGroup(uuid.New(), title, "", domain.ActivityTypeRunning, location,
+		domain.DifficultyLevelBeginner, domain.ActivityGroupVisibilityPublic, "UTC", nil)
+	require.NoError(t, err)
+	require.NoError(t, group.Activate(group.CreatorID()))
+	require.NoError(t, groupRepo.CreateActivityGroup(ctx, group))
+
+	addDirectly := func(userID uuid.UUID) (*domain.Member, error) {
+		return members.InviteMember(ctx, application.InviteMemberParams{
+			ActivityGroupID: group.ID(), RequesterID: group.CreatorID(), RequesterRole: "creator", UserID: userID,
+		})
+	}
+	sendInvite := func(userID uuid.UUID) (*domain.GroupInvite, error) {
+		return invites.SendInvite(ctx, application.SendInviteParams{
+			ActivityGroupID: group.ID(), RequesterID: group.CreatorID(), RequesterRole: "creator", InvitedUserID: userID,
+		})
+	}
+	remove := func(userID uuid.UUID) {
+		require.NoError(t, members.RemoveMember(ctx, application.RemoveMemberParams{
+			ActivityGroupID: group.ID(), RequesterID: group.CreatorID(), RequesterRole: "creator", UserID: userID,
+		}))
+	}
+	confirmed := func(t *testing.T, userID uuid.UUID) {
+		t.Helper()
+		stored, err := memberRepo.GetMemberByGroupAndUser(ctx, group.ID(), userID)
+		require.NoError(t, err)
+		assert.True(t, stored.IsConfirmed())
+	}
+
+	t.Run("a removed member accepts an invite", func(t *testing.T) {
+		userID := uuid.New()
+		first, err := addDirectly(userID)
+		require.NoError(t, err)
+		remove(userID)
+
+		invite, err := sendInvite(userID)
+		require.NoError(t, err)
+		back, err := invites.AcceptInvite(ctx, invite.ID(), userID)
+
+		require.NoError(t, err)
+		assert.Equal(t, first.ID(), back.ID(), "the same row, re-opened")
+		confirmed(t, userID)
+	})
+
+	t.Run("someone who left is added directly", func(t *testing.T) {
+		userID := uuid.New()
+		_, err := addDirectly(userID)
+		require.NoError(t, err)
+		require.NoError(t, members.LeaveMember(ctx, group.ID(), userID))
+
+		_, err = addDirectly(userID)
+
+		require.NoError(t, err)
+		confirmed(t, userID)
+	})
+
+	t.Run("not someone who is pending or confirmed", func(t *testing.T) {
+		pending := uuid.New()
+		_, err := members.RequestToJoinGroup(ctx, application.RequestToJoinGroupParams{ActivityGroupID: group.ID(), UserID: pending})
+		require.NoError(t, err)
+		_, err = sendInvite(pending)
+		assert.ErrorIs(t, err, domain.ErrUserAlreadyMember, "invite, pending")
+
+		member := uuid.New()
+		_, err = addDirectly(member)
+		require.NoError(t, err)
+		_, err = sendInvite(member)
+		assert.ErrorIs(t, err, domain.ErrUserAlreadyMember, "invite, confirmed")
+		_, err = addDirectly(member)
+		assert.ErrorIs(t, err, domain.ErrUserAlreadyMember, "added directly, confirmed: a 409, not a 500")
+	})
+}
+
 // TestMemberService_ApproveMember_Concurrent_DoesNotOverbook is a regression
 // test for rekreativko-api-b8q: ApproveMember (and RequestToJoin) enforced
 // ActivityGroup.DefaultCapacity() with the same check-then-act race that

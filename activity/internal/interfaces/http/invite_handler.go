@@ -13,7 +13,7 @@ import (
 // SendInvite handles POST /api/v1/activity-groups/{groupId}/invites
 //
 //	@Summary		Invite a user to an activity group
-//	@Description	Sends a pending invite that the invited user can accept or decline
+//	@Description	Sends a pending invite that the invited user can accept or decline. Someone who left, was rejected or was removed can be invited back; someone pending or confirmed gets 409 user_already_member.
 //	@Tags			Invites
 //	@Accept			json
 //	@Produce		json
@@ -24,7 +24,7 @@ import (
 //	@Failure		400		{object}	api.Response[any]						"Invalid request"
 //	@Failure		401		{object}	api.Response[any]						"Unauthorized"
 //	@Failure		403		{object}	api.Response[any]						"Forbidden"
-//	@Failure		409		{object}	api.Response[any]						"User already a member or already invited"
+//	@Failure		409		{object}	api.Response[any]						"User already pending or a member (user_already_member), or already invited (already_invited)"
 //	@Failure		500		{object}	api.Response[any]						"Internal server error"
 //	@Router			/api/v1/activity-groups/{groupId}/invites [post]
 func (h *Handler) SendInvite(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +98,7 @@ func (h *Handler) ListMyInvites(w http.ResponseWriter, r *http.Request) {
 // AcceptInvite handles POST /api/v1/invites/{id}/accept
 //
 //	@Summary		Accept an invite
-//	@Description	Accepts a pending invite, creating a confirmed membership
+//	@Description	Accepts a pending invite, creating a confirmed membership - or re-opening the old one of someone who left, was rejected or was removed
 //	@Tags			Invites
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
@@ -107,7 +107,7 @@ func (h *Handler) ListMyInvites(w http.ResponseWriter, r *http.Request) {
 //	@Failure		400	{object}	api.Response[any]				"Invalid request"
 //	@Failure		401	{object}	api.Response[any]				"Unauthorized"
 //	@Failure		404	{object}	api.Response[any]				"Invite not found"
-//	@Failure		409	{object}	api.Response[any]				"Invite expired or already processed"
+//	@Failure		409	{object}	api.Response[any]				"Invite expired or already processed, or the user became pending or a member meanwhile (user_already_member)"
 //	@Failure		500	{object}	api.Response[any]				"Internal server error"
 //	@Router			/api/v1/invites/{id}/accept [post]
 func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {

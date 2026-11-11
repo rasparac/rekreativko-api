@@ -191,6 +191,49 @@ func TestMember_RequestRejoin(t *testing.T) {
 	})
 }
 
+// rekreativko-api-wwq: a manager's invite brings back anyone whose membership
+// ended, including someone a manager removed.
+func TestMember_RejoinFromInvite(t *testing.T) {
+	ended := map[string]func(t *testing.T) *Member{
+		"left": func(t *testing.T) *Member {
+			m := newConfirmedMember()
+			require.NoError(t, m.PromoteToAdmin(uuid.New(), MemberRoleCreator))
+			require.NoError(t, m.Leave())
+			return m
+		},
+		"rejected": func(t *testing.T) *Member {
+			m := NewJoinRequest(uuid.New(), uuid.New(), nil)
+			require.NoError(t, m.Reject(uuid.New(), MemberRoleAdmin))
+			return m
+		},
+		"removed": func(t *testing.T) *Member {
+			m := newConfirmedMember()
+			require.NoError(t, m.Remove(uuid.New(), MemberRoleCreator))
+			return m
+		},
+	}
+
+	for name, end := range ended {
+		t.Run(name+": confirmed again on the same row, as a plain member", func(t *testing.T) {
+			m := end(t)
+			id := m.ID()
+			m.ClearEvents()
+
+			require.NoError(t, m.RejoinFromInvite())
+
+			assert.Equal(t, id, m.ID())
+			assert.True(t, m.IsConfirmed())
+			assert.Equal(t, MemberRoleMember, m.Role())
+			assert.Equal(t, []string{EventActivityGroupMemberJoined}, memberEventTypes(m))
+		})
+	}
+
+	t.Run("not while pending or confirmed", func(t *testing.T) {
+		assert.ErrorIs(t, NewJoinRequest(uuid.New(), uuid.New(), nil).RejoinFromInvite(), ErrUserAlreadyMember)
+		assert.ErrorIs(t, newConfirmedMember().RejoinFromInvite(), ErrUserAlreadyMember)
+	})
+}
+
 func TestMember_Remove(t *testing.T) {
 	remover := uuid.New()
 
