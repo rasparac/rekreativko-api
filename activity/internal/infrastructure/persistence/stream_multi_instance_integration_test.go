@@ -27,7 +27,7 @@ func startStreamInstance(t *testing.T, env *sessionTeamTestEnv, natsURL, name st
 
 	log := testutil.CreateLogger()
 
-	broker, err := events.NewNatsBroker(natsURL, name, log)
+	broker, err := events.NewNatsBroker(natsURL, name, log, events.WithStreamManagement())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = broker.Close(context.Background()) })
 
@@ -118,7 +118,7 @@ func TestStream_ChangesReachClientsOnEveryInstance(t *testing.T) {
 	instanceA := startStreamInstance(t, env, natsURL, "activity-a")
 	instanceB := startStreamInstance(t, env, natsURL, "activity-b")
 
-	publisher, err := events.NewNatsBroker(natsURL, "outbox-publisher", testutil.CreateLogger())
+	publisher, err := events.NewNatsBroker(natsURL, "outbox-publisher", testutil.CreateLogger(), events.WithStreamManagement())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = publisher.Close(context.Background()) })
 

@@ -134,6 +134,8 @@ services:
       - POSTGRES_HOST=pgbouncer
       - POSTGRES_PORT=6432
       - NATS_URL=nats://nats:4222
+      - NATS_USER=identity
+      - NATS_PASSWORD=${NATS_IDENTITY_PASSWORD:-identity-dev}
       - PORT=8081
       - SERVICE_NAME=identity
     depends_on:
@@ -156,6 +158,8 @@ services:
       - POSTGRES_HOST=pgbouncer
       - POSTGRES_PORT=6432
       - NATS_URL=nats://nats:4222
+      - NATS_USER=account_profile
+      - NATS_PASSWORD=${NATS_ACCOUNT_PROFILE_PASSWORD:-account-profile-dev}
       - PORT=8082
       - SERVICE_NAME=account_profile
     depends_on:
@@ -178,6 +182,8 @@ services:
       - POSTGRES_HOST=pgbouncer
       - POSTGRES_PORT=6432
       - NATS_URL=nats://nats:4222
+      - NATS_USER=activity
+      - NATS_PASSWORD=${NATS_ACTIVITY_PASSWORD:-activity-dev}
       - PORT=8084
       - SERVICE_NAME=activity
     depends_on:
@@ -200,6 +206,8 @@ services:
       - POSTGRES_HOST=pgbouncer
       - POSTGRES_PORT=6432
       - NATS_URL=nats://nats:4222
+      - NATS_USER=notifications
+      - NATS_PASSWORD=${NATS_NOTIFICATIONS_PASSWORD:-notifications-dev}
       - PORT=8083
       - SERVICE_NAME=notifications
     depends_on:
@@ -266,6 +274,8 @@ services:
       - POSTGRES_DIRECT_HOST=db
       - POSTGRES_DIRECT_PORT=5432
       - NATS_URL=nats://nats:4222
+      - NATS_USER=outbox_publisher
+      - NATS_PASSWORD=${NATS_OUTBOX_PUBLISHER_PASSWORD:-outbox-publisher-dev}
       - SERVICE_NAME=outbox_publisher
       - PORT=8085
     depends_on:
@@ -285,9 +295,18 @@ services:
     ports:
       - "4222:4222"
       - "8222:8222"
-    command: ["-js", "-sd", "/data", "-m", "8222"]
+    # users and permissions: nats/nats-server.conf. The passwords default to
+    # local-only values; set NATS_<SERVICE>_PASSWORD in .env to change them.
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    environment:
+      - NATS_OUTBOX_PUBLISHER_PASSWORD=${NATS_OUTBOX_PUBLISHER_PASSWORD:-outbox-publisher-dev}
+      - NATS_IDENTITY_PASSWORD=${NATS_IDENTITY_PASSWORD:-identity-dev}
+      - NATS_ACCOUNT_PROFILE_PASSWORD=${NATS_ACCOUNT_PROFILE_PASSWORD:-account-profile-dev}
+      - NATS_NOTIFICATIONS_PASSWORD=${NATS_NOTIFICATIONS_PASSWORD:-notifications-dev}
+      - NATS_ACTIVITY_PASSWORD=${NATS_ACTIVITY_PASSWORD:-activity-dev}
     volumes:
       - rekreativko_nats:/data
+      - ./nats/nats-server.conf:/etc/nats/nats-server.conf:ro
     networks:
       - rekreativko
     restart: unless-stopped

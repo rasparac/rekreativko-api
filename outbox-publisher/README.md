@@ -40,6 +40,7 @@ Latency from commit to NATS is therefore milliseconds in the normal case; `OUTBO
 | `OUTBOX_PURGE_INTERVAL` | Default `1h` - how often the purge runs (and once at start-up); `0` turns it off, published and dead-lettered rows are then kept forever |
 | `OUTBOX_PURGE_BATCH` | Default `1000` - rows deleted per statement, so one delete never holds many locks |
 | `NATS_URL` | Broker connection |
+| `NATS_USER`, `NATS_PASSWORD` | Its NATS user, `outbox_publisher` (`nats/nats-server.conf`): the only one allowed to publish domain events and to create the `EVENTS` and `DLQ` streams, which it does at start-up - the other services wait for them |
 | `PORT` | `8085` in docker-compose |
 
 ## Purging old rows

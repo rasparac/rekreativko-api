@@ -189,6 +189,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		cfg.NatsConfig.URL,
 		cfg.Service.Name,
 		log,
+		events.WithCredentials(cfg.NatsConfig.User, cfg.NatsConfig.Password),
 	)
 	if err != nil {
 		return err

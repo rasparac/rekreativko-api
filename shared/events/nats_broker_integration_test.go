@@ -53,7 +53,7 @@ func TestNatsBroker_DeadLettersAfterMaxDeliveries(t *testing.T) {
 	t.Cleanup(func() { retryDelays = orig })
 
 	url := startNATS(t)
-	b, err := NewNatsBroker(url, "test-svc", logger.New("error", "json"))
+	b, err := NewNatsBroker(url, "test-svc", logger.New("error", "json"), WithStreamManagement())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
 
@@ -81,7 +81,7 @@ func TestNatsBroker_DeadLettersAfterMaxDeliveries(t *testing.T) {
 // with the event_id as message id the stream stores it once.
 func TestNatsBroker_RepublishingTheSameMessageIDStoresItOnce(t *testing.T) {
 	url := startNATS(t)
-	b, err := NewNatsBroker(url, "test-svc", logger.New("error", "json"))
+	b, err := NewNatsBroker(url, "test-svc", logger.New("error", "json"), WithStreamManagement())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
 
@@ -110,7 +110,7 @@ func TestNatsBroker_RepublishingTheSameMessageIDStoresItOnce(t *testing.T) {
 // sends gets it to the DLQ although processMessage never saw it fail.
 func TestNatsBroker_MaxDeliveriesAdvisoryDeadLetters(t *testing.T) {
 	url := startNATS(t)
-	b, err := NewNatsBroker(url, "test-svc", logger.New("error", "json"))
+	b, err := NewNatsBroker(url, "test-svc", logger.New("error", "json"), WithStreamManagement())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
 
@@ -151,7 +151,7 @@ func TestNatsBroker_MaxDeliveriesAdvisoryDeadLetters(t *testing.T) {
 
 func TestNatsBroker_PermanentErrorDeadLettersImmediately(t *testing.T) {
 	url := startNATS(t)
-	b, err := NewNatsBroker(url, "test-svc", logger.New("error", "json"))
+	b, err := NewNatsBroker(url, "test-svc", logger.New("error", "json"), WithStreamManagement())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = b.Close(context.Background()) })
 
@@ -179,7 +179,7 @@ func TestNatsBroker_SubscribeBroadcast_ReachesEveryInstance(t *testing.T) {
 	type received struct{ topic, payload string }
 	instances := make([]chan received, 2)
 	for i := range instances {
-		b, err := NewNatsBroker(url, "same-svc", logger.New("error", "json"))
+		b, err := NewNatsBroker(url, "same-svc", logger.New("error", "json"), WithStreamManagement())
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = b.Close(context.Background()) })
 
@@ -190,7 +190,7 @@ func TestNatsBroker_SubscribeBroadcast_ReachesEveryInstance(t *testing.T) {
 		}))
 	}
 
-	publisher, err := NewNatsBroker(url, "publisher", logger.New("error", "json"))
+	publisher, err := NewNatsBroker(url, "publisher", logger.New("error", "json"), WithStreamManagement())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = publisher.Close(context.Background()) })
 

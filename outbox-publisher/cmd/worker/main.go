@@ -64,6 +64,9 @@ func main() {
 		cfg.NatsConfig.URL,
 		"outbox",
 		log,
+		events.WithCredentials(cfg.NatsConfig.User, cfg.NatsConfig.Password),
+		// the one component that creates the streams
+		events.WithStreamManagement(),
 	)
 	if err != nil {
 		log.Error(ctx, "error initializing nats connection", "error", err)

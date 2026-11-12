@@ -238,6 +238,10 @@ sequenceDiagram
 
 `identity` and `activity` publish several more event types (account registration, login attempts, group/session lifecycle transitions, etc.) that currently have no subscriber — see each service's own README for the full list.
 
+### Who may talk to NATS
+
+Every connection logs in as its service's own NATS user (`NATS_USER`/`NATS_PASSWORD`); the users and their permissions are in [`nats/nats-server.conf`](nats/nats-server.conf), which docker-compose and the integration tests (`TestNatsAuth_ServerConfig`) both use. Only the outbox-publisher may publish domain events and create the `EVENTS` and `DLQ` streams - every other service waits for them at start-up - so a compromised service can't forge an event (`identity.account.erased` erases data everywhere) or delete a stream. A new consumer service needs its own user there, with the shared consumer permissions; a new broadcast subscription needs its subject added to that service's user.
+
 ### Live updates and notifications
 
 Two separate channels tell the app that something happened; neither is push.
@@ -408,8 +412,12 @@ JWT_SECRET=your-secret-key
 JWT_ACCESS_TOKEN_DURATION=15m
 JWT_REFRESH_TOKEN_DURATION=7d
 
-# NATS
+# NATS: the service's own user from nats/nats-server.conf, e.g. for activity
+# (the docker-compose NATS uses <user-with-dashes>-dev passwords unless
+# NATS_<SERVICE>_PASSWORD is set)
 NATS_URL=nats://localhost:4222
+NATS_USER=activity
+NATS_PASSWORD=activity-dev
 
 # Redis
 REDIS_HOST=localhost:6379

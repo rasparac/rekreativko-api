@@ -177,8 +177,13 @@ type (
 		PurgeBatch          int           `envconfig:"OUTBOX_PURGE_BATCH" default:"1000"`
 	}
 
+	// NatsConfig: each service logs in as its own NATS user, whose
+	// permissions are in nats/nats-server.conf. An empty User connects without
+	// credentials, for a server with no authorization (a run from the IDE).
 	NatsConfig struct {
-		URL string `envconfig:"NATS_URL" required:"true" default:"nats://localhost:4222"`
+		URL      string `envconfig:"NATS_URL" required:"true" default:"nats://localhost:4222"`
+		User     string `envconfig:"NATS_USER"`
+		Password string `envconfig:"NATS_PASSWORD"`
 	}
 
 	// NominatimConfig configures the outbound client the location service uses

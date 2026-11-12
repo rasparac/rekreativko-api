@@ -91,22 +91,65 @@ type (
 	}
 )
 
+type (
+	// BrokerOption configures NewNatsBroker.
+	BrokerOption func(*brokerOptions)
+
+	brokerOptions struct {
+		user, password string
+		manageStreams  bool
+	}
+)
+
+// WithCredentials logs in to NATS as user. An empty user connects without
+// credentials (a NATS server with no authorization configured).
+func WithCredentials(user, password string) BrokerOption {
+	return func(o *brokerOptions) { o.user, o.password = user, password }
+}
+
+// WithStreamManagement makes this broker create or update the EVENTS and DLQ
+// streams. Only one component does it (the outbox-publisher, and tests), so
+// the services' NATS users need no rights to manage streams; every other
+// broker waits for the streams to exist (streamWaitTimeout).
+func WithStreamManagement() BrokerOption {
+	return func(o *brokerOptions) { o.manageStreams = true }
+}
+
+// streamWaitTimeout is how long a broker without WithStreamManagement waits
+// for the outbox-publisher to create the streams before it gives up.
+var streamWaitTimeout = 2 * time.Minute
+
 func NewNatsBroker(
 	url string,
 	serviceName string,
 	logger *logger.Logger,
+	opts ...BrokerOption,
 ) (*natsBroker, error) {
-	conn, err := nats.Connect(
-		url,
+	var options brokerOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	natsOpts := []nats.Option{
+		nats.Name(serviceName),
 		nats.MaxReconnects(-1),
-		nats.ReconnectWait(1*time.Second),
+		nats.ReconnectWait(1 * time.Second),
 		nats.DisconnectErrHandler(func(c *nats.Conn, err error) {
 			logger.Error(context.Background(), "nats connection error", "error", err)
 		}),
 		nats.ReconnectHandler(func(c *nats.Conn) {
 			logger.Info(context.Background(), "nats reconnected", "url", url)
 		}),
-	)
+		// a permissions violation arrives asynchronously, not as a call's error
+		nats.ErrorHandler(func(_ *nats.Conn, _ *nats.Subscription, err error) {
+			logger.Error(context.Background(), "nats error", "error", err)
+		}),
+	}
+	if options.user != "" {
+		natsOpts = append(natsOpts, nats.UserInfo(options.user, options.password))
+	}
+
+	conn, err := nats.Connect(url, natsOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -127,13 +170,45 @@ func NewNatsBroker(
 		cancelFns:   map[string]context.CancelFunc{},
 	}
 
-	err = nb.createStreams(context.Background())
+	if options.manageStreams {
+		err = nb.createStreams(context.Background())
+	} else {
+		err = nb.waitForStreams(context.Background())
+	}
 	if err != nil {
 		conn.Close()
 		return nil, err
 	}
 
 	return nb, nil
+}
+
+// waitForStreams returns once the EVENTS and DLQ streams exist: a service may
+// start before the outbox-publisher has created them.
+func (b *natsBroker) waitForStreams(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, streamWaitTimeout)
+	defer cancel()
+
+	for _, name := range []string{eventsStream, dlqStream} {
+		for {
+			_, err := b.js.Stream(ctx, name)
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, jetstream.ErrStreamNotFound) {
+				return fmt.Errorf("look up stream %s: %w", name, err)
+			}
+
+			b.logger.Info(ctx, "waiting for the outbox-publisher to create a stream", "stream", name)
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("stream %s was not created within %s: %w", name, streamWaitTimeout, ctx.Err())
+			case <-time.After(2 * time.Second):
+			}
+		}
+	}
+
+	return nil
 }
 
 func (b *natsBroker) Publish(ctx context.Context, topic, msgID string, payload []byte) error {
