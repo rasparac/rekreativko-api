@@ -26,6 +26,9 @@ paths:
   checked first). A redelivery must not create a second row or raise a second event.
 - **Errors**: a payload that can never succeed (bad JSON, missing id, unknown referenced row) returns
   `events.Permanent(err)` and goes to the dead-letter stream. Any other error is returned as is and retried.
+  A handler panic counts as an error (retried, then dead-lettered). A message the consumer gives up on without the
+  handler ever returning (the service crashed on every delivery, or outlasted `AckWait`) is dead-lettered from
+  JetStream's max-deliveries advisory, with reason `max_deliveries_advisory`.
   If even the dead-letter publish fails (it is retried twice), the message is dropped, counted as
   `events_dead_lettered_total{dlq_published="false"}` and alerted (`DeadLetterPublishFailed`); it can then only be
   recovered from the `EVENTS` stream within 7 days, by the `stream_sequence` in the log line (`nats stream get

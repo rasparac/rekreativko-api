@@ -5,6 +5,7 @@ package events
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -102,6 +103,50 @@ func TestNatsBroker_RepublishingTheSameMessageIDStoresItOnce(t *testing.T) {
 	require.NoError(t, b.Publish(ctx, "test.dedup.event", "", []byte(`{"n":3}`)))
 	require.NoError(t, b.Publish(ctx, "test.dedup.event", "", []byte(`{"n":3}`)))
 	assert.Equal(t, uint64(4), stored(), "other ids, and no id, are not deduplicated")
+}
+
+// A consumer that never acks, naks or terms a message - the service crashed on
+// every delivery - gives up on it after MaxDeliver; the advisory JetStream then
+// sends gets it to the DLQ although processMessage never saw it fail.
+func TestNatsBroker_MaxDeliveriesAdvisoryDeadLetters(t *testing.T) {
+	url := startNATS(t)
+	b, err := NewNatsBroker(url, "test-svc", logger.New("error", "json"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = b.Close(context.Background()) })
+
+	ctx := context.Background()
+	stream, err := b.js.Stream(ctx, eventsStream)
+	require.NoError(t, err)
+	consumer, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
+		Durable:       "test-svc-crashing",
+		FilterSubject: "events.test.crash",
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		AckWait:       time.Second,
+		MaxDeliver:    1,
+	})
+	require.NoError(t, err)
+	require.NoError(t, b.watchMaxDeliveries("test-svc-crashing", "test.crash"))
+
+	require.NoError(t, b.Publish(ctx, "test.crash", "", []byte(`{"event_id":"e-1"}`)))
+
+	// Delivered, then the "crash": no ack, no nak, no term.
+	batch, err := consumer.Fetch(1, jetstream.FetchMaxWait(10*time.Second))
+	require.NoError(t, err)
+	var seq uint64
+	for msg := range batch.Messages() {
+		md, err := msg.Metadata()
+		require.NoError(t, err)
+		seq = md.Sequence.Stream
+	}
+	require.NotZero(t, seq, "the message was delivered")
+
+	dead := readDLQ(t, b, "dlq.test.crash")
+
+	assert.Equal(t, []byte(`{"event_id":"e-1"}`), dead.Data(), "the original payload, read back from EVENTS")
+	assert.Equal(t, dlqReasonMaxDeliveriesAdvisory, dead.Headers().Get(headerDLQReason))
+	assert.Equal(t, "events.test.crash", dead.Headers().Get(headerDLQOriginalSubject))
+	assert.Equal(t, "test-svc-crashing", dead.Headers().Get(headerDLQConsumer))
+	assert.Equal(t, strconv.FormatUint(seq, 10), dead.Headers().Get(headerDLQStreamSeq))
 }
 
 func TestNatsBroker_PermanentErrorDeadLettersImmediately(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +43,11 @@ const (
 
 	dlqReasonPermanent     = "permanent_error"
 	dlqReasonMaxDeliveries = "max_deliveries"
+	// the consumer gave up without the handler ever returning (see watchMaxDeliveries)
+	dlqReasonMaxDeliveriesAdvisory = "max_deliveries_advisory"
+
+	// advisoryTimeout bounds handling one max deliveries advisory.
+	advisoryTimeout = 10 * time.Second
 
 	maxDLQErrorLen = 1024
 )
@@ -196,6 +202,10 @@ func (b *natsBroker) Subscribe(
 	}
 
 	b.consumers[topic] = consumer
+
+	if err := b.watchMaxDeliveries(durableName, topic); err != nil {
+		return err
+	}
 
 	info, err := consumer.Info(ctx)
 	if err != nil {
@@ -393,7 +403,7 @@ func (b *natsBroker) processMessage(
 	ctx = withEventID(ctx, msg.Data())
 	log.Debug(ctx, "event received", "num_delivered", metadata.NumDelivered)
 
-	err = handler(ctx, msg.Data())
+	err = runHandler(ctx, log, handler, msg.Data())
 	if err != nil {
 		log.Error(ctx, "failed to handle message", "error", err)
 
@@ -419,6 +429,20 @@ func (b *natsBroker) processMessage(
 			"message acked",
 		)
 	}
+}
+
+// runHandler runs handler, turning a panic into an error: the message is then
+// retried and dead-lettered like any other failure, instead of the panic
+// crashing the service on every redelivery until JetStream gives up on it.
+func runHandler(ctx context.Context, log *logger.Logger, handler MessageHandler, payload []byte) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error(ctx, "handler panicked", "panic", fmt.Sprint(r), "stack", string(debug.Stack()))
+			err = fmt.Errorf("handler panicked: %v", r)
+		}
+	}()
+
+	return handler(ctx, payload)
 }
 
 func retryDelay(numDelivered uint64) time.Duration {
@@ -452,20 +476,46 @@ func (b *natsBroker) deadLetter(
 		reason = dlqReasonPermanent
 	}
 
-	dlqMsg := nats.NewMsg(dlqSubjectPrefix + topic)
-	dlqMsg.Data = msg.Data()
-	dlqMsg.Header.Set(headerDLQOriginalSubject, msg.Subject())
+	b.storeDeadLetter(ctx, log, deadLetterInfo{
+		topic:        topic,
+		subject:      msg.Subject(),
+		consumer:     metadata.Consumer,
+		reason:       reason,
+		errText:      handlerErr.Error(),
+		data:         msg.Data(),
+		streamSeq:    metadata.Sequence.Stream,
+		numDelivered: metadata.NumDelivered,
+	})
+
+	if err := msg.Term(); err != nil {
+		log.Error(ctx, "failed to terminate message", "error", err)
+	}
+}
+
+// deadLetterInfo is one message to copy to the DLQ stream and why.
+type deadLetterInfo struct {
+	topic, subject, consumer, reason, errText string
+	data                                      []byte
+	streamSeq, numDelivered                   uint64
+}
+
+// storeDeadLetter publishes the message to the DLQ stream, logs the outcome and
+// counts it in events_dead_lettered_total.
+func (b *natsBroker) storeDeadLetter(ctx context.Context, log *logger.Logger, d deadLetterInfo) {
+	dlqMsg := nats.NewMsg(dlqSubjectPrefix + d.topic)
+	dlqMsg.Data = d.data
+	dlqMsg.Header.Set(headerDLQOriginalSubject, d.subject)
 	dlqMsg.Header.Set(headerDLQService, b.serviceName)
-	dlqMsg.Header.Set(headerDLQConsumer, metadata.Consumer)
-	dlqMsg.Header.Set(headerDLQError, sanitizeHeaderValue(handlerErr.Error(), maxDLQErrorLen))
-	dlqMsg.Header.Set(headerDLQReason, reason)
-	dlqMsg.Header.Set(headerDLQNumDelivered, strconv.FormatUint(metadata.NumDelivered, 10))
-	dlqMsg.Header.Set(headerDLQStreamSeq, strconv.FormatUint(metadata.Sequence.Stream, 10))
+	dlqMsg.Header.Set(headerDLQConsumer, d.consumer)
+	dlqMsg.Header.Set(headerDLQError, sanitizeHeaderValue(d.errText, maxDLQErrorLen))
+	dlqMsg.Header.Set(headerDLQReason, d.reason)
+	dlqMsg.Header.Set(headerDLQNumDelivered, strconv.FormatUint(d.numDelivered, 10))
+	dlqMsg.Header.Set(headerDLQStreamSeq, strconv.FormatUint(d.streamSeq, 10))
 	dlqMsg.Header.Set(headerDLQFailedAt, time.Now().UTC().Format(time.RFC3339))
 
 	// Deterministic id so a retried dead-letter of the same message is
 	// deduplicated. Set as the header jetstream.WithMsgID would set.
-	dlqMsg.Header.Set(jetstream.MsgIDHeader, fmt.Sprintf("%s-%d", metadata.Consumer, metadata.Sequence.Stream))
+	dlqMsg.Header.Set(jetstream.MsgIDHeader, fmt.Sprintf("%s-%d", d.consumer, d.streamSeq))
 
 	err := b.publishDeadLetter(ctx, dlqMsg)
 	published := err == nil
@@ -477,23 +527,82 @@ func (b *natsBroker) deadLetter(
 			"error", err,
 			"attempts", len(dlqPublishDelays)+1,
 			"dlq_subject", dlqMsg.Subject,
-			"reason", reason,
-			"stream_sequence", metadata.Sequence.Stream,
+			"reason", d.reason,
+			"stream_sequence", d.streamSeq,
 		)
 	} else {
 		log.Error(ctx, "message dead-lettered",
 			"dlq_subject", dlqMsg.Subject,
-			"reason", reason,
-			"num_delivered", metadata.NumDelivered,
-			"stream_sequence", metadata.Sequence.Stream,
+			"reason", d.reason,
+			"num_delivered", d.numDelivered,
+			"stream_sequence", d.streamSeq,
 		)
 	}
 
-	deadLetteredTotal.WithLabelValues(b.serviceName, topic, reason, strconv.FormatBool(published)).Inc()
+	deadLetteredTotal.WithLabelValues(b.serviceName, d.topic, d.reason, strconv.FormatBool(published)).Inc()
+}
 
-	if err := msg.Term(); err != nil {
-		log.Error(ctx, "failed to terminate message", "error", err)
+// maxDeliveriesAdvisory is what JetStream sends when a consumer stops
+// redelivering a message that never got an ack, nak or term.
+type maxDeliveriesAdvisory struct {
+	Consumer   string `json:"consumer"`
+	StreamSeq  uint64 `json:"stream_seq"`
+	Deliveries uint64 `json:"deliveries"`
+}
+
+// watchMaxDeliveries dead-letters what the consumer gives up on without
+// processMessage ever deciding: the service crashed on every delivery (an OOM
+// kill, say) or the handler outlasted AckWait each time. The instances of a
+// service share a queue group, so one of them handles each advisory (and the
+// deterministic DLQ message id drops a second copy anyway). An advisory is a
+// plain NATS message: it is lost if no instance is connected when it is sent.
+func (b *natsBroker) watchMaxDeliveries(consumerName, topic string) error {
+	subject := fmt.Sprintf("$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.%s.%s", eventsStream, consumerName)
+
+	_, err := b.conn.QueueSubscribe(subject, consumerName, func(m *nats.Msg) {
+		b.handleMaxDeliveries(topic, m.Data)
+	})
+	if err != nil {
+		return fmt.Errorf("subscribe to max deliveries advisories: %w", err)
 	}
+
+	return nil
+}
+
+func (b *natsBroker) handleMaxDeliveries(topic string, payload []byte) {
+	ctx, cancel := context.WithTimeout(context.Background(), advisoryTimeout)
+	defer cancel()
+
+	log := b.logger.WithValues("topic", topic, "reason", dlqReasonMaxDeliveriesAdvisory)
+
+	var advisory maxDeliveriesAdvisory
+	if err := json.Unmarshal(payload, &advisory); err != nil {
+		log.Error(ctx, "failed to decode max deliveries advisory", "error", err)
+		return
+	}
+	log = log.WithValues("consumer", advisory.Consumer, "stream_sequence", advisory.StreamSeq)
+
+	stream, err := b.js.Stream(ctx, eventsStream)
+	if err == nil {
+		var raw *jetstream.RawStreamMsg
+		if raw, err = stream.GetMsg(ctx, advisory.StreamSeq); err == nil {
+			ctx = withEventID(ctx, raw.Data)
+			b.storeDeadLetter(ctx, log, deadLetterInfo{
+				topic:        topic,
+				subject:      raw.Subject,
+				consumer:     advisory.Consumer,
+				reason:       dlqReasonMaxDeliveriesAdvisory,
+				errText:      "no result from the handler after max deliveries: the service crashed or the handler outlasted AckWait",
+				data:         raw.Data,
+				streamSeq:    advisory.StreamSeq,
+				numDelivered: advisory.Deliveries,
+			})
+			return
+		}
+	}
+
+	log.Error(ctx, "failed to read a message the consumer gave up on, dropping it", "error", err)
+	deadLetteredTotal.WithLabelValues(b.serviceName, topic, dlqReasonMaxDeliveriesAdvisory, "false").Inc()
 }
 
 // publishDeadLetter publishes msg to the DLQ stream, retrying after each of

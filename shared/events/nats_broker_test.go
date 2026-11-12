@@ -198,6 +198,34 @@ func TestPublishDeadLetter_StopsWhenTheContextEnds(t *testing.T) {
 	assert.Equal(t, 1, dlq.attempts)
 }
 
+// A panicking handler used to crash the service on every redelivery until
+// JetStream gave up silently; now it is a failure like any other.
+func TestProcessMessage_APanickingHandlerIsAFailure(t *testing.T) {
+	panicking := func(context.Context, []byte) error { panic("nil map") }
+
+	t.Run("retried with a delay, the service keeps running", func(t *testing.T) {
+		dlq := &fakeDLQ{}
+		msg := &fakeMsg{numDelivered: 1}
+
+		newTestBroker(dlq).processMessage(context.Background(), "t", msg, panicking)
+
+		require.NotNil(t, msg.nakDelay)
+		assert.False(t, msg.acked)
+		assert.Empty(t, dlq.published)
+	})
+
+	t.Run("dead-lettered after max deliveries, with the panic as the error", func(t *testing.T) {
+		dlq := &fakeDLQ{}
+		msg := &fakeMsg{numDelivered: maxDeliver}
+
+		newTestBroker(dlq).processMessage(context.Background(), "t", msg, panicking)
+
+		require.Len(t, dlq.published, 1)
+		assert.Equal(t, "handler panicked: nil map", dlq.published[0].Header.Get(headerDLQError))
+		assert.True(t, msg.termed)
+	})
+}
+
 func TestSanitizeHeaderValue_TruncatesAndStripsLineBreaks(t *testing.T) {
 	got := sanitizeHeaderValue("a\r\nb"+strings.Repeat("x", 2000), 10)
 
