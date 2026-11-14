@@ -50,7 +50,7 @@ notifications/internal/
 - **No push yet:** a feed item reaches the app only when the app next fetches `GET /notifications`. Live updates on an open team screen come from activity's SSE stream, not from here.
 - **User settings aren't consulted:** every message sent today must go out whatever account-profile's `notification.email.enabled`/`sms.enabled` say (see [Which messages respect the user's settings](#which-messages-respect-the-users-settings)), and `preference.language` isn't read either - everything is in English.
 
-**Direction** (decided 2026-10-14, ticket `rekreativko-api-me3`, done): no split into separate services. Push (`rekreativko-api-79p`), localized emails (`rekreativko-api-nvr.4`) and the email setting (`rekreativko-api-22a`) build on the delivery layer. Splitting it out later, if volume ever needs separate scaling, means copying that layer out.
+**Direction** (decided 2026-10-14, ticket `rekreativko-api-me3`, done): no split into separate services. Push (`rekreativko-api-79p`), localized emails (`rekreativko-api-nvr.4`) and the user's channel settings (`rekreativko-api-79p.3`) build on the delivery layer. Splitting it out later, if volume ever needs separate scaling, means copying that layer out.
 
 ### Message templates
 
@@ -69,7 +69,7 @@ account-profile has `notification.email.enabled`, `notification.sms.enabled` and
 - **`AlwaysSent`** - security and account messages a user can't opt out of: verification codes, password changed, anything they asked for or must know about their account. Welcome is here too: it goes out once, the moment the address is verified, before the user could have turned email off.
 - **`RespectsSettings`** - everything else: activity updates, reminders, announcements, push. Skipped when the user turned that channel off.
 
-Every kind is `AlwaysSent` today, so the settings aren't read. The first `RespectsSettings` kind has to bring them here: account-profile publishes a settings-changed event, this service keeps its own copy per account (covered by its erasure) and `DeliveryService` checks it. That is `rekreativko-api-22a`, built together with the stored language (`rekreativko-api-nvr.5`), since both need the same per-account copy.
+Every kind is `AlwaysSent` today, so the settings aren't read. The first `RespectsSettings` kind has to bring them here: account-profile publishes a settings-changed event, this service keeps its own copy per account (covered by its erasure) and `DeliveryService` checks it. That is `rekreativko-api-79p.3`, built together with the stored language (`rekreativko-api-nvr.5`), since both need the same per-account copy.
 
 ## Running it
 
@@ -235,6 +235,6 @@ A bad payload is dead-lettered; any other failure is retried (both operations ar
 - When both senders end up `nil` (non-dev + `PHONE_REGISTRATION_ENABLED=true`), only the email error is ever surfaced (checked first) — the SMS error is equally true but never shown, which could confuse debugging.
 - **Dev senders log the code, email and phone.** `InMemoryEmailSender`/`InMemorySMSSender` (dev mode only) log recipient and message body, which is the only way to read a verification code locally. Nothing else logs or traces a code, email or phone: the handlers' spans carry only `event.id`, `event.account_id` and `event.delivery_type` (`TestEventHandlers_SpansCarryNoCodeEmailOrPhone`), and identity's log lines no longer carry the code, email or phone (`rekreativko-api-7r1`).
 - `identity.account.password.changed` is subscribed, but nothing publishes it — identity has no route wired to `Account.ChangePassword()` yet (see `identity/README.md`).
-- `notification.email.enabled`/`sms.enabled`/`push.enabled` (account-profile settings) aren't read: nothing sent today respects them (all `AlwaysSent`); the first message that does brings them here (`rekreativko-api-22a`).
+- `notification.email.enabled`/`sms.enabled`/`push.enabled` (account-profile settings) aren't read: nothing sent today respects them (all `AlwaysSent`); the first message that does brings them here (`rekreativko-api-79p.3`).
 - Cosmetic: `Notification`'s private field is misspelled `recipientAccontID` (missing a `u`) — the exported getter `RecipientAccountID()` is correct, so this doesn't affect callers.
 - The service name doesn't really describe its identity-delivery responsibility anymore; renaming has been discussed (e.g. "feed" service) but deliberately deferred — see project history if picking this up.

@@ -61,7 +61,7 @@ func TestRenderer_Render(t *testing.T) {
 
 	t.Run("every template's kind says whether it respects the user's settings", func(t *testing.T) {
 		// a new message must decide: always sent, or skipped when the user turned
-		// its channel off (domain.settingsPolicies, rekreativko-api-22a)
+		// its channel off (domain.settingsPolicies)
 		require.NoError(t, fs.WalkDir(files, ".", func(path string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
 				return err

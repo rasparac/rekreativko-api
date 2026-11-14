@@ -54,7 +54,7 @@ const (
 
 // Every kind must be listed (the templates test checks each template's kind
 // is). Nothing is RespectsSettings yet, so the settings aren't consulted; the
-// first such kind brings their propagation to this service (rekreativko-api-22a).
+// first such kind brings their propagation to this service (rekreativko-api-79p.3).
 var settingsPolicies = map[MessageKind]SettingsPolicy{
 	MessageVerificationCode: AlwaysSent,
 	MessagePasswordChanged:  AlwaysSent,
