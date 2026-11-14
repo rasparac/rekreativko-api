@@ -37,3 +37,35 @@ const (
 	MessageWelcome          MessageKind = "welcome_message"
 	MessagePasswordChanged  MessageKind = "password_changed"
 )
+
+// SettingsPolicy says whether a message respects the recipient's
+// notification.<channel>.enabled setting (account-profile).
+type SettingsPolicy int
+
+const (
+	// AlwaysSent: security and account mail the user can't opt out of -
+	// verification codes, password changes, anything they asked for or must
+	// know about their account.
+	AlwaysSent SettingsPolicy = iota + 1
+	// RespectsSettings: anything else (activity updates, reminders,
+	// announcements) - skipped when the user turned the channel off.
+	RespectsSettings
+)
+
+// Every kind must be listed (the templates test checks each template's kind
+// is). Nothing is RespectsSettings yet, so the settings aren't consulted; the
+// first such kind brings their propagation to this service (rekreativko-api-22a).
+var settingsPolicies = map[MessageKind]SettingsPolicy{
+	MessageVerificationCode: AlwaysSent,
+	MessagePasswordChanged:  AlwaysSent,
+	// sent once, the moment the address is verified - before the user could
+	// have turned email off - and it confirms the account exists
+	MessageWelcome: AlwaysSent,
+}
+
+// SettingsPolicy returns how this kind treats the recipient's notification
+// settings; ok is false for a kind nobody classified.
+func (k MessageKind) SettingsPolicy() (policy SettingsPolicy, ok bool) {
+	policy, ok = settingsPolicies[k]
+	return policy, ok
+}

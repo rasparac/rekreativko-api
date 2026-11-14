@@ -1,6 +1,8 @@
 package templates
 
 import (
+	"io/fs"
+	"strings"
 	"testing"
 
 	"github.com/rasparac/rekreativko-api/notifications/internal/domain"
@@ -55,6 +57,20 @@ func TestRenderer_Render(t *testing.T) {
 				assert.NotEmpty(t, got.Subject)
 			}
 		}
+	})
+
+	t.Run("every template's kind says whether it respects the user's settings", func(t *testing.T) {
+		// a new message must decide: always sent, or skipped when the user turned
+		// its channel off (domain.settingsPolicies, rekreativko-api-22a)
+		require.NoError(t, fs.WalkDir(files, ".", func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			kind, _, _ := strings.Cut(d.Name(), ".")
+			_, ok := domain.MessageKind(kind).SettingsPolicy()
+			assert.True(t, ok, "%s: add its kind to domain.settingsPolicies", path)
+			return nil
+		}))
 	})
 
 	t.Run("an unknown locale falls back to the default", func(t *testing.T) {

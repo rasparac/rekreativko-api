@@ -31,7 +31,7 @@ var settingRegistry = map[string]SettingDefinition{
 		Key:         SettingNotificationEmailEnabled,
 		Type:        SettingTypeBool,
 		Default:     "true",
-		Description: "Enable or disable email notifications. When enabled, you will receive email updates about your account activity and important announcements.",
+		Description: "Enable or disable optional emails, such as activity updates and announcements. Security emails (verification codes, password changes) are always sent.",
 		Category:    CategoryNotification,
 		Label:       "Email notifications",
 	},
