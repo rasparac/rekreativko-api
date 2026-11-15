@@ -26,9 +26,14 @@ type sessionTeamTestEnv struct {
 	formation    *application.TeamFormationQuery
 	draftSvc     *application.TeamDraftService
 	votingSvc    *application.TeamVotingService
+	memberSvc    *application.MemberService
+	inviteSvc    *application.InviteService
+	templateSvc  *application.SessionTemplateService
 	sessionRepo  application.SessionRepository
 	attendeeRepo application.AttendeeRepository
 	memberRepo   application.MemberRepository
+	inviteRepo   application.GroupInviteRepository
+	templateRepo application.SessionTemplateRepository
 	txManager    *postgres.TransactionManager
 }
 
@@ -45,6 +50,9 @@ func setupSessionTeamTest(t *testing.T) *sessionTeamTestEnv {
 	groupRepo := persistence.NewActivityGroupRepository(txManager, logger)
 	draftRepo := persistence.NewTeamDraftRepository(txManager, logger)
 	votingRepo := persistence.NewTeamVotingRepository(txManager, logger)
+	inviteRepo := persistence.NewGroupInviteRepository(txManager, logger)
+	templateRepo := persistence.NewSessionTemplateManager(txManager, logger)
+	accountStates := persistence.NewAccountStateManager(txManager)
 	eventWriter := domainevent.MustNewEventWriter(txManager, logger, "activity")
 
 	draftSvc := application.NewTeamDraftService(logger, txManager, sessionRepo, attendeeRepo, draftRepo, votingRepo, eventWriter, testMetrics())
@@ -53,15 +61,20 @@ func setupSessionTeamTest(t *testing.T) *sessionTeamTestEnv {
 
 	return &sessionTeamTestEnv{
 		ctx:          context.Background(),
-		svc:          application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, draftRepo, votingRepo, persistence.NewAccountStateManager(txManager), eventWriter, testMetrics()),
+		svc:          application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, draftRepo, votingRepo, accountStates, eventWriter, testMetrics()),
 		sessionSvc:   sessionSvc,
 		groupSvc:     application.NewActivityGroupService(logger, txManager, groupRepo, memberRepo, sessionSvc, eventWriter, testMetrics()),
 		draftSvc:     draftSvc,
 		votingSvc:    votingSvc,
 		formation:    application.NewTeamFormationQuery(txManager, sessionRepo, memberRepo, attendeeRepo, draftSvc, votingSvc),
+		memberSvc:    application.NewMemberService(logger, txManager, memberRepo, groupRepo, accountStates, eventWriter, testMetrics()),
+		inviteSvc:    application.NewInviteService(logger, txManager, inviteRepo, memberRepo, accountStates, eventWriter, testMetrics()),
+		templateSvc:  application.NewSessionTemplateService(logger, txManager, templateRepo, memberRepo, eventWriter, testMetrics()),
 		sessionRepo:  sessionRepo,
 		attendeeRepo: attendeeRepo,
 		memberRepo:   memberRepo,
+		inviteRepo:   inviteRepo,
+		templateRepo: templateRepo,
 		txManager:    txManager,
 	}
 }
@@ -182,7 +195,7 @@ func TestAttendeeService_AssignTeam_PersistsAndListsMembers(t *testing.T) {
 	// move bob to team B
 	require.NoError(t, env.assign(session, bob, teamB))
 
-	members, err := env.attendeeRepo.ListTeamMembers(env.ctx, session.ID())
+	members, err := env.sessionSvc.ListTeamMembers(env.ctx, session.ID())
 	require.NoError(t, err)
 	assert.Equal(t, []uuid.UUID{alice}, members[teamA])
 	assert.Equal(t, []uuid.UUID{bob}, members[teamB])
@@ -200,7 +213,7 @@ func TestAttendeeService_AssignTeam_PersistsAndListsMembers(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	members, err = env.attendeeRepo.ListTeamMembers(env.ctx, session.ID())
+	members, err = env.sessionSvc.ListTeamMembers(env.ctx, session.ID())
 	require.NoError(t, err)
 	assert.Empty(t, members[teamB])
 }
