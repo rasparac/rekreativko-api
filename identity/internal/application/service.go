@@ -163,7 +163,57 @@ func (s *Service) DeleteAccount(ctx context.Context, accountID uuid.UUID) error 
 		"account_id", accountID.String(),
 	))
 
-	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
+	err := s.deleteAccount(ctx, accountID, time.Now().UTC())
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to delete account", "error", err)
+		return mapToAppErr(err)
+	}
+
+	span.SetStatus(codes.Ok, "account deleted")
+
+	log.Debug(ctx, "account deleted")
+
+	return nil
+}
+
+// RedoAccountDeletion deletes again an account whose deletion a backup restore
+// lost (README, "After restoring a backup"): the same as DeleteAccount, but as
+// of deletedAt, when the user asked for it, so its erasure isn't postponed by
+// a new grace period. An account that is not active (already deleted) returns
+// domain.ErrAccountDeleted.
+func (s *Service) RedoAccountDeletion(ctx context.Context, accountID uuid.UUID, deletedAt time.Time) error {
+	ctx, span := s.tracer.Start(
+		ctx,
+		"identity.service.RedoAccountDeletion",
+	)
+	defer span.End()
+
+	log := s.logger.WithValues(
+		"method", "RedoAccountDeletion",
+		"account_id", accountID,
+	)
+
+	span.SetAttributes(attribute.String(
+		"account_id", accountID.String(),
+	))
+
+	err := s.deleteAccount(ctx, accountID, deletedAt)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "failed to redo account deletion", "error", err)
+		return mapToAppErr(err)
+	}
+
+	span.SetStatus(codes.Ok, "account deleted again")
+
+	log.Info(ctx, "account deleted again after a restore", "deleted_at", deletedAt)
+
+	return nil
+}
+
+func (s *Service) deleteAccount(ctx context.Context, accountID uuid.UUID, deletedAt time.Time) error {
+	return s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
 		account, err := s.accountRepository.GetBy(tCtx, persistence.AccountFilter{
 			UUID: &accountID,
 		})
@@ -171,7 +221,7 @@ func (s *Service) DeleteAccount(ctx context.Context, accountID uuid.UUID) error 
 			return fmt.Errorf("get account: %w", err)
 		}
 
-		err = account.Delete(s.erasureGrace)
+		err = account.DeleteAt(deletedAt, s.erasureGrace)
 		if err != nil {
 			return err
 		}
@@ -186,8 +236,7 @@ func (s *Service) DeleteAccount(ctx context.Context, accountID uuid.UUID) error 
 			return fmt.Errorf("revoke refresh tokens: %w", err)
 		}
 
-		events := account.Events()
-		err = s.domainWriter.InsertEvents(tCtx, events...)
+		err = s.domainWriter.InsertEvents(tCtx, account.Events()...)
 		if err != nil {
 			return fmt.Errorf("insert events: %w", err)
 		}
@@ -196,17 +245,6 @@ func (s *Service) DeleteAccount(ctx context.Context, accountID uuid.UUID) error 
 
 		return nil
 	})
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		log.Error(ctx, "failed to delete account", "error", err)
-		return mapToAppErr(err)
-	}
-
-	span.SetStatus(codes.Ok, "account deleted")
-
-	log.Debug(ctx, "account deleted")
-
-	return nil
 }
 
 func (s *Service) Register(ctx context.Context, req RegistrationParams) (uuid.UUID, error) {

@@ -67,6 +67,16 @@ func main() {
 		"environment", cfg.Service.Environment,
 	)
 
+	// `service redelete ...` is an admin command run in the identity pod after a
+	// backup restore (redelete.go), not the API.
+	if len(os.Args) > 1 && os.Args[1] == "redelete" {
+		if err := runRedelete(ctx, cfg, log, os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "redelete:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	err = run(ctx, cfg, log)
 	if err != nil {
 		logger.Error(ctx, "failed to start rekreativko", "error", err)

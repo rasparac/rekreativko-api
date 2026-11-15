@@ -200,15 +200,22 @@ func (a *Account) Suspend(reason string) error {
 // Erase) once grace has passed. Until then the data is kept, so the deletion
 // can still be investigated or undone by support.
 func (a *Account) Delete(grace time.Duration) error {
+	return a.DeleteAt(time.Now().UTC(), grace)
+}
+
+// DeleteAt is Delete as of deletedAt. It redoes a deletion that a backup
+// restore lost with the time the user asked for it, so the account is still
+// erased grace after that request rather than grace after the restore.
+func (a *Account) DeleteAt(deletedAt time.Time, grace time.Duration) error {
 	if !a.status.CanBeDeleted() {
 		return ErrAccountDeleted
 	}
 
-	now := time.Now().UTC()
-	eraseAfter := now.Add(grace)
+	deletedAt = deletedAt.UTC()
+	eraseAfter := deletedAt.Add(grace)
 
 	a.status = AccountStatusDeleted
-	a.deletedAt = &now
+	a.deletedAt = &deletedAt
 	a.eraseAfter = &eraseAfter
 	a.touch()
 	a.addEvent(NewAccountDeletedEvent(a))

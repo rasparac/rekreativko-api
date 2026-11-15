@@ -51,6 +51,23 @@ func TestAccount_Delete_ZeroGraceIsDueRightAway(t *testing.T) {
 	assert.Equal(t, *account.DeletedAt(), *account.EraseAfter())
 }
 
+// A deletion redone after a backup restore keeps the user's original request
+// time, so the grace period isn't restarted.
+func TestAccount_DeleteAt_CountsTheGraceFromTheOriginalDeletion(t *testing.T) {
+	account := newActiveAccount(t)
+	asked := time.Date(2026, 11, 2, 9, 30, 0, 0, time.FixedZone("CET", 3600))
+
+	require.NoError(t, account.DeleteAt(asked, 30*24*time.Hour))
+
+	assert.Equal(t, AccountStatusDeleted, account.Status())
+	assert.Equal(t, asked.UTC(), *account.DeletedAt())
+	assert.Equal(t, asked.UTC().Add(30*24*time.Hour), *account.EraseAfter())
+	require.Len(t, account.Events(), 1)
+	assert.Equal(t, IdentityAccountDeletedEvent, account.Events()[0].GetEventType())
+
+	assert.ErrorIs(t, account.DeleteAt(asked, 0), ErrAccountDeleted, "an account is deleted once")
+}
+
 func TestAccount_Erase(t *testing.T) {
 	t.Run("removes the personal data and raises an erased event with the id only", func(t *testing.T) {
 		account := newActiveAccount(t)

@@ -169,7 +169,11 @@ A database restored to time T brings back data of accounts erased after T. What 
 
 - **Erased before T**: already erased in the backup. Nothing to do.
 - **Deleted before T, erased after T**: the backup still has its `erase_after`, so the erase job erases it again on its next run and raises `identity.account.erased` again; every context erases again (their `erased_account` rows were restored without it) and confirms. Nothing to do.
-- **Deleted after T**: the deletion itself is lost - the account is active again. Take the ids from the damaged database if it can still be read (`SELECT id FROM identity.accounts WHERE deleted_at > T`), or from `identity.account.deleted` in the NATS `EVENTS` stream (kept 7 days), and delete those accounts again. There is no admin tool for this yet (`rekreativko-api-5s3`).
+- **Deleted after T**: the deletion itself is lost - the account is active again. Delete those accounts again with the `redelete` admin command of the identity binary (`cmd/api/redelete.go`). It does what `DELETE /me` does - status `deleted`, every refresh token revoked, `identity.account.deleted` raised (so notifications and activity react again) - but as of the time the user asked, so `erase_after` is still that time + `ACCOUNT_ERASURE_GRACE` (already past = erased on the erase job's next run):
+  ```bash
+  kubectl exec deploy/identity -- /app/service redelete <account_id>@<deleted_at> ...   # locally: go run ./identity/cmd/api redelete ...
+  ```
+  Get the ids and times from the damaged database if it can still be read (`SELECT id || '@' || to_char(deleted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') FROM identity.accounts WHERE deleted_at > 'T'`), or from `identity.account.deleted` in the NATS `EVENTS` stream (kept 7 days: `aggregate_id` and `occurred_at`). An id without `@<deleted_at>` is deleted as of now (a full new grace period). The command checks every argument before deleting anything, prints `deleted`/`skipped`/`FAILED` per account, skips accounts that are no longer active (so running it twice is safe) and exits 1 if any failed.
 
 When only **one context's schema** is restored (identity is intact), that context has lost the erasures after T. Raise `identity.account.erased` again for them; every handler is idempotent, so contexts that already erased an account do nothing:
 
