@@ -3,10 +3,12 @@ package persistence
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -335,6 +337,9 @@ func (m *sessionTemplateManager) GetSessionTemplateByID(
 		&model.locationStreet,
 	)
 
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrSessionTemplateNotFound
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session template (id=%s): %w", templateID, err)
 	}

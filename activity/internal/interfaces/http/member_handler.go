@@ -440,7 +440,7 @@ func (h *Handler) LeaveMember(w http.ResponseWriter, r *http.Request) {
 // GetMember handles GET /api/v1/activity-groups/{groupId}/members/{userId}
 //
 //	@Summary		Get a member
-//	@Description	Retrieves a member by activity group and user ID
+//	@Description	Retrieves a member by activity group and user ID. Your own row is always visible; someone else's is not found (404) if the group is private and you are neither its creator nor a confirmed member, or if the row is not confirmed (pending, rejected, left, removed) and you don't manage the group.
 //	@Tags			Members
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
@@ -474,7 +474,7 @@ func (h *Handler) GetMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get member
-	member, err := h.memberService.GetMember(ctx, groupID, userID)
+	member, err := h.memberService.GetMember(ctx, groupID, userID, authcontext.GetAccountID(ctx))
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
@@ -486,7 +486,7 @@ func (h *Handler) GetMember(w http.ResponseWriter, r *http.Request) {
 // ListMembers handles GET /api/v1/activity-groups/{groupId}/members
 //
 //	@Summary		List members
-//	@Description	Lists members of an activity group with optional filters
+//	@Description	Lists members of an activity group with optional filters. A private group you are neither the creator nor a confirmed member of is not found (404). Only the group's creator and admins see members that aren't confirmed: anyone else gets confirmed members only, and a status filter other than confirmed is 403 insufficient_role.
 //	@Tags			Members
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
@@ -498,6 +498,8 @@ func (h *Handler) GetMember(w http.ResponseWriter, r *http.Request) {
 //	@Success		200		{object}	api.Response[api.Page[dtos.MemberResponse]]	"List of members"
 //	@Failure		400		{object}	api.Response[any]					"Invalid request"
 //	@Failure		401		{object}	api.Response[any]					"Unauthorized"
+//	@Failure		403		{object}	api.Response[any]					"A status other than confirmed, asked by someone who doesn't manage the group"
+//	@Failure		404		{object}	api.Response[any]					"Group not found, or private and not yours"
 //	@Failure		500		{object}	api.Response[any]					"Internal server error"
 //	@Router			/api/v1/activity-groups/{groupId}/members [get]
 func (h *Handler) ListMembers(w http.ResponseWriter, r *http.Request) {
@@ -522,6 +524,7 @@ func (h *Handler) ListMembers(w http.ResponseWriter, r *http.Request) {
 
 	// Set activity group ID from path
 	params.ActivityGroupID = &groupID
+	params.RequesterID = authcontext.GetAccountID(ctx)
 
 	// List members
 	members, nextPageToken, err := h.memberService.ListMembers(ctx, *params)

@@ -162,6 +162,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		log,
 		txManager,
 		sessionTemplateRepo,
+		activityGroupRepo,
 		memberRepo,
 		eventWriter,
 		appMetrics,

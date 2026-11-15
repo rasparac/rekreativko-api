@@ -65,7 +65,7 @@ func TestSessionTemplateService_CreateSessionTemplate(t *testing.T) {
 	t.Run("the creator creates an active template", func(t *testing.T) {
 		created := env.createTemplate(t, group.ID(), creator)
 
-		loaded, err := env.templateSvc.GetSessionTemplate(env.ctx, created.ID())
+		loaded, err := env.templateSvc.GetSessionTemplate(env.ctx, created.ID(), creator)
 		require.NoError(t, err)
 		assert.Equal(t, "Tuesday Hoops", loaded.Title())
 		assert.Equal(t, domain.SessionTemplateStatusActive, loaded.Status())
@@ -80,8 +80,8 @@ func TestSessionTemplateService_CreateSessionTemplate(t *testing.T) {
 func TestSessionTemplateService_GetSessionTemplate_UnknownIsNotFound(t *testing.T) {
 	env := setupSessionTeamTest(t)
 
-	_, err := env.templateSvc.GetSessionTemplate(env.ctx, uuid.New())
-	requireAppErrorCode(t, err, "not_found")
+	_, err := env.templateSvc.GetSessionTemplate(env.ctx, uuid.New(), uuid.New())
+	assert.ErrorIs(t, err, domain.ErrSessionTemplateNotFound)
 }
 
 func TestSessionTemplateService_UpdateSessionTemplate(t *testing.T) {
@@ -111,13 +111,13 @@ func TestSessionTemplateService_UpdateSessionTemplate(t *testing.T) {
 
 	t.Run("an unknown template is not found", func(t *testing.T) {
 		err := env.templateSvc.UpdateSessionTemplate(env.ctx, uuid.New(), application.UpdateSessionTemplateParams{RequesterID: creator})
-		requireAppErrorCode(t, err, "not_found")
+		assert.ErrorIs(t, err, domain.ErrSessionTemplateNotFound)
 	})
 
 	t.Run("an admin changes everything it was asked to", func(t *testing.T) {
 		require.NoError(t, update(env.addAdmin(t, group)))
 
-		loaded, err := env.templateSvc.GetSessionTemplate(env.ctx, template.ID())
+		loaded, err := env.templateSvc.GetSessionTemplate(env.ctx, template.ID(), creator)
 		require.NoError(t, err)
 		assert.Equal(t, "Thursday Hoops", loaded.Title())
 		assert.Empty(t, loaded.Description())
@@ -138,7 +138,7 @@ func TestSessionTemplateService_ActivateAndDeactivate(t *testing.T) {
 
 	status := func(t *testing.T) domain.SessionTemplateStatus {
 		t.Helper()
-		loaded, err := env.templateSvc.GetSessionTemplate(env.ctx, template.ID())
+		loaded, err := env.templateSvc.GetSessionTemplate(env.ctx, template.ID(), creator)
 		require.NoError(t, err)
 		return loaded.Status()
 	}
@@ -182,16 +182,16 @@ func TestSessionTemplateService_DeleteSessionTemplate(t *testing.T) {
 		require.NoError(t, env.templateSvc.DeleteSessionTemplate(env.ctx, template.ID(), creator))
 		assert.Equal(t, 1, env.outboxCount(t, domain.EventActivitySessionTemplateDeleted))
 
-		_, err := env.templateSvc.GetSessionTemplate(env.ctx, template.ID())
-		requireAppErrorCode(t, err, "not_found")
+		_, err := env.templateSvc.GetSessionTemplate(env.ctx, template.ID(), creator)
+		assert.ErrorIs(t, err, domain.ErrSessionTemplateNotFound)
 
-		listed, err := env.templateSvc.ListSessionTemplates(env.ctx, application.ListSessionTemplatesParams{ActivityGroupID: testutil.Ptr(group.ID())})
+		listed, err := env.templateSvc.ListSessionTemplates(env.ctx, application.ListSessionTemplatesParams{ActivityGroupID: testutil.Ptr(group.ID()), RequesterID: creator})
 		require.NoError(t, err)
 		assert.Empty(t, listed)
 	})
 
 	t.Run("a deleted template can't be activated", func(t *testing.T) {
 		err := env.templateSvc.ActivateSessionTemplate(env.ctx, template.ID(), creator)
-		requireAppErrorCode(t, err, "not_found")
+		assert.ErrorIs(t, err, domain.ErrSessionTemplateNotFound)
 	})
 }

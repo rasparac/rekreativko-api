@@ -117,13 +117,12 @@ func TestSessionTemplateRepository_CreateAndGet(t *testing.T) {
 		assert.Equal(t, 15, *retrieved.RecurrenceRule().DayOfMonth())
 	})
 
-	t.Run("get non-existent template returns error", func(t *testing.T) {
+	t.Run("get non-existent template is not found", func(t *testing.T) {
 		// Act
 		_, err := repo.GetSessionTemplateByID(ctx, uuid.New())
 
 		// Assert
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no rows")
+		assert.ErrorIs(t, err, domain.ErrSessionTemplateNotFound)
 	})
 }
 

@@ -3,10 +3,12 @@ package persistence
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -239,6 +241,9 @@ func (agm *activityGroupManager) GetActivityGroupByID(
 	)
 	row := q.QueryRow(ctx, query, ID)
 	model, err := scanActivityGroupModel(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrActivityGroupNotFound
+	}
 	if err != nil {
 		return nil, err
 	}

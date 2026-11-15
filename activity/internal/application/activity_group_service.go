@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -203,40 +204,22 @@ func (s *ActivityGroupService) GetActivityGroup(
 
 	span.SetAttributes(attribute.String("group_id", groupID.String()))
 
-	group, err := s.groupRepo.GetActivityGroupByID(ctx, groupID)
+	group, err := visibleGroup(ctx, s.groupRepo, s.memberRepo, groupID, requesterID)
+	if errors.Is(err, domain.ErrActivityGroupNotFound) {
+		span.SetStatus(codes.Error, "not visible to requester")
+		log.Debug(ctx, "private group not visible to requester", "requester_id", requesterID)
+		return nil, MapErrToAppError(err)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to get activity group", "error", err)
 		return nil, mapToAppErr(err)
 	}
 
-	// Private groups don't exist as far as a non-member is concerned - not
-	// just access-denied, actually not found, so a stranger can't even
-	// confirm a private group's existence by ID.
-	isMember := func() bool { return s.isConfirmedMember(ctx, groupID, requesterID) }
-	if !group.IsVisibleTo(requesterID, isMember) {
-		span.SetStatus(codes.Error, "not visible to requester")
-		log.Debug(ctx, "private group not visible to requester", "requester_id", requesterID)
-		return nil, MapErrToAppError(domain.ErrActivityGroupNotFound)
-	}
-
 	span.SetStatus(codes.Ok, "activity group found")
 	log.Debug(ctx, "activity group found")
 
 	return group, nil
-}
-
-// isConfirmedMember checks membership loosely, matching this file's existing
-// convention (e.g. RequestToJoinGroup's existing-member check): any error
-// (not-found or otherwise) is treated as "not a confirmed member" rather
-// than surfaced, since the caller only needs a yes/no visibility signal.
-func (s *ActivityGroupService) isConfirmedMember(ctx context.Context, groupID, userID uuid.UUID) bool {
-	member, err := s.memberRepo.GetMemberByGroupAndUser(ctx, groupID, userID)
-	if err != nil || member == nil {
-		return false
-	}
-
-	return member.Status() == domain.MemberStatusConfirmed
 }
 
 // UpdateActivityGroup updates an existing activity group

@@ -57,7 +57,8 @@ type UpdateSessionTemplateParams struct {
 
 // ListSessionTemplatesParams contains parameters for listing session templates
 type ListSessionTemplatesParams struct {
-	ActivityGroupID *uuid.UUID
+	ActivityGroupID *uuid.UUID // required
+	RequesterID     uuid.UUID
 	CreatedByID     *uuid.UUID
 	Status          *string // "active", "inactive"
 	IsRecurring     *bool
@@ -300,7 +301,8 @@ type RejectMemberParams struct {
 
 // ListMembersParams contains parameters for listing members
 type ListMembersParams struct {
-	ActivityGroupID *uuid.UUID
+	ActivityGroupID *uuid.UUID // required
+	RequesterID     uuid.UUID
 	UserID          *uuid.UUID
 	Status          *string // "pending", "confirmed", "rejected", "left", "removed"
 	Role            *string // "creator", "admin", "member"

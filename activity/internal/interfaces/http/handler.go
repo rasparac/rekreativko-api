@@ -17,7 +17,7 @@ type (
 	// sessionTemplateService defines the interface for session template operations
 	sessionTemplateService interface {
 		CreateSessionTemplate(ctx context.Context, params application.CreateSessionTemplateParams) (*domain.SessionTemplate, error)
-		GetSessionTemplate(ctx context.Context, templateID uuid.UUID) (*domain.SessionTemplate, error)
+		GetSessionTemplate(ctx context.Context, templateID, requesterID uuid.UUID) (*domain.SessionTemplate, error)
 		UpdateSessionTemplate(ctx context.Context, templateID uuid.UUID, params application.UpdateSessionTemplateParams) error
 		ActivateSessionTemplate(ctx context.Context, templateID uuid.UUID, requesterID uuid.UUID) error
 		DeactivateSessionTemplate(ctx context.Context, templateID uuid.UUID, requesterID uuid.UUID) error
@@ -64,7 +64,7 @@ type (
 		ApproveMember(ctx context.Context, params application.ApproveMemberParams) error
 		RejectMember(ctx context.Context, params application.RejectMemberParams) error
 		LeaveMember(ctx context.Context, activityGroupID uuid.UUID, userID uuid.UUID) error
-		GetMember(ctx context.Context, activityGroupID uuid.UUID, userID uuid.UUID) (*domain.Member, error)
+		GetMember(ctx context.Context, activityGroupID, userID, requesterID uuid.UUID) (*domain.Member, error)
 		ListMembers(ctx context.Context, params application.ListMembersParams) ([]*domain.Member, string, error)
 	}
 

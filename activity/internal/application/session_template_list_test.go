@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
@@ -37,10 +38,19 @@ func (f *templateListRepo) ListSessionTemplates(_ context.Context, filter persis
 	return out, next, nil
 }
 
+// publicGroupRepo finds every group, public.
+type publicGroupRepo struct{ ActivityGroupRepository }
+
+func (publicGroupRepo) GetActivityGroupByID(_ context.Context, id uuid.UUID) (*domain.ActivityGroup, error) {
+	return domain.ReconstructActivityGroup(id, uuid.New(), domain.Title{}, "", domain.ActivityTypeRunning, domain.DifficultyLevelBeginner,
+		domain.ActivityGroupVisibilityPublic, domain.ActivityGroupStatusActive, domain.AcitvityGroupLocation{}, "UTC", nil, time.Now(), time.Now(), nil, nil), nil
+}
+
 func newTemplateListService(repo SessionTemplateRepository, logs *bytes.Buffer) *SessionTemplateService {
 	return &SessionTemplateService{
 		logger:       logger.NewWithWriter("warn", "json", logs).WithName("test"),
 		templateRepo: repo,
+		groupRepo:    publicGroupRepo{},
 		tracer:       telemetry.Tracer(telemetry.TracerActivityService),
 	}
 }

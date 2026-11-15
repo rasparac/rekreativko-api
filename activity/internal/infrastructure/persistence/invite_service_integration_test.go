@@ -97,7 +97,7 @@ func TestInviteService_AcceptInvite(t *testing.T) {
 
 		_, err := env.inviteSvc.AcceptInvite(env.ctx, expired.ID(), late)
 		assert.ErrorIs(t, err, domain.ErrInviteExpired)
-		_, err = env.memberSvc.GetMember(env.ctx, group.ID(), late)
+		_, err = env.memberSvc.GetMember(env.ctx, group.ID(), late, late)
 		assert.ErrorIs(t, err, domain.ErrMemberNotFound)
 	})
 
@@ -132,7 +132,7 @@ func TestInviteService_DeclineInvite(t *testing.T) {
 		assert.Equal(t, domain.InviteStatusDeclined, env.inviteStatus(t, invite))
 		assert.Equal(t, 1, env.outboxCount(t, domain.EventActivityInviteDeclined))
 
-		_, err := env.memberSvc.GetMember(env.ctx, group.ID(), invitee)
+		_, err := env.memberSvc.GetMember(env.ctx, group.ID(), invitee, invitee)
 		assert.ErrorIs(t, err, domain.ErrMemberNotFound)
 	})
 

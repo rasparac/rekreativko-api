@@ -9,6 +9,7 @@ import (
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
+	"github.com/rasparac/rekreativko-api/shared/domainerror"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -765,11 +766,15 @@ func (s *MemberService) LeaveMember(
 	return nil
 }
 
-// GetMember retrieves a member by activity group and user ID
+// GetMember retrieves a member by activity group and user ID. Your own row is
+// always yours to see; someone else's only if you may see the group, and a
+// row that isn't confirmed (a join request, a rejection, a removal) only by
+// the group's managers - to anyone else it is not found.
 func (s *MemberService) GetMember(
 	ctx context.Context,
 	activityGroupID uuid.UUID,
 	userID uuid.UUID,
+	requesterID uuid.UUID,
 ) (*domain.Member, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
@@ -789,10 +794,13 @@ func (s *MemberService) GetMember(
 	)
 
 	member, err := s.memberRepo.GetMemberByGroupAndUser(ctx, activityGroupID, userID)
+	if err == nil && requesterID != userID {
+		err = s.requireCanSeeMember(ctx, member, requesterID)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
-		// Not a member is the common, expected outcome of viewing a group
-		// you haven't joined - not a real error.
+		// Not a member (or not one you may see) is the common, expected
+		// outcome of viewing a group you haven't joined - not a real error.
 		if !errors.Is(err, domain.ErrMemberNotFound) {
 			log.Error(ctx, "failed to get member", "error", err)
 		}
@@ -805,7 +813,26 @@ func (s *MemberService) GetMember(
 	return member, nil
 }
 
-// ListMembers retrieves members with optional filters
+// requireCanSeeMember answers domain.ErrMemberNotFound when requesterID may
+// not see someone else's member row.
+func (s *MemberService) requireCanSeeMember(ctx context.Context, member *domain.Member, requesterID uuid.UUID) error {
+	if _, err := visibleGroup(ctx, s.groupRepo, s.memberRepo, member.ActivityGroupID(), requesterID); err != nil {
+		if errors.Is(err, domain.ErrActivityGroupNotFound) {
+			return domain.ErrMemberNotFound
+		}
+		return err
+	}
+
+	if !member.IsConfirmed() && requireCanManageGroup(ctx, s.memberRepo, member.ActivityGroupID(), requesterID) != nil {
+		return domain.ErrMemberNotFound
+	}
+
+	return nil
+}
+
+// ListMembers retrieves a group's members with optional filters. A group the
+// requester may not see is not found; to anyone but its managers the list
+// holds confirmed members only, and asking for another status is forbidden.
 func (s *MemberService) ListMembers(
 	ctx context.Context,
 	params ListMembersParams,
@@ -820,8 +847,17 @@ func (s *MemberService) ListMembers(
 		"method", "ListMembers",
 	)
 
-	if params.ActivityGroupID != nil {
-		span.SetAttributes(attribute.String("activity_group_id", params.ActivityGroupID.String()))
+	if params.ActivityGroupID == nil {
+		err := domainerror.ValidationError("activity_group_required", "Members are listed per activity group", nil)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, "", err
+	}
+	span.SetAttributes(attribute.String("activity_group_id", params.ActivityGroupID.String()))
+
+	if _, err := visibleGroup(ctx, s.groupRepo, s.memberRepo, *params.ActivityGroupID, params.RequesterID); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Debug(ctx, "group not visible to requester", "error", err)
+		return nil, "", mapToAppErr(err)
 	}
 
 	// Convert params to repository filter
@@ -829,6 +865,17 @@ func (s *MemberService) ListMembers(
 	if params.Status != nil {
 		s := domain.MemberStatus(*params.Status)
 		status = &s
+	}
+
+	// Join requests, rejections and removals are the managers' business.
+	if requireCanManageGroup(ctx, s.memberRepo, *params.ActivityGroupID, params.RequesterID) != nil {
+		confirmed := domain.MemberStatusConfirmed
+		if status != nil && *status != confirmed {
+			err := fmt.Errorf("list %s members: %w", *status, domain.ErrInsufficientRole)
+			span.SetStatus(codes.Error, err.Error())
+			return nil, "", mapToAppErr(err)
+		}
+		status = &confirmed
 	}
 
 	var role *domain.MemberRole

@@ -74,14 +74,14 @@ func (h *Handler) CreateSessionTemplate(w http.ResponseWriter, r *http.Request) 
 // GetSessionTemplate handles GET /api/v1/templates/{id}
 //
 //	@Summary		Get a session template
-//	@Description	Retrieves a session template by ID
+//	@Description	Retrieves a session template by ID. A template of a private group the caller is neither the creator nor a confirmed member of is not found (404), as the group itself is.
 //	@Tags			Session Templates
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
 //	@Param			id	path		string									true	"Template ID"
 //	@Success		200	{object}	api.Response[dtos.SessionTemplateResponse]	"Template retrieved successfully"
 //	@Failure		400	{object}	api.Response[any]							"Invalid request"
-//	@Failure		404	{object}	api.Response[any]							"Template not found"
+//	@Failure		404	{object}	api.Response[any]							"Template not found, or its group is private and not yours"
 //	@Failure		500	{object}	api.Response[any]							"Internal server error"
 //	@Router			/api/v1/templates/{id} [get]
 func (h *Handler) GetSessionTemplate(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +97,7 @@ func (h *Handler) GetSessionTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get template
-	template, err := h.sessionTemplateService.GetSessionTemplate(ctx, templateID)
+	template, err := h.sessionTemplateService.GetSessionTemplate(ctx, templateID, authcontext.GetAccountID(ctx))
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
@@ -109,7 +109,7 @@ func (h *Handler) GetSessionTemplate(w http.ResponseWriter, r *http.Request) {
 // ListSessionTemplates handles GET /api/v1/activity-groups/{groupId}/templates
 //
 //	@Summary		List session templates
-//	@Description	Lists the session templates of an activity group with optional filters. Not paginated: the whole list is returned (at most 100), limit and page_token are ignored.
+//	@Description	Lists the session templates of an activity group with optional filters. Not paginated: the whole list is returned (at most 100), limit and page_token are ignored. A private group the caller is neither the creator nor a confirmed member of is not found (404), as the group itself is.
 //	@Tags			Session Templates
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
@@ -118,6 +118,7 @@ func (h *Handler) GetSessionTemplate(w http.ResponseWriter, r *http.Request) {
 //	@Param			is_recurring	query		boolean										false	"Filter by recurring status"
 //	@Success		200			{object}	api.Response[api.List[dtos.SessionTemplateResponse]]	"Templates retrieved successfully"
 //	@Failure		400			{object}	api.Response[any]									"Invalid request"
+//	@Failure		404			{object}	api.Response[any]									"Group not found, or private and not yours"
 //	@Failure		500			{object}	api.Response[any]									"Internal server error"
 //	@Router			/api/v1/activity-groups/{groupId}/templates [get]
 func (h *Handler) ListSessionTemplates(w http.ResponseWriter, r *http.Request) {
@@ -142,6 +143,7 @@ func (h *Handler) ListSessionTemplates(w http.ResponseWriter, r *http.Request) {
 
 	// Set activity group ID from path
 	params.ActivityGroupID = &groupID
+	params.RequesterID = authcontext.GetAccountID(ctx)
 
 	// List templates
 	templates, err := h.sessionTemplateService.ListSessionTemplates(ctx, *params)

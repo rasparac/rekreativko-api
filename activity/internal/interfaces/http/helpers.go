@@ -20,7 +20,7 @@ func (h *Handler) getUserRole(ctx context.Context, activityGroupID *uuid.UUID, a
 		return "", nil
 	}
 
-	member, err := h.memberService.GetMember(ctx, *activityGroupID, accountID)
+	member, err := h.memberService.GetMember(ctx, *activityGroupID, accountID, accountID)
 	if err != nil {
 		// Not a member is the expected, common case for e.g. a standalone
 		// session's own creator managing their session - they have no group

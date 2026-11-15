@@ -52,7 +52,7 @@ func (e *sessionTeamTestEnv) changeRole(group *domain.ActivityGroup, requester u
 func (e *sessionTeamTestEnv) roleOf(t *testing.T, groupID, userID uuid.UUID) domain.MemberRole {
 	t.Helper()
 
-	member, err := e.memberSvc.GetMember(e.ctx, groupID, userID)
+	member, err := e.memberSvc.GetMember(e.ctx, groupID, userID, userID)
 	require.NoError(t, err)
 
 	return member.Role()
@@ -144,14 +144,15 @@ func TestMemberService_GetMember(t *testing.T) {
 	group := env.createGroup(t, creator)
 
 	t.Run("the creator is a confirmed member", func(t *testing.T) {
-		member, err := env.memberSvc.GetMember(env.ctx, group.ID(), creator)
+		member, err := env.memberSvc.GetMember(env.ctx, group.ID(), creator, creator)
 		require.NoError(t, err)
 		assert.Equal(t, domain.MemberRoleCreator, member.Role())
 		assert.True(t, member.IsConfirmed())
 	})
 
 	t.Run("anyone else is not found", func(t *testing.T) {
-		_, err := env.memberSvc.GetMember(env.ctx, group.ID(), uuid.New())
+		stranger := uuid.New()
+		_, err := env.memberSvc.GetMember(env.ctx, group.ID(), stranger, stranger)
 		assert.ErrorIs(t, err, domain.ErrMemberNotFound)
 	})
 }
@@ -169,6 +170,7 @@ func TestMemberService_ListMembers(t *testing.T) {
 	list := func(t *testing.T, params application.ListMembersParams) []uuid.UUID {
 		t.Helper()
 		params.ActivityGroupID = testutil.Ptr(group.ID())
+		params.RequesterID = creator
 		members, _, err := env.memberSvc.ListMembers(env.ctx, params)
 		require.NoError(t, err)
 		ids := make([]uuid.UUID, len(members))
@@ -192,7 +194,7 @@ func TestMemberService_ListMembers(t *testing.T) {
 
 	t.Run("page by page", func(t *testing.T) {
 		var seen []uuid.UUID
-		params := application.ListMembersParams{ActivityGroupID: testutil.Ptr(group.ID()), Limit: 3}
+		params := application.ListMembersParams{ActivityGroupID: testutil.Ptr(group.ID()), RequesterID: creator, Limit: 3}
 		for range 3 {
 			page, next, err := env.memberSvc.ListMembers(env.ctx, params)
 			require.NoError(t, err)
@@ -236,7 +238,7 @@ func TestMemberService_RemoveMember(t *testing.T) {
 		member := env.addMember(t, group.ID())
 
 		require.NoError(t, remove(admin, "admin", member))
-		removed, err := env.memberSvc.GetMember(env.ctx, group.ID(), member)
+		removed, err := env.memberSvc.GetMember(env.ctx, group.ID(), member, member)
 		require.NoError(t, err)
 		assert.Equal(t, domain.MemberStatusRemoved, removed.Status())
 		assert.Equal(t, 1, env.outboxCount(t, domain.EventActivityGroupMemberRemoved))
@@ -271,7 +273,7 @@ func TestMemberService_RejectMember(t *testing.T) {
 		requester := requestJoin(t)
 
 		require.NoError(t, reject(env.addAdmin(t, group), "admin", requester))
-		rejected, err := env.memberSvc.GetMember(env.ctx, group.ID(), requester)
+		rejected, err := env.memberSvc.GetMember(env.ctx, group.ID(), requester, requester)
 		require.NoError(t, err)
 		assert.Equal(t, domain.MemberStatusRejected, rejected.Status())
 		assert.Equal(t, 1, env.outboxCount(t, domain.EventActivityGroupMemberRejected))
@@ -295,7 +297,7 @@ func TestMemberService_LeaveMember(t *testing.T) {
 		member := env.addMember(t, group.ID())
 
 		require.NoError(t, env.memberSvc.LeaveMember(env.ctx, group.ID(), member))
-		left, err := env.memberSvc.GetMember(env.ctx, group.ID(), member)
+		left, err := env.memberSvc.GetMember(env.ctx, group.ID(), member, member)
 		require.NoError(t, err)
 		assert.Equal(t, domain.MemberStatusLeft, left.Status())
 		assert.Equal(t, 1, env.outboxCount(t, domain.EventActivityGroupMemberLeft))

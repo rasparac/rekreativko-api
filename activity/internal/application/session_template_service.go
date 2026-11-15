@@ -23,6 +23,7 @@ type SessionTemplateService struct {
 	logger       *logger.Logger
 	txManager    *postgres.TransactionManager
 	templateRepo SessionTemplateRepository
+	groupRepo    ActivityGroupRepository
 	memberRepo   MemberRepository
 	eventWriter  domainevent.EventWriter
 	tracer       trace.Tracer
@@ -34,6 +35,7 @@ func NewSessionTemplateService(
 	logger *logger.Logger,
 	txManager *postgres.TransactionManager,
 	templateRepo SessionTemplateRepository,
+	groupRepo ActivityGroupRepository,
 	memberRepo MemberRepository,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
@@ -42,6 +44,7 @@ func NewSessionTemplateService(
 		logger:       logger.WithName("activity.session_template_service"),
 		txManager:    txManager,
 		templateRepo: templateRepo,
+		groupRepo:    groupRepo,
 		memberRepo:   memberRepo,
 		eventWriter:  eventWriter,
 		tracer:       telemetry.Tracer(telemetry.TracerActivityService),
@@ -143,10 +146,12 @@ func (s *SessionTemplateService) CreateSessionTemplate(
 	return template, nil
 }
 
-// GetSessionTemplate retrieves a session template by ID
+// GetSessionTemplate retrieves a session template by ID; a template of a
+// group the requester may not see is not found
 func (s *SessionTemplateService) GetSessionTemplate(
 	ctx context.Context,
 	templateID uuid.UUID,
+	requesterID uuid.UUID,
 ) (*domain.SessionTemplate, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
@@ -166,6 +171,12 @@ func (s *SessionTemplateService) GetSessionTemplate(
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "failed to get session template", "error", err)
 		return nil, mapToAppErr(err)
+	}
+
+	if _, err := visibleGroup(ctx, s.groupRepo, s.memberRepo, template.ActivityGroupID(), requesterID); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Debug(ctx, "session template's group not visible to requester", "error", err)
+		return nil, MapErrToAppError(domain.ErrSessionTemplateNotFound)
 	}
 
 	span.SetStatus(codes.Ok, "session template found")
@@ -448,8 +459,9 @@ func (s *SessionTemplateService) DeleteSessionTemplate(
 // paginated. A group has a handful of templates (a weekly game, a monthly one).
 const MaxListedTemplates = 100
 
-// ListSessionTemplates retrieves session templates with optional filters, at
-// most MaxListedTemplates of them
+// ListSessionTemplates retrieves a group's session templates with optional
+// filters, at most MaxListedTemplates of them; a group the requester may not
+// see is not found
 func (s *SessionTemplateService) ListSessionTemplates(
 	ctx context.Context,
 	params ListSessionTemplatesParams,
@@ -465,8 +477,17 @@ func (s *SessionTemplateService) ListSessionTemplates(
 		"activity_group_id", params.ActivityGroupID,
 	)
 
-	if params.ActivityGroupID != nil {
-		span.SetAttributes(attribute.String("activity_group_id", params.ActivityGroupID.String()))
+	if params.ActivityGroupID == nil {
+		err := domainerror.ValidationError("activity_group_required", "Templates are listed per activity group", nil)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+	span.SetAttributes(attribute.String("activity_group_id", params.ActivityGroupID.String()))
+
+	if _, err := visibleGroup(ctx, s.groupRepo, s.memberRepo, *params.ActivityGroupID, params.RequesterID); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Debug(ctx, "group not visible to requester", "error", err)
+		return nil, mapToAppErr(err)
 	}
 
 	// Convert params to repository filter

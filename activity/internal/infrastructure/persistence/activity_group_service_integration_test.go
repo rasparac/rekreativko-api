@@ -66,7 +66,7 @@ func TestActivityGroupService_ActivateActivityGroup(t *testing.T) {
 	})
 
 	t.Run("an unknown group is not found", func(t *testing.T) {
-		requireAppErrorCode(t, env.groupSvc.ActivateActivityGroup(env.ctx, uuid.New(), creator), "not_found")
+		assert.ErrorIs(t, env.groupSvc.ActivateActivityGroup(env.ctx, uuid.New(), creator), domain.ErrActivityGroupNotFound)
 	})
 }
 

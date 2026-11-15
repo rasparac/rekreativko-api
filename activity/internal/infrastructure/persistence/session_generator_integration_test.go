@@ -83,6 +83,6 @@ func TestSessionGenerator_GenerateSessionsFromTemplates(t *testing.T) {
 		assert.ErrorIs(t, err, domain.ErrSessionTemplateNotRecurring)
 
 		_, err = generator.GenerateSessionsForTemplate(env.ctx, uuid.New())
-		requireAppErrorCode(t, err, "not_found")
+		assert.ErrorIs(t, err, domain.ErrSessionTemplateNotFound)
 	})
 }
