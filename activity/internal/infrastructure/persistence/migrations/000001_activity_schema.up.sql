@@ -90,13 +90,12 @@ CREATE TABLE IF NOT EXISTS activity.group_invites(
     status varchar(100) NOT NULL DEFAULT 'pending',
     expires_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL DEFAULT NOW(),
-    responded_at timestamptz DEFAULT NULL,
-    -- one pending invite per user per group at time
-    CONSTRAINT uq_pending_invites UNIQUE NULLS NOT DISTINCT (activity_group_id, invited_user_id, responded_at)
+    responded_at timestamptz DEFAULT NULL
 );
 
--- find pending invite for a user in a group
-CREATE INDEX idx_group_invites_pending ON activity.group_invites(activity_group_id, invited_user_id)
+-- one pending invite per user per group at a time, and the lookup of it; an
+-- expired invite (status 'expired', responded_at still NULL) no longer counts
+CREATE UNIQUE INDEX uq_group_invites_pending ON activity.group_invites(activity_group_id, invited_user_id)
 WHERE (status = 'pending');
 
 -- cron job: find expired invites
