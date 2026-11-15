@@ -9,8 +9,6 @@ import (
 
 const (
 	EventAccountProfileCreated         = "account_profile.created"
-	EventAccountProfileDeleted         = "account_profile.deleted"
-	EventAccountProfileAnonymized      = "account_profile.anonymized"
 	EventAccountProfilePictureChanged  = "account_profile.profile_picture.changed"
 	EventAccountProfileLocationChanged = "account_profile.location.changed"
 	EventNicknameChanged               = "account_profile.nickname.changed"
@@ -76,40 +74,6 @@ func NewAccountProfileLocationChangedEvent(AccountProfile *AccountProfile) *Acco
 	}
 
 	return event
-}
-
-type AccountProfileDeletedEvent struct {
-	domainevent.BaseEvent
-	AccountID uuid.UUID `json:"account_id"`
-}
-
-func NewAccountProfileDeletedEvent(accountProfile *AccountProfile) *AccountProfileDeletedEvent {
-	return &AccountProfileDeletedEvent{
-		BaseEvent: domainevent.BaseEvent{
-			EventID:     uuid.New(),
-			EventType:   EventAccountProfileDeleted,
-			OccurredAt:  time.Now().UTC(),
-			AggregateID: accountProfile.ID(),
-		},
-		AccountID: accountProfile.ID(),
-	}
-}
-
-type AccountProfileAnonymizedEvent struct {
-	domainevent.BaseEvent
-	AccountID uuid.UUID `json:"account_id"`
-}
-
-func NewAccountProfileAnonymizedEvent(AccountProfile *AccountProfile) *AccountProfileAnonymizedEvent {
-	return &AccountProfileAnonymizedEvent{
-		BaseEvent: domainevent.BaseEvent{
-			EventID:     uuid.New(),
-			EventType:   EventAccountProfileAnonymized,
-			OccurredAt:  time.Now().UTC(),
-			AggregateID: AccountProfile.ID(),
-		},
-		AccountID: AccountProfile.ID(),
-	}
 }
 
 type AccountProfileNicknameChangedEvent struct {

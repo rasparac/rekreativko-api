@@ -11,7 +11,6 @@ var (
 	// Profile errors
 	ErrAccountProfileNotFound   = errors.New("account profile not found")
 	ErrAccountProfileExists     = errors.New("account profile already exists")
-	ErrAccountProfileDeleted    = errors.New("account profile is deleted")
 	ErrAccountProfileBioTooLong = errors.New("account profile bio is too long")
 
 	// Profile picture errors
@@ -70,8 +69,6 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.NotFound("profile_not_found", "Account profile not found", err)
 	case errors.Is(err, ErrAccountProfileExists):
 		return domainerror.Conflict("profile_exists", "Account profile already exists", err)
-	case errors.Is(err, ErrAccountProfileDeleted):
-		return domainerror.NotFound("profile_deleted", "Account profile is deleted", err)
 	case errors.Is(err, ErrAccountProfileBioTooLong):
 		return domainerror.ValidationError("bio_too_long", "Account profile bio is too long", err)
 	}

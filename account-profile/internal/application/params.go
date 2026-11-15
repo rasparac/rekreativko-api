@@ -50,8 +50,6 @@ type (
 		DateOfBirthOver  *time.Time
 		DateOfBirthUnder *time.Time
 
-		IncludeDeleted *bool
-
 		SortBy    *string
 		SortOrder *string
 

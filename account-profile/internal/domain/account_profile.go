@@ -22,7 +22,6 @@ type AccountProfile struct {
 	activityInterest []*ActivityInterest
 	createdAt        time.Time
 	updatedAt        time.Time
-	deletedAt        *time.Time
 
 	events []domainevent.Event
 }
@@ -61,7 +60,6 @@ func ReconstructAccountProfile(
 	activityInterest []*ActivityInterest,
 	createdAt time.Time,
 	updatedAt time.Time,
-	deletedAt *time.Time,
 ) *AccountProfile {
 	return &AccountProfile{
 		id:               id,
@@ -74,7 +72,6 @@ func ReconstructAccountProfile(
 		activityInterest: activityInterest,
 		createdAt:        createdAt,
 		updatedAt:        updatedAt,
-		deletedAt:        deletedAt,
 		events:           make([]domainevent.Event, 0),
 	}
 }
@@ -89,10 +86,6 @@ func (ap *AccountProfile) CreatedAt() time.Time {
 
 func (ap *AccountProfile) UpdatedAt() time.Time {
 	return ap.updatedAt
-}
-
-func (ap *AccountProfile) DeletedAt() *time.Time {
-	return ap.deletedAt
 }
 
 func (ap *AccountProfile) Nickname() *Nickname {
@@ -123,19 +116,11 @@ func (ap *AccountProfile) ActivityInterests() []*ActivityInterest {
 	return ap.activityInterest
 }
 
-func (ap *AccountProfile) IsDeleted() bool {
-	return ap.deletedAt != nil
-}
-
 func (ap *AccountProfile) UpdateProfile(
 	fullName *FullName,
 	dateOfBirth *DateOfBirth,
 	bio string,
 ) error {
-	if ap.IsDeleted() {
-		return ErrAccountProfileDeleted
-	}
-
 	if len(bio) > bioMaxLength {
 		return ErrAccountProfileBioTooLong
 	}
@@ -164,10 +149,6 @@ func (ap *AccountProfile) UpdateProfile(
 }
 
 func (ap *AccountProfile) SetNickname(nickname *Nickname) error {
-	if ap.IsDeleted() {
-		return ErrAccountProfileDeleted
-	}
-
 	if nickname == nil {
 		return ErrInvalidNickname
 	}
@@ -181,10 +162,6 @@ func (ap *AccountProfile) SetNickname(nickname *Nickname) error {
 }
 
 func (ap *AccountProfile) SetLocation(location *Location) error {
-	if ap.IsDeleted() {
-		return ErrAccountProfileDeleted
-	}
-
 	if location == nil {
 		if ap.location != nil {
 			ap.location = nil
@@ -217,10 +194,6 @@ func (ap *AccountProfile) SetLocation(location *Location) error {
 }
 
 func (ap *AccountProfile) SetProfilePicture(profilePicture *ProfilePicture) error {
-	if ap.IsDeleted() {
-		return ErrAccountProfileDeleted
-	}
-
 	var oldURL string
 	if ap.profilePicture != nil {
 		oldURL = ap.profilePicture.URL()
@@ -247,10 +220,6 @@ func (ap *AccountProfile) SetProfilePicture(profilePicture *ProfilePicture) erro
 }
 
 func (ap *AccountProfile) AddactivityInterest(interest *ActivityInterest) error {
-	if ap.IsDeleted() {
-		return ErrAccountProfileDeleted
-	}
-
 	for _, existingInterest := range ap.activityInterest {
 		if existingInterest.ActivityType() == interest.ActivityType() {
 			return ErrDuplicateInterests
@@ -265,10 +234,6 @@ func (ap *AccountProfile) AddactivityInterest(interest *ActivityInterest) error 
 }
 
 func (ap *AccountProfile) RemoveActivityInterest(activityType ActivityType) error {
-	if ap.IsDeleted() {
-		return ErrAccountProfileDeleted
-	}
-
 	for i, existingInterest := range ap.activityInterest {
 		if existingInterest.ActivityType() == activityType {
 			ap.activityInterest = append(ap.activityInterest[:i], ap.activityInterest[i+1:]...)
@@ -282,10 +247,6 @@ func (ap *AccountProfile) RemoveActivityInterest(activityType ActivityType) erro
 }
 
 func (ap *AccountProfile) UpdateAcitivityInterestLevel(activityType ActivityType, level ActivityLevel) error {
-	if ap.IsDeleted() {
-		return ErrAccountProfileDeleted
-	}
-
 	for i, existingInterest := range ap.activityInterest {
 		if existingInterest.ActivityType() == activityType {
 			if existingInterest.Level() == level {
@@ -311,10 +272,6 @@ func (ap *AccountProfile) UpdateAcitivityInterestLevel(activityType ActivityType
 func (ap *AccountProfile) UpdateActivityInterests(
 	newInterests []*ActivityInterest,
 ) error {
-	if ap.IsDeleted() {
-		return ErrAccountProfileDeleted
-	}
-
 	existingByType := make(map[ActivityType]*ActivityInterest)
 	for _, interest := range ap.activityInterest {
 		existingByType[interest.ActivityType()] = interest
@@ -373,44 +330,6 @@ func (ap *AccountProfile) GetActivityInterest(activityType ActivityType) (*Activ
 	}
 
 	return nil, ErrActivityInterestsNotFound
-}
-
-func (ap *AccountProfile) Delete() error {
-	if ap.IsDeleted() {
-		return ErrAccountProfileDeleted
-	}
-
-	now := time.Now()
-	ap.deletedAt = &now
-	ap.updatedAt = now
-
-	ap.addEvent(NewAccountProfileDeletedEvent(ap))
-
-	return nil
-}
-
-func (ap *AccountProfile) Anonymize() error {
-	if !ap.IsDeleted() {
-		return ErrAccountProfileDeleted
-	}
-
-	anymizedNickname, err := NewNickname("deleted_account_" + ap.id.String()[:8])
-	if err != nil {
-		return err
-	}
-
-	ap.nickname = anymizedNickname
-	ap.fullName = nil
-	ap.profilePicture = nil
-	ap.dateOfBirth = nil
-	ap.bio = ""
-	ap.location = nil
-	ap.activityInterest = make([]*ActivityInterest, 0)
-	ap.updatedAt = time.Now()
-
-	ap.addEvent(NewAccountProfileAnonymizedEvent(ap))
-
-	return nil
 }
 
 func (ap *AccountProfile) ClearEvents() {

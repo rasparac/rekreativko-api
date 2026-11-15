@@ -24,7 +24,7 @@ func Test_buildSingleProfileWhereQuery(t *testing.T) {
 			filter: AccountProfileFilter{
 				Nickname: ptr("john_doe"),
 			},
-			expectedQuery: "upp.nickname = $1 AND upp.deleted_at IS NULL",
+			expectedQuery: "upp.nickname = $1",
 			expectedArgs:  []any{"john_doe"},
 		},
 		{
@@ -32,7 +32,7 @@ func Test_buildSingleProfileWhereQuery(t *testing.T) {
 			filter: AccountProfileFilter{
 				AccountID: &accountUUID,
 			},
-			expectedQuery: "upp.account_id = $1 AND upp.deleted_at IS NULL",
+			expectedQuery: "upp.account_id = $1",
 			expectedArgs:  []any{accountUUID.String()},
 		},
 		{
@@ -41,7 +41,7 @@ func Test_buildSingleProfileWhereQuery(t *testing.T) {
 				Nickname:  ptr("john_doe"),
 				AccountID: &accountUUID,
 			},
-			expectedQuery: "upp.account_id = $1 AND upp.nickname = $2 AND upp.deleted_at IS NULL",
+			expectedQuery: "upp.account_id = $1 AND upp.nickname = $2",
 			expectedArgs:  []any{accountUUID.String(), "john_doe"},
 		},
 	}
@@ -162,7 +162,6 @@ func TestToAccountProfileModel_FullProfile(t *testing.T) {
 		nil,
 		now,
 		now,
-		nil,
 	)
 
 	model := toAccountProfileModel(up)
@@ -191,7 +190,6 @@ func TestToAccountProfileModel_EmptyOptionalFields(t *testing.T) {
 		nil,
 		now,
 		now,
-		nil,
 	)
 
 	model := toAccountProfileModel(up)
@@ -201,7 +199,6 @@ func TestToAccountProfileModel_EmptyOptionalFields(t *testing.T) {
 	assert.False(t, model.profilePictureURL.Valid)
 	assert.False(t, model.dateOfBirth.Valid)
 	assert.False(t, model.locationCity.Valid)
-	assert.False(t, model.deletedAt.Valid)
 }
 
 func TestToDomainAccountProfile_FullModel(t *testing.T) {
@@ -217,7 +214,6 @@ func TestToDomainAccountProfile_FullModel(t *testing.T) {
 		locationCountry: sql.NullString{String: "DE", Valid: true},
 		createdAt:       now,
 		updatedAt:       now,
-		deletedAt:       sql.NullTime{},
 	}
 
 	interests := []accountProfileActivityInterest{

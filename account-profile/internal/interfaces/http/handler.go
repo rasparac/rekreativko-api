@@ -162,7 +162,7 @@ func (h *accountPorfileHandler) GetProfileByID(
 // GetProfiles
 //
 //	@Summary		Returns account profiles
-//	@Description	Returns account profiles filtered by query parameters. At least one of account_id, nickname, dob_gt, dob_lt, country or city is required; limit, page_token, sort_by, sort_order and include_deleted alone are rejected. With account_id and/or nickname this is a lookup: every matching profile is returned in one response (limit and page_token are ignored, at most 100 values in total, 400 above that).
+//	@Description	Returns account profiles filtered by query parameters. At least one of account_id, nickname, dob_gt, dob_lt, country or city is required; limit, page_token, sort_by and sort_order alone are rejected. With account_id and/or nickname this is a lookup: every matching profile is returned in one response (limit and page_token are ignored, at most 100 values in total, 400 above that).
 //	@Tags			account Profile
 //	@Accept			json
 //	@Produce		json
@@ -172,7 +172,6 @@ func (h *accountPorfileHandler) GetProfileByID(
 //	@Param			nickname		query		[]string	false	"Filter by nicknames (can be repeated, at most 100 with account_id)"
 //	@Param			dob_gt			query		string		false	"Date of birth after (YYYY-MM-DD)"
 //	@Param			dob_lt			query		string		false	"Date of birth before (YYYY-MM-DD)"
-//	@Param			include_deleted	query		boolean		false	"Include deleted profiles"
 //	@Param			sort_by			query		string		false	"Sort field (e.g. created_at, nickname)"
 //	@Param			sort_order		query		string		false	"Sort order (asc, desc)"
 //	@Param			country			query		string		false	"Filter by location country"

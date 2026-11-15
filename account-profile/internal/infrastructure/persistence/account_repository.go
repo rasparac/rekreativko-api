@@ -32,7 +32,6 @@ type (
 		locationLongitude       sql.NullFloat64
 		createdAt               time.Time
 		updatedAt               time.Time
-		deletedAt               sql.NullTime
 
 		activityInterests []accountProfileActivityInterest
 	}
@@ -58,8 +57,6 @@ type (
 		DateOfBirthUnder  *time.Time
 		Limit             int
 		PageToken         string
-
-		IncludeDeleted *bool
 
 		// SortBy must be a key of accountProfileSortColumns; empty means the default (created_at).
 		SortBy    *string
@@ -96,7 +93,6 @@ const baseAccountProfileSelectBlueprint = `
 		upp.location_longitude,
 		upp.created_at,
 		upp.updated_at,
-		upp.deleted_at,
 		COALESCE(
 			json_agg(
 				json_build_object(
@@ -302,7 +298,6 @@ func (m *accountProfileManager) FindBy(
 		&model.locationLongitude,
 		&model.createdAt,
 		&model.updatedAt,
-		&model.deletedAt,
 		&activityInterestsJSON,
 	)
 	if err != nil {
@@ -420,7 +415,6 @@ func (m *accountProfileManager) FindAllBy(
 			&model.locationLongitude,
 			&model.createdAt,
 			&model.updatedAt,
-			&model.deletedAt,
 			&activityInterestsJSON,
 		)
 		if scanErr != nil {
@@ -569,13 +563,6 @@ func toAccountProfileModel(profile *domain.AccountProfile) accountProfile {
 		}
 	}
 
-	if profile.DeletedAt() != nil {
-		model.deletedAt = sql.NullTime{
-			Time:  *profile.DeletedAt(),
-			Valid: true,
-		}
-	}
-
 	return model
 }
 
@@ -646,11 +633,6 @@ func toDomainAccountProfile(
 		return nil, err
 	}
 
-	var deletedAt *time.Time
-	if model.deletedAt.Valid {
-		deletedAt = &model.deletedAt.Time
-	}
-
 	dm := domain.ReconstructAccountProfile(
 		model.accountID,
 		nickname,
@@ -662,7 +644,6 @@ func toDomainAccountProfile(
 		activityInterests,
 		model.createdAt,
 		model.updatedAt,
-		deletedAt,
 	)
 
 	return dm, nil
@@ -712,8 +693,6 @@ func buildSingleProfileWhereQuery(filter AccountProfileFilter) (string, []any) {
 		args = append(args, *filter.Nickname)
 	}
 
-	conditions = append(conditions, "upp.deleted_at IS NULL")
-
 	return strings.Join(conditions, " AND "), args
 }
 
@@ -760,14 +739,6 @@ func buildMulitpleProfilesWhereQuery(filter AccountProfilesFilter) (string, []an
 	if filter.DateOfBirthUnder != nil {
 		conditions = append(conditions, fmt.Sprintf("upp.date_of_birth < $%d", len(args)+1))
 		args = append(args, *filter.DateOfBirthUnder)
-	}
-
-	if filter.IncludeDeleted != nil {
-		if *filter.IncludeDeleted {
-			conditions = append(conditions, "upp.deleted_at IS NOT NULL")
-		} else {
-			conditions = append(conditions, "upp.deleted_at IS NULL")
-		}
 	}
 
 	return strings.Join(conditions, " AND "), args

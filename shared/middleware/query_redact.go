@@ -19,7 +19,6 @@ var loggedQueryKeys = map[string]struct{}{
 	"sort_by":             {},
 	"sort_order":          {},
 	"unread_only":         {},
-	"include_deleted":     {},
 	"is_recurring":        {},
 	"activity_type":       {},
 	"difficulty_level":    {},

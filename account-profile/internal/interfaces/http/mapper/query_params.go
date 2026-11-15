@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,7 +24,7 @@ const MaxProfileLookups = 100
 
 // QueryToProfilesFilter reads GET /profiles. Only the criteria that select
 // profiles (account_id, nickname, dob_gt, dob_lt, country, city) count as a
-// filter; limit, page_token, sort_by, sort_order and include_deleted only shape
+// filter; limit, page_token, sort_by and sort_order only shape
 // the answer, so on their own they must not list everyone.
 func QueryToProfilesFilter(q url.Values) (application.ProfilesFilter, error) {
 	var filter application.ProfilesFilter
@@ -65,15 +64,6 @@ func QueryToProfilesFilter(q url.Values) (application.ProfilesFilter, error) {
 		}
 		filter.DateOfBirthUnder = &t
 		hasFilter = true
-	}
-
-	// Include deleted
-	if v := q.Get("include_deleted"); v != "" {
-		b, err := strconv.ParseBool(v)
-		if err != nil {
-			return filter, fmt.Errorf("invalid include_deleted")
-		}
-		filter.IncludeDeleted = &b
 	}
 
 	// Sorting

@@ -18,18 +18,14 @@ CREATE TABLE account_profile.profiles(
     profile_picture_url text DEFAULT NULL,
     profile_picture_uploaded_at timestamptz DEFAULT NULL,
     created_at timestamptz NOT NULL DEFAULT NOW(),
-    updated_at timestamptz NOT NULL DEFAULT NOW(),
-    deleted_at timestamptz DEFAULT NULL
+    updated_at timestamptz NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX idx_profiles_deleted_at ON account_profile.profiles(deleted_at);
 
 CREATE INDEX idx_profiles_created_at ON account_profile.profiles(created_at);
 
 -- one profile per nickname, case-insensitively (CITEXT); a profile with no
--- nickname yet (NULL) or a deleted one doesn't hold one
-CREATE UNIQUE INDEX uq_profiles_nickname ON account_profile.profiles(nickname)
-WHERE (deleted_at IS NULL);
+-- nickname yet (NULL) doesn't hold one (NULLs are distinct)
+CREATE UNIQUE INDEX uq_profiles_nickname ON account_profile.profiles(nickname);
 
 CREATE TABLE account_profile.activity_interests(
     id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),

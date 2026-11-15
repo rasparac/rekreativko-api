@@ -37,7 +37,6 @@ func TestNewAccountProfile(t *testing.T) {
 
 	require.NotNil(t, up)
 	assert.Equal(t, id, up.ID())
-	assert.False(t, up.IsDeleted())
 	assert.NotZero(t, up.CreatedAt())
 	assert.NotZero(t, up.UpdatedAt())
 	assert.Empty(t, up.ActivityInterests())
@@ -64,15 +63,6 @@ func TestUpdateProfile_BioTooLong(t *testing.T) {
 	err := up.UpdateProfile(nil, nil, string(longBio))
 
 	assert.ErrorIs(t, err, ErrAccountProfileBioTooLong)
-}
-
-func TestUpdateProfile_Deleted(t *testing.T) {
-	up := NewAccountProfile(uuid.New())
-	require.NoError(t, up.Delete())
-
-	err := up.UpdateProfile(nil, nil, "bio")
-
-	assert.ErrorIs(t, err, ErrAccountProfileDeleted)
 }
 
 func TestSetNickname(t *testing.T) {
@@ -181,40 +171,6 @@ func TestUpdateActivityInterestLevel(t *testing.T) {
 	assert.Equal(t, ActivityLevelAdvanced, updated.Level())
 }
 
-func TestDeleteAccountProfile(t *testing.T) {
-	up := NewAccountProfile(uuid.New())
-
-	err := up.Delete()
-
-	require.NoError(t, err)
-	assert.True(t, up.IsDeleted())
-	assert.NotNil(t, up.DeletedAt())
-}
-
-func TestAnonymize(t *testing.T) {
-	up := NewAccountProfile(uuid.New())
-	require.NoError(t, up.SetNickname(validNickname(t)))
-	require.NoError(t, up.Delete())
-
-	err := up.Anonymize()
-
-	require.NoError(t, err)
-	assert.NotNil(t, up.Nickname())
-	assert.Nil(t, up.FullName())
-	assert.Nil(t, up.ProfilePicture())
-	assert.Nil(t, up.DateOfBirth())
-	assert.Empty(t, up.Bio())
-	assert.Empty(t, up.ActivityInterests())
-}
-
-func TestAnonymize_NotDeleted(t *testing.T) {
-	up := NewAccountProfile(uuid.New())
-
-	err := up.Anonymize()
-
-	assert.ErrorIs(t, err, ErrAccountProfileDeleted)
-}
-
 func TestClearEvents(t *testing.T) {
 	up := NewAccountProfile(uuid.New())
 
@@ -238,7 +194,6 @@ func TestAccountProfile_UpdateActivityInterests(t *testing.T) {
 		name          string
 		initial       []*ActivityInterest
 		update        []*ActivityInterest
-		deleted       bool
 		wantErr       error
 		wantInterests map[ActivityType]ActivityLevel
 	}{
@@ -308,15 +263,6 @@ func TestAccountProfile_UpdateActivityInterests(t *testing.T) {
 			update:        []*ActivityInterest{},
 			wantInterests: map[ActivityType]ActivityLevel{},
 		},
-		{
-			name:    "deleted profile",
-			initial: nil,
-			update: []*ActivityInterest{
-				makeInterest(ActivityTypeRunning, ActivityLevelBeginner),
-			},
-			deleted: true,
-			wantErr: ErrAccountProfileDeleted,
-		},
 	}
 
 	for _, tt := range tests {
@@ -332,12 +278,7 @@ func TestAccountProfile_UpdateActivityInterests(t *testing.T) {
 				tt.initial,
 				now,
 				now,
-				nil,
 			)
-
-			if tt.deleted {
-				profile.deletedAt = &now
-			}
 
 			err := profile.UpdateActivityInterests(tt.update)
 

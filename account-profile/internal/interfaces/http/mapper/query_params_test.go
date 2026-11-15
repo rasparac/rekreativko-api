@@ -27,8 +27,7 @@ func TestQueryToProfilesFilter_ShapingParamsAreNotFilters(t *testing.T) {
 		"page_token=abc",
 		"sort_by=nickname",
 		"sort_order=desc",
-		"include_deleted=false",
-		"limit=50&sort_by=nickname&sort_order=asc&include_deleted=true",
+		"limit=50&sort_by=nickname&sort_order=asc",
 	} {
 		_, err := QueryToProfilesFilter(parse(t, raw))
 		assert.ErrorIs(t, err, ErrMissingAccountProfilesFilter, "%q", raw)

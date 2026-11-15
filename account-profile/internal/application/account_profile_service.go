@@ -339,7 +339,6 @@ func (s *service) GetProfiles(ctx context.Context, filter ProfilesFilter) ([]*do
 		ByLocationCity:    filter.LocationCity,
 		DateOfBirthOver:   filter.DateOfBirthOver,
 		DateOfBirthUnder:  filter.DateOfBirthUnder,
-		IncludeDeleted:    filter.IncludeDeleted,
 		SortBy:            filter.SortBy,
 		SortOrder:         filter.SortOrder,
 
