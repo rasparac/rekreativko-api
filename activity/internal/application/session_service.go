@@ -49,7 +49,7 @@ func parseMemberRole(roleStr string) (domain.MemberRole, error) {
 
 	role := domain.MemberRole(roleStr)
 	if !role.IsValid() {
-		return "", fmt.Errorf("invalid member role: %s", roleStr)
+		return "", fmt.Errorf("%w: %s", domain.ErrInvalidMemberRole, roleStr)
 	}
 	return role, nil
 }
@@ -134,7 +134,7 @@ func (s *SessionService) CreateSession(
 	} else {
 		activityType = domain.ActivityType(params.ActivityType)
 		if !activityType.IsValid() {
-			err := fmt.Errorf("invalid activity type: %s", params.ActivityType)
+			err := fmt.Errorf("%w: %s", domain.ErrInvalidActivityType, params.ActivityType)
 			span.SetStatus(codes.Error, err.Error())
 			log.Error(ctx, "invalid activity type for standalone session", "error", err)
 			return nil, domainerror.ValidationError("invalid_activity_type", "A valid activity_type is required for a standalone session", err)
@@ -142,7 +142,7 @@ func (s *SessionService) CreateSession(
 
 		difficultyLevel = domain.DifficultyLevel(params.DifficultyLevel)
 		if !difficultyLevel.IsValid() {
-			err := fmt.Errorf("invalid difficulty level: %s", params.DifficultyLevel)
+			err := fmt.Errorf("%w: %s", domain.ErrInvalidDifficultyLevel, params.DifficultyLevel)
 			span.SetStatus(codes.Error, err.Error())
 			log.Error(ctx, "invalid difficulty level for standalone session", "error", err)
 			return nil, domainerror.ValidationError("invalid_difficulty_level", "A valid difficulty_level is required for a standalone session", err)
@@ -1467,13 +1467,13 @@ func (s *SessionService) DiscoverSessions(
 	interests := make([]postgres.InterestPair, 0, len(params.Interests))
 	for _, interest := range params.Interests {
 		if interest.ActivityType != "" && !domain.ActivityType(interest.ActivityType).IsValid() {
-			err := fmt.Errorf("invalid activity type: %s", interest.ActivityType)
+			err := fmt.Errorf("%w: %s", domain.ErrInvalidActivityType, interest.ActivityType)
 			span.SetStatus(codes.Error, err.Error())
 			log.Error(ctx, "invalid activity type", "error", err)
 			return nil, "", nil, MapErrToAppError(err)
 		}
 		if interest.DifficultyLevel != "" && !domain.DifficultyLevel(interest.DifficultyLevel).IsValid() {
-			err := fmt.Errorf("invalid difficulty level: %s", interest.DifficultyLevel)
+			err := fmt.Errorf("%w: %s", domain.ErrInvalidDifficultyLevel, interest.DifficultyLevel)
 			span.SetStatus(codes.Error, err.Error())
 			log.Error(ctx, "invalid difficulty level", "error", err)
 			return nil, "", nil, MapErrToAppError(err)

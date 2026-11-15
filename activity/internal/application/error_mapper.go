@@ -31,8 +31,34 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.ValidationError("invalid_capacity", "Default capacity must be greater than 0", err)
 	case errors.Is(err, domain.ErrInvalidRecurrenceFrequency):
 		return domainerror.ValidationError("invalid_recurrence_frequency", "Invalid recurrence frequency", err)
-	case errors.Is(err, domain.ErrSessionTemplateInvalidRecurrenceRule):
-		return domainerror.ValidationError("invalid_recurrence_rule", "Invalid recurrence rule for session template", err)
+	case errors.Is(err, domain.ErrSessionTemplateNotRecurring):
+		return domainerror.ValidationError("session_template_not_recurring", "Session template is not recurring", err)
+	}
+
+	// Input shared by groups, sessions and templates
+	switch {
+	case errors.Is(err, domain.ErrInvalidActivityType):
+		return domainerror.ValidationError("invalid_activity_type", "Invalid activity type", err)
+	case errors.Is(err, domain.ErrInvalidDifficultyLevel):
+		return domainerror.ValidationError("invalid_difficulty_level", "Invalid difficulty level", err)
+	case errors.Is(err, domain.ErrTitleRequired):
+		return domainerror.ValidationError("title_required", "Title is required", err)
+	case errors.Is(err, domain.ErrTitleTooLong):
+		return domainerror.ValidationError("title_too_long", "Title cannot exceed 100 characters", err)
+	case errors.Is(err, domain.ErrInvalidCapacity):
+		return domainerror.ValidationError("invalid_capacity", "Capacity must be between 1 and 1000", err)
+	case errors.Is(err, domain.ErrLocationCityRequired):
+		return domainerror.ValidationError("city_required", "Location city is required", err)
+	case errors.Is(err, domain.ErrLocationCountryRequired):
+		return domainerror.ValidationError("country_required", "Location country is required", err)
+	case errors.Is(err, domain.ErrLocationLatitudeInvalid):
+		return domainerror.ValidationError("invalid_latitude", "Latitude must be between -90 and 90", err)
+	case errors.Is(err, domain.ErrLocationLongitudeInvalid):
+		return domainerror.ValidationError("invalid_longitude", "Longitude must be between -180 and 180", err)
+	case errors.Is(err, domain.ErrInvalidScheduleTime):
+		return domainerror.ValidationError("invalid_schedule", "Start time must be before end time", err)
+	case errors.Is(err, domain.ErrInvalidMemberRole):
+		return domainerror.ValidationError("invalid_member_role", "Invalid member role", err)
 	}
 
 	// Recurrence errors
@@ -85,8 +111,6 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.Conflict("session_not_scheduled", "Session is not scheduled", err)
 	case errors.Is(err, domain.ErrSessionNotOpen):
 		return domainerror.Forbidden("session_not_open", "Session is not open for regular members yet", err)
-	case errors.Is(err, domain.ErrSessionInvalidSchedule):
-		return domainerror.ValidationError("invalid_schedule", "Session schedule is invalid", err)
 	case errors.Is(err, domain.ErrSessionStartTimeInPast):
 		return domainerror.ValidationError("start_time_in_past", "Session start time cannot be in the past", err)
 	case errors.Is(err, domain.ErrInvalidSessionCapacity):
@@ -99,6 +123,8 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.ValidationError("invalid_visibility", "Session visibility must be public or private", err)
 	case errors.Is(err, domain.ErrSessionFull):
 		return domainerror.Conflict("session_full", "Session has reached its capacity", err)
+	case errors.Is(err, domain.ErrSessionNotExpiredYet):
+		return domainerror.Conflict("session_not_expired_yet", "Session has not ended yet", err)
 	}
 
 	// Team errors
@@ -143,6 +169,13 @@ func MapErrToAppError(err error) *domainerror.AppError {
 			WithDetails(details)
 	}
 	switch {
+	// the bare sentinels, should one ever come without its typed error
+	case errors.Is(err, domain.ErrTieRequiresWinner):
+		return domainerror.Conflict("tie_requires_winner", "Voting is tied; pick the winner from the tied options", err)
+	case errors.Is(err, domain.ErrDuplicateProposal):
+		return domainerror.Conflict("duplicate_proposal", "A proposal with the same teams is already in this round; vote for it instead", err)
+	case errors.Is(err, domain.ErrInvalidDivision):
+		return domainerror.ValidationError("invalid_division", "The proposal is not a valid division", err)
 	case errors.Is(err, domain.ErrVotingNotOpen):
 		return domainerror.Conflict("voting_closed", "Voting is not open", err)
 	case errors.Is(err, domain.ErrVotingOpen):
@@ -248,6 +281,12 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.NotFound("activity_group_deleted", "Activity group has been deleted", err)
 	case errors.Is(err, domain.ErrActivityGroupNotActive):
 		return domainerror.Conflict("activity_group_not_active", "Activity group is not active", err)
+	case errors.Is(err, domain.ErrActivityGroupNotDraft):
+		return domainerror.Conflict("activity_group_not_draft", "Activity group is already published", err)
+	case errors.Is(err, domain.ErrActivityGroupCancelled):
+		return domainerror.Conflict("activity_group_cancelled", "Activity group is cancelled", err)
+	case errors.Is(err, domain.ErrActivityGroupInvalidVisibility):
+		return domainerror.ValidationError("invalid_visibility", "Activity group visibility must be public or private", err)
 	case errors.Is(err, domain.ErrActivityGroupNotJoinable):
 		return domainerror.Forbidden("activity_group_not_joinable", "This activity group is not open for join requests", err)
 	case errors.Is(err, domain.ErrActivityGroupFull):
@@ -270,6 +309,16 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.Conflict("already_invited", "User has already been invited to this activity group", err)
 	case errors.Is(err, domain.ErrInviteAlreadyProcessed):
 		return domainerror.Conflict("invite_already_processed", "Invite has already been accepted or declined", err)
+	case errors.Is(err, domain.ErrInviteHasNotExpiredYet):
+		return domainerror.Conflict("invite_not_expired_yet", "Invite has not expired yet", err)
+	case errors.Is(err, domain.ErrInviteLinkAlreadyUsed):
+		return domainerror.Conflict("invite_link_already_used", "Invite link has already been used", err)
+	case errors.Is(err, domain.ErrInviteLinkHasNotExpiredYet):
+		return domainerror.Conflict("invite_link_not_expired_yet", "Invite link has not expired yet", err)
+	case errors.Is(err, domain.ErrInviteLinkExpired):
+		return domainerror.Conflict("invite_link_expired", "Invite link has expired", err)
+	case errors.Is(err, domain.ErrInviteLinkRevoked):
+		return domainerror.Conflict("invite_link_revoked", "Invite link has been revoked", err)
 	case errors.Is(err, domain.ErrInviteExpired):
 		return domainerror.Conflict("invite_expired", "Invite has expired", err)
 	case errors.Is(err, domain.ErrCannotInviteCreator):

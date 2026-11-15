@@ -75,7 +75,7 @@ func TestMemberService_PromoteMember(t *testing.T) {
 	})
 
 	t.Run("an invalid requester role is rejected", func(t *testing.T) {
-		assert.Error(t, promote(creator, "owner", env.addMember(t, group.ID())))
+		requireAppErrorCode(t, promote(creator, "owner", env.addMember(t, group.ID())), "invalid_member_role")
 	})
 
 	t.Run("someone who isn't a member can't be promoted", func(t *testing.T) {

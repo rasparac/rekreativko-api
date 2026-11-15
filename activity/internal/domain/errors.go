@@ -7,19 +7,27 @@ var (
 	ErrActivityGroupNotFound          = errors.New("activity group not found")
 	ErrActivityGroupNotDraft          = errors.New("activity group is not in draft status")
 	ErrActivityGroupCancelled         = errors.New("activity group is cancelled")
-	ErrActivityGroupNotPublished      = errors.New("activity group is not in published status")
-	ErrActivityGroupNotStarted        = errors.New("activity group is not started yet")
-	ErrActivityGroupAlreadyStarted    = errors.New("activity group is already started")
-	ErrActivityGroupCanceled          = errors.New("activity group is canceled")
 	ErrActivityGroupDeleted           = errors.New("activity group is deleted")
 	ErrActivityGroupNotActive         = errors.New("activity group is not active")
-	ErrActivityGroupCompleted         = errors.New("activity group is completed")
 	ErrActivityGroupFull              = errors.New("activity group is full")
 	ErrActivityGroupNotJoinable       = errors.New("activity group is not open for join requests")
 	ErrInvalidScheduleTime            = errors.New("start time must be before end time")
-	ErrActivityGroupInvalidVisibility = errors.New("activity group visibility is required")
-	ErrStartTimeInPast                = errors.New("start time cannot be in the past")
+	ErrActivityGroupInvalidVisibility = errors.New("activity group visibility must be public or private")
 	ErrUnauthorized                   = errors.New("unauthorized to perform this action")
+)
+
+// Input errors shared by groups, sessions and templates; wrap them with the
+// rejected value (fmt.Errorf("%w: %s", ErrInvalidActivityType, v)).
+var (
+	ErrInvalidActivityType      = errors.New("invalid activity type")
+	ErrInvalidDifficultyLevel   = errors.New("invalid difficulty level")
+	ErrTitleRequired            = errors.New("title cannot be empty")
+	ErrTitleTooLong             = errors.New("title cannot exceed 100 characters")
+	ErrInvalidCapacity          = errors.New("capacity must be between 1 and 1000")
+	ErrLocationCityRequired     = errors.New("location city is required")
+	ErrLocationCountryRequired  = errors.New("location country is required")
+	ErrLocationLatitudeInvalid  = errors.New("location latitude must be between -90 and 90")
+	ErrLocationLongitudeInvalid = errors.New("location longitude must be between -180 and 180")
 )
 
 // Account errors
@@ -44,6 +52,7 @@ var (
 	ErrMemberAlreadyPriority = errors.New("member is already a priority member")
 	ErrMemberNotPriority     = errors.New("member is not a priority member")
 	ErrInsufficientRole      = errors.New("member role cannot manage this group")
+	ErrInvalidMemberRole     = errors.New("invalid member role")
 )
 
 // Invite errors
@@ -66,7 +75,6 @@ var (
 	ErrSessionCompleted                = errors.New("session is completed")
 	ErrSessionNotExpiredYet            = errors.New("session has not expired yet")
 	ErrSessionAlreadyStarted           = errors.New("session has already started")
-	ErrSessionInvalidSchedule          = errors.New("session schedule is invalid")
 	ErrInvalidSessionCapacity          = errors.New("session capacity must be a positive integer or nil for unlimited")
 	ErrSessionStartTimeInPast          = errors.New("session start time cannot be in the past")
 	ErrSessionLocationCityRequired     = errors.New("session location city is required")
@@ -137,7 +145,6 @@ var (
 var (
 	ErrRecurrenceRuleMissingInterval   = errors.New("interval must be specified for recurring activity")
 	ErrInvalidRecurrenceRule           = errors.New("invalid recurrence rule")
-	ErrNoRecurrenceRule                = errors.New("no recurrence rule provided for recurring activity")
 	ErrRecurrenceRuleMissingTimeOfDay  = errors.New("time of day must be specified for recurring activity")
 	ErrRecurrenceRuleMissingDayOfWeek  = errors.New("day of week must be specified for weekly recurrence")
 	ErrRecurrenceRuleInvalidDayOfWeek  = errors.New("day of week must be between 0 (Sunday) and 6 (Saturday)")
@@ -160,15 +167,12 @@ var (
 
 // SessionTemplate errors
 var (
-	ErrSessionTemplateTitleRequired         = errors.New("session template title is required")
-	ErrSessionTemplateLocationRequired      = errors.New("session template location is required")
-	ErrInvalidRecurrenceFrequency           = errors.New("invalid recurrence frequency")
-	ErrInvalidGenerateHoursBefore           = errors.New("generate hours before cut-off time must be non-negative")
-	ErrInvalidDefaultCapacity               = errors.New("default capacity must be greater than 0")
-	ErrSessionTemplateNotFound              = errors.New("session template not found")
-	ErrSessionTemplateNotActive             = errors.New("session template is not active")
-	ErrSessionTemplateInvalidCutOffTime     = errors.New("invalid cut-off time for session template")
-	ErrSessionTemplateInvalidRecurrenceRule = errors.New("invalid recurrence rule for session template")
-	ErrSessionTemplateDeleted               = errors.New("session template is deleted")
-	ErrSessionTemplateNotRecurring          = errors.New("session template is not recurring")
+	ErrSessionTemplateTitleRequired    = errors.New("session template title is required")
+	ErrSessionTemplateLocationRequired = errors.New("session template location is required")
+	ErrInvalidRecurrenceFrequency      = errors.New("invalid recurrence frequency")
+	ErrInvalidDefaultCapacity          = errors.New("default capacity must be greater than 0")
+	ErrSessionTemplateNotFound         = errors.New("session template not found")
+	ErrSessionTemplateNotActive        = errors.New("session template is not active")
+	ErrSessionTemplateDeleted          = errors.New("session template is deleted")
+	ErrSessionTemplateNotRecurring     = errors.New("session template is not recurring")
 )

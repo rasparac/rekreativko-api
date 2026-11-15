@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -74,10 +73,10 @@ type Title struct {
 
 func NewTitle(value string) (Title, error) {
 	if len(value) == 0 {
-		return Title{}, errors.New("title cannot be empty")
+		return Title{}, ErrTitleRequired
 	}
 	if len(value) > 100 {
-		return Title{}, fmt.Errorf("title cannot exceed 100 characters")
+		return Title{}, ErrTitleTooLong
 	}
 	return Title{value: value}, nil
 }
@@ -96,16 +95,16 @@ type Location struct {
 
 func NewLocation(city, country, street string, latitude, longitude float64) (Location, error) {
 	if len(city) == 0 {
-		return Location{}, errors.New("city cannot be empty")
+		return Location{}, ErrLocationCityRequired
 	}
 	if len(country) == 0 {
-		return Location{}, errors.New("country cannot be empty")
+		return Location{}, ErrLocationCountryRequired
 	}
 	if latitude < -90 || latitude > 90 {
-		return Location{}, errors.New("latitude must be between -90 and 90")
+		return Location{}, ErrLocationLatitudeInvalid
 	}
 	if longitude < -180 || longitude > 180 {
-		return Location{}, errors.New("longitude must be between -180 and 180")
+		return Location{}, ErrLocationLongitudeInvalid
 	}
 	return Location{
 		city:      city,
@@ -143,10 +142,10 @@ type AcitvityGroupLocation struct {
 
 func NewActivityGroupLocation(city, country string) (AcitvityGroupLocation, error) {
 	if len(city) == 0 {
-		return AcitvityGroupLocation{}, errors.New("city cannot be empty")
+		return AcitvityGroupLocation{}, ErrLocationCityRequired
 	}
 	if len(country) == 0 {
-		return AcitvityGroupLocation{}, errors.New("country cannot be empty")
+		return AcitvityGroupLocation{}, ErrLocationCountryRequired
 	}
 	return AcitvityGroupLocation{
 		city:    city,
@@ -169,7 +168,7 @@ type Schedule struct {
 
 func NewSchedule(startTime, endTime time.Time) (Schedule, error) {
 	if endTime.Before(startTime) {
-		return Schedule{}, errors.New("end time must be after start time")
+		return Schedule{}, ErrInvalidScheduleTime
 	}
 	return Schedule{
 		startTime: startTime,
@@ -191,10 +190,10 @@ type Capacity struct {
 
 func NewCapacity(max int) (Capacity, error) {
 	if max < 1 {
-		return Capacity{}, errors.New("capacity must be at least 1")
+		return Capacity{}, ErrInvalidCapacity
 	}
 	if max > 1000 {
-		return Capacity{}, errors.New("capacity cannot exceed 1000")
+		return Capacity{}, ErrInvalidCapacity
 	}
 	return Capacity{max: max}, nil
 }
@@ -238,15 +237,15 @@ func NewActivityGroup(
 	capacity *Capacity,
 ) (*ActivityGroup, error) {
 	if !activityType.IsValid() {
-		return nil, fmt.Errorf("invalid activity type: %s", activityType)
+		return nil, fmt.Errorf("%w: %s", ErrInvalidActivityType, activityType)
 	}
 
 	if !difficultyLevel.IsValid() {
-		return nil, fmt.Errorf("invalid difficulty level: %s", difficultyLevel)
+		return nil, fmt.Errorf("%w: %s", ErrInvalidDifficultyLevel, difficultyLevel)
 	}
 
 	if !groupVisibility.IsValid() {
-		return nil, fmt.Errorf("invalid group visibility: %s", groupVisibility)
+		return nil, fmt.Errorf("%w: %s", ErrActivityGroupInvalidVisibility, groupVisibility)
 	}
 
 	now := time.Now()
@@ -437,11 +436,11 @@ func (ag *ActivityGroup) Update(
 	}
 
 	if !activityType.IsValid() {
-		return fmt.Errorf("invalid activity type: %s", activityType)
+		return fmt.Errorf("%w: %s", ErrInvalidActivityType, activityType)
 	}
 
 	if !difficultyLevel.IsValid() {
-		return fmt.Errorf("invalid difficulty level: %s", difficultyLevel)
+		return fmt.Errorf("%w: %s", ErrInvalidDifficultyLevel, difficultyLevel)
 	}
 
 	ag.title = title

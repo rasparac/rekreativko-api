@@ -146,9 +146,9 @@ func TestSessionService_UpdateSession(t *testing.T) {
 
 		assert.ErrorIs(t, update(env, session, func(p *application.UpdateSessionParams) { p.Capacity = intPtr(0) }), domain.ErrInvalidSessionCapacity)
 		assert.ErrorIs(t, update(env, session, func(p *application.UpdateSessionParams) { p.Visibility = "secret" }), domain.ErrInvalidSessionVisibility)
-		assert.Error(t, update(env, session, func(p *application.UpdateSessionParams) { p.LocationLat = 123 }), "a latitude that does not exist")
-		assert.Error(t, update(env, session, func(p *application.UpdateSessionParams) { p.StartTime = time.Now().Add(-time.Hour) }), "a start in the past")
-		assert.Error(t, update(env, session, func(p *application.UpdateSessionParams) { p.RequesterRole = "overlord" }), "a role that does not exist")
+		assert.ErrorIs(t, update(env, session, func(p *application.UpdateSessionParams) { p.LocationLat = 123 }), domain.ErrSessionLocationLatitudeInvalid)
+		assert.ErrorIs(t, update(env, session, func(p *application.UpdateSessionParams) { p.StartTime = time.Now().Add(-time.Hour) }), domain.ErrSessionStartTimeInPast)
+		requireAppErrorCode(t, update(env, session, func(p *application.UpdateSessionParams) { p.RequesterRole = "overlord" }), "invalid_member_role")
 
 		loaded, err := env.sessionRepo.GetSessionByID(env.ctx, session.ID())
 		require.NoError(t, err)
@@ -298,7 +298,7 @@ func TestSessionService_DiscoverSessions(t *testing.T) {
 		assert.ErrorIs(t, bad(application.DiscoverSessionsParams{Lat: 91, Lng: 0, RadiusKM: 5}), domain.ErrSessionLocationLatitudeInvalid)
 		assert.ErrorIs(t, bad(application.DiscoverSessionsParams{Lat: 0, Lng: 181, RadiusKM: 5}), domain.ErrSessionLocationLongitudeInvalid)
 		assert.ErrorIs(t, bad(application.DiscoverSessionsParams{Lat: 0, Lng: 0, RadiusKM: 0}), domain.ErrInvalidDiscoveryRadius)
-		assert.Error(t, bad(application.DiscoverSessionsParams{Lat: 0, Lng: 0, RadiusKM: 5, Interests: []application.ActivityInterestFilter{{ActivityType: "chess-boxing"}}}))
-		assert.Error(t, bad(application.DiscoverSessionsParams{Lat: 0, Lng: 0, RadiusKM: 5, Interests: []application.ActivityInterestFilter{{DifficultyLevel: "godlike"}}}))
+		requireAppErrorCode(t, bad(application.DiscoverSessionsParams{Lat: 0, Lng: 0, RadiusKM: 5, Interests: []application.ActivityInterestFilter{{ActivityType: "chess-boxing"}}}), "invalid_activity_type")
+		requireAppErrorCode(t, bad(application.DiscoverSessionsParams{Lat: 0, Lng: 0, RadiusKM: 5, Interests: []application.ActivityInterestFilter{{DifficultyLevel: "godlike"}}}), "invalid_difficulty_level")
 	})
 }

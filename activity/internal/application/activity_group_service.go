@@ -97,7 +97,7 @@ func (s *ActivityGroupService) CreateActivityGroup(
 
 	activityType := domain.ActivityType(params.ActivityType)
 	if !activityType.IsValid() {
-		err := fmt.Errorf("invalid activity type: %s", params.ActivityType)
+		err := fmt.Errorf("%w: %s", domain.ErrInvalidActivityType, params.ActivityType)
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "invalid activity type", "error", err)
 		return nil, MapErrToAppError(err)
@@ -105,7 +105,7 @@ func (s *ActivityGroupService) CreateActivityGroup(
 
 	difficultyLevel := domain.DifficultyLevel(params.DifficultyLevel)
 	if !difficultyLevel.IsValid() {
-		err := fmt.Errorf("invalid difficulty level: %s", params.DifficultyLevel)
+		err := fmt.Errorf("%w: %s", domain.ErrInvalidDifficultyLevel, params.DifficultyLevel)
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "invalid difficulty level", "error", err)
 		return nil, MapErrToAppError(err)
@@ -113,7 +113,7 @@ func (s *ActivityGroupService) CreateActivityGroup(
 
 	visibility := domain.ActivityGroupVisibility(params.Visibility)
 	if !visibility.IsValid() {
-		err := fmt.Errorf("invalid visibility: %s", params.Visibility)
+		err := fmt.Errorf("%w: %s", domain.ErrActivityGroupInvalidVisibility, params.Visibility)
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "invalid visibility", "error", err)
 		return nil, MapErrToAppError(err)
@@ -262,7 +262,7 @@ func (s *ActivityGroupService) UpdateActivityGroup(
 
 	activityType := domain.ActivityType(params.ActivityType)
 	if !activityType.IsValid() {
-		err := fmt.Errorf("invalid activity type: %s", params.ActivityType)
+		err := fmt.Errorf("%w: %s", domain.ErrInvalidActivityType, params.ActivityType)
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "invalid activity type", "error", err)
 		return MapErrToAppError(err)
@@ -270,7 +270,7 @@ func (s *ActivityGroupService) UpdateActivityGroup(
 
 	difficultyLevel := domain.DifficultyLevel(params.DifficultyLevel)
 	if !difficultyLevel.IsValid() {
-		err := fmt.Errorf("invalid difficulty level: %s", params.DifficultyLevel)
+		err := fmt.Errorf("%w: %s", domain.ErrInvalidDifficultyLevel, params.DifficultyLevel)
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "invalid difficulty level", "error", err)
 		return MapErrToAppError(err)
@@ -655,13 +655,13 @@ func (s *ActivityGroupService) DiscoverActivityGroups(
 
 	for _, interest := range params.Interests {
 		if interest.ActivityType != "" && !domain.ActivityType(interest.ActivityType).IsValid() {
-			err := fmt.Errorf("invalid activity type: %s", interest.ActivityType)
+			err := fmt.Errorf("%w: %s", domain.ErrInvalidActivityType, interest.ActivityType)
 			span.SetStatus(codes.Error, err.Error())
 			log.Error(ctx, "invalid activity type", "error", err)
 			return nil, "", MapErrToAppError(err)
 		}
 		if interest.DifficultyLevel != "" && !domain.DifficultyLevel(interest.DifficultyLevel).IsValid() {
-			err := fmt.Errorf("invalid difficulty level: %s", interest.DifficultyLevel)
+			err := fmt.Errorf("%w: %s", domain.ErrInvalidDifficultyLevel, interest.DifficultyLevel)
 			span.SetStatus(codes.Error, err.Error())
 			log.Error(ctx, "invalid difficulty level", "error", err)
 			return nil, "", MapErrToAppError(err)

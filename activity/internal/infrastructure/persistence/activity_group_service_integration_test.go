@@ -62,7 +62,7 @@ func TestActivityGroupService_ActivateActivityGroup(t *testing.T) {
 	})
 
 	t.Run("a group is published only once", func(t *testing.T) {
-		assert.ErrorIs(t, env.groupSvc.ActivateActivityGroup(env.ctx, group.ID(), creator), domain.ErrActivityGroupNotDraft)
+		requireAppErrorCode(t, env.groupSvc.ActivateActivityGroup(env.ctx, group.ID(), creator), "activity_group_not_draft")
 	})
 
 	t.Run("an unknown group is not found", func(t *testing.T) {
@@ -171,7 +171,7 @@ func TestActivityGroupService_DiscoverActivityGroups(t *testing.T) {
 		_, _, err := env.groupSvc.DiscoverActivityGroups(env.ctx, application.DiscoverActivityGroupsParams{
 			Interests: []application.ActivityInterestFilter{{ActivityType: "chess"}},
 		})
-		assert.Error(t, err)
+		requireAppErrorCode(t, err, "invalid_activity_type")
 	})
 }
 
@@ -230,21 +230,21 @@ func TestActivityGroupService_CreateActivityGroup_RejectsInvalidInput(t *testing
 		}
 	}
 
-	for name, change := range map[string]func(*application.CreateActivityGroupParams){
-		"no title":         func(p *application.CreateActivityGroupParams) { p.Title = "" },
-		"no city":          func(p *application.CreateActivityGroupParams) { p.LocationCity = "" },
-		"unknown activity": func(p *application.CreateActivityGroupParams) { p.ActivityType = "chess" },
-		"unknown visibility": func(p *application.CreateActivityGroupParams) {
-			p.Visibility = "secret"
-		},
-		"zero capacity": func(p *application.CreateActivityGroupParams) { p.DefaultCapacity = testutil.Ptr(0) },
+	// each one a 400 with its own code (rekreativko-api-5o1: these were 500s)
+	for code, change := range map[string]func(*application.CreateActivityGroupParams){
+		"title_required":           func(p *application.CreateActivityGroupParams) { p.Title = "" },
+		"city_required":            func(p *application.CreateActivityGroupParams) { p.LocationCity = "" },
+		"invalid_activity_type":    func(p *application.CreateActivityGroupParams) { p.ActivityType = "chess" },
+		"invalid_difficulty_level": func(p *application.CreateActivityGroupParams) { p.DifficultyLevel = "godlike" },
+		"invalid_visibility":       func(p *application.CreateActivityGroupParams) { p.Visibility = "secret" },
+		"invalid_capacity":         func(p *application.CreateActivityGroupParams) { p.DefaultCapacity = testutil.Ptr(0) },
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(code, func(t *testing.T) {
 			params := valid()
 			change(&params)
 
 			_, err := env.groupSvc.CreateActivityGroup(env.ctx, params)
-			assert.Error(t, err)
+			requireAppErrorCode(t, err, code)
 		})
 	}
 

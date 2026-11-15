@@ -121,7 +121,7 @@ func (s *AttendeeService) CreateRSVP(
 	// Parse status
 	status := domain.AttendeeStatus(params.Status)
 	if !status.IsValid() {
-		err := fmt.Errorf("invalid attendee status: %s", params.Status)
+		err := fmt.Errorf("%w: %s", domain.ErrInvalidAttendeeStatus, params.Status)
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "invalid status", "error", err)
 		return nil, err
@@ -724,7 +724,7 @@ func (s *AttendeeService) UpdateRSVP(
 	// Parse status
 	newStatus := domain.AttendeeStatus(params.NewStatus)
 	if !newStatus.IsValid() {
-		err := fmt.Errorf("invalid attendee status: %s", params.NewStatus)
+		err := fmt.Errorf("%w: %s", domain.ErrInvalidAttendeeStatus, params.NewStatus)
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "invalid status", "error", err)
 		return nil, err

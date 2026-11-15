@@ -14,7 +14,9 @@ Match the surrounding code first; these are the conventions it follows.
 - Business rule violations are sentinel errors in `<service>/internal/domain/errors.go` (`ErrCreatorCannotLeave`).
 - Application services turn them into `*domainerror.AppError` in `mapToAppErr` (`domainerror.NotFound`,
   `BadRequest`, `Forbidden`, `Conflict`, `InternalWithErr`); HTTP handlers write them with `handleServiceError`.
-  A new sentinel error needs a case there, or it becomes a 500.
+  A new sentinel error needs a case there, or it becomes a 500 (in activity,
+  `TestMapErrToAppError_EveryDomainErrorIsMapped` fails until it has one). Rejected input is a sentinel too,
+  wrapped with the value: `fmt.Errorf("%w: %s", domain.ErrInvalidActivityType, v)`, never a bare `fmt.Errorf`.
 
 ## Domain
 
