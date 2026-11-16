@@ -910,5 +910,5 @@ func mapToAppErr(err error) *domainerror.AppError {
 		return domainerror.MapPostgresError(pgErr)
 	}
 
-	return domain.MapErrToAppError(err)
+	return mapDomainErr(err)
 }

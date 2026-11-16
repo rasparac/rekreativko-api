@@ -359,13 +359,10 @@ func (s *service) GetProfiles(ctx context.Context, filter ProfilesFilter) ([]*do
 }
 
 func mapToAppErr(err error) *domainerror.AppError {
-	// Check for pgx.ErrNoRows first - it's handled in domain.MapErrToAppError
-	// because it's not a *pgconn.PgError
-
 	pgErr := postgres.GetPgxError(err)
 	if pgErr != nil {
 		return domainerror.MapPostgresError(pgErr)
 	}
 
-	return domain.MapErrToAppError(err)
+	return mapDomainErr(err)
 }
