@@ -16,9 +16,9 @@ identity events ─────────────────────�
   password changed)           ┌───────────────────────────────────┐
                               │ notifications container           │
                               │                                   │
-                              │ ① Delivery layer                  │──► email / SMS
-                              │    interfaces/events/identity_*   │    (dev mode: only logged,
-                              │    application/DeliveryService    │     no real sender yet)
+                              │ ① Delivery layer                  │──► email (Resend) / SMS
+                              │    interfaces/events/identity_*   │    (dev mode without a key:
+                              │    application/DeliveryService    │     only logged; no SMS yet)
                               │    infrastructure/{delivery,      │
                               │      templates}                   │
 activity events ─────────────►│ ② In-app feed                     │
@@ -76,7 +76,7 @@ Every kind is `AlwaysSent` today, so the settings aren't read. The first `Respec
 
 Part of `docker compose up` (container `notifications`, port `8083` internally, no host port published — reachable only via the gateway or docker network).
 
-**This service cannot start outside dev mode today** — see [Known issues](#known-issues). No real SMTP/SMS provider is implemented yet.
+Outside dev mode it needs `RESEND_API_KEY` and `EMAIL_FROM` to start (see [Senders](#senders)). No SMS provider is implemented yet.
 
 ## API
 
@@ -169,32 +169,32 @@ Notification
 ```
 `MarkRead()` is idempotent — no-ops if already read.
 
-## The dual sender setup
+## Senders
 
-`notifications/cmd/api/main.go`:
-```go
-if cfg.IsDevMode() {
-    emailSender = delivery.NewInMemoryEmailSender(log)  // logs only
-    smsSender = delivery.NewInMemorySMSSender(log)       // logs only
-} else if !cfg.Features.PhoneRegistrationEnabled {
-    smsSender = delivery.NewDisabledSMSSender(log)        // errors loudly if ever called
-}
-if emailSender == nil {
-    return fmt.Errorf("no email sender configured - required outside dev mode, and no real SMTP sender is implemented yet")
-}
-if smsSender == nil {
-    return fmt.Errorf("no SMS sender configured - required outside dev mode when phone registration is enabled, and no real SMS provider is implemented yet")
-}
-```
-Deliberate fail-fast: a nil sender would otherwise panic mid-flight on the first real event, instead of failing loudly at startup. `DisabledSMSSender` exists so a *deployment* choosing not to support phone registration doesn't need a real SMS provider just to boot — it only errors if the (supposedly unreachable) SMS path is actually hit.
+Chosen in `notifications/cmd/api/main.go`:
 
-`SMTPEmailSender` exists in `infrastructure/delivery/` but is a non-functional stub (`SendEmail` just `return nil`s) — it's never constructed by `main.go`. No real SMS provider implementation exists at all.
+| Email | When |
+|---|---|
+| `ResendEmailSender` | `RESEND_API_KEY` is set, in any mode (dev too, to test real delivery); `EMAIL_FROM` is then required |
+| `InMemoryEmailSender` (logs only) | dev mode without a key |
+| none - startup fails | any other environment without a key |
+
+SMS: `InMemorySMSSender` (logs only) in dev mode; outside it `DisabledSMSSender` (errors loudly if ever called) while `PHONE_REGISTRATION_ENABLED=false`, and startup fails with it on, since no SMS provider exists. Deliberate fail-fast: a nil sender would otherwise panic mid-flight on the first real event.
+
+**Resend** (`infrastructure/delivery/resend_sender.go`) calls the REST API (`POST /emails`) directly, not the Go SDK, which reports a 400/422 as a bare string (a request Resend will never accept couldn't be told from an outage) and may quote the address in its error text. The rendered templates are sent as plain text; templates stay in this repo (not in Resend) so they are versioned, tested and localized here.
+- **Idempotency:** each email carries `Idempotency-Key: notifications/<event_id>/<hashed recipient>`, so a redelivered event, or a retry after a lost response, sends it once (Resend keeps keys 24 hours).
+- **Errors:** `429`, `409` (the same key still in flight), `5xx` and network errors are retried by redelivering the event; any other `4xx` (bad key, unverified sender domain, invalid address) is `events.Permanent` and goes straight to the DLQ. An error carries only the status and Resend's error `name` - never the recipient, the text, or Resend's message. `Retry-After` is not honored; JetStream's redelivery backoff spaces the retries.
+- **Logs:** `email sent` (debug) with Resend's email id, to look it up in the Resend dashboard.
+- **Key:** a sending-only key restricted to the sending domain - never the full-access one.
+- **Sender domain:** none verified yet, so `EMAIL_FROM` can only be `Rekreativko <onboarding@resend.dev>`, which Resend delivers only to the account owner's address (good for local testing). Production needs a domain verified in Resend (SPF, DKIM, DMARC) and `EMAIL_FROM=Rekreativko <no-reply@<that domain>>`.
 
 ## Configuration
 
 | Env var | Notes |
 |---|---|
-| `PHONE_REGISTRATION_ENABLED` | Default `false`. The **only** place in the codebase where this flag changes runtime behavior at startup (elsewhere it just gates registration routes) — see [Known issues](#known-issues) for why it doesn't actually save you outside dev mode |
+| `RESEND_API_KEY` | Resend sending-only key. Empty: dev mode logs emails, any other environment refuses to start |
+| `EMAIL_FROM` | Sender, required with `RESEND_API_KEY`: `Rekreativko <no-reply@<verified domain>>` (`Rekreativko <onboarding@resend.dev>` before a domain is verified) |
+| `PHONE_REGISTRATION_ENABLED` | Default `false`. The **only** place in the codebase where this flag changes runtime behavior at startup (elsewhere it just gates registration routes): off, outside dev mode the SMS sender is `DisabledSMSSender`; on, startup fails (no SMS provider) |
 | `GATEWAY_API_KEY` | Required, validated via `X-Gateway-Key` |
 | `NATS_URL` | Required |
 | `PORT` | `8083` in compose |
@@ -233,8 +233,8 @@ A bad payload is dead-lettered; any other failure is retried (both operations ar
 
 ## Known issues
 
-- **This service cannot start outside dev mode, regardless of `PHONE_REGISTRATION_ENABLED`.** The sender-construction `if`/`else if` never assigns `emailSender` in the non-dev branch at all — only `smsSender` gets a fallback there. So in any non-dev environment, `emailSender` stays `nil` and startup fails on "no email sender configured," whether or not phone registration is on. This is intentional (no real SMTP sender exists yet) but means **a real `EmailSender` implementation is a hard prerequisite for any non-dev deployment**, not just an eventual nice-to-have.
-- When both senders end up `nil` (non-dev + `PHONE_REGISTRATION_ENABLED=true`), only the email error is ever surfaced (checked first) — the SMS error is equally true but never shown, which could confuse debugging.
+- **No sending domain is verified in Resend yet**, so outside a local test no email reaches a real user: production needs the domain, its DNS records and `EMAIL_FROM` on it (see [Senders](#senders)).
+- When both senders end up `nil` (non-dev without `RESEND_API_KEY` + `PHONE_REGISTRATION_ENABLED=true`), only the email error is ever surfaced (checked first) — the SMS error is equally true but never shown, which could confuse debugging.
 - **Dev senders log the code, email and phone.** `InMemoryEmailSender`/`InMemorySMSSender` (dev mode only) log recipient and message body, which is the only way to read a verification code locally. Nothing else logs or traces a code, email or phone: the handlers' spans carry only `event.id`, `event.account_id` and `event.delivery_type` (`TestEventHandlers_SpansCarryNoCodeEmailOrPhone`), and identity's log lines no longer carry the code, email or phone (`rekreativko-api-7r1`).
 - `notification.email.enabled`/`sms.enabled`/`push.enabled` (account-profile settings) aren't read: nothing sent today respects them (all `AlwaysSent`); the first message that does brings them here (`rekreativko-api-79p.3`).
 - Cosmetic: `Notification`'s private field is misspelled `recipientAccontID` (missing a `u`) — the exported getter `RecipientAccountID()` is correct, so this doesn't affect callers.

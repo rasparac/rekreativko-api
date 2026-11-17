@@ -173,16 +173,26 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	defer messageBroker.Close(ctx)
 
 	// Delivery layer for identity's account lifecycle events (verification
-	// emails/SMS, welcome and password-changed messages). In dev mode the
-	// senders just log instead of actually sending. There is no real SMTP/SMS
-	// provider implementation yet - failing fast here instead of letting a nil
-	// sender panic later, mid-flight, the first time a real event arrives.
+	// emails/SMS, welcome and password-changed messages). Email goes through
+	// Resend whenever RESEND_API_KEY is set (dev mode too, to test real
+	// delivery); without it dev mode only logs. There is no real SMS provider
+	// yet. A missing sender fails fast here instead of letting a nil sender
+	// panic later, mid-flight, the first time a real event arrives.
 	var (
 		emailSender application.EmailSender
 		smsSender   application.SMSSender
+		notifyCfg   = cfg.NotificationsServiceConfig
 	)
-	if cfg.IsDevMode() {
+	switch {
+	case notifyCfg.ResendAPIKey != "":
+		if notifyCfg.EmailFrom == "" {
+			return fmt.Errorf("EMAIL_FROM is required with RESEND_API_KEY")
+		}
+		emailSender = delivery.NewResendEmailSender(notifyCfg.ResendAPIKey, notifyCfg.EmailFrom, log)
+	case cfg.IsDevMode():
 		emailSender = delivery.NewInMemoryEmailSender(log)
+	}
+	if cfg.IsDevMode() {
 		smsSender = delivery.NewInMemorySMSSender(log)
 	} else if !cfg.Features.PhoneRegistrationEnabled {
 		// Phone registration is off, so this path is unreachable - wire a
@@ -191,7 +201,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		smsSender = delivery.NewDisabledSMSSender(log)
 	}
 	if emailSender == nil {
-		return fmt.Errorf("no email sender configured - required outside dev mode, and no real SMTP sender is implemented yet")
+		return fmt.Errorf("no email sender configured - set RESEND_API_KEY and EMAIL_FROM (required outside dev mode)")
 	}
 	if smsSender == nil {
 		return fmt.Errorf("no SMS sender configured - required outside dev mode when phone registration is enabled, and no real SMS provider is implemented yet")

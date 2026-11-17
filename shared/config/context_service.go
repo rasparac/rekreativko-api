@@ -55,6 +55,15 @@ type (
 		RetentionRead     time.Duration `envconfig:"NOTIFICATIONS_RETENTION_READ" default:"720h"`
 		RetentionAll      time.Duration `envconfig:"NOTIFICATIONS_RETENTION_ALL" default:"2160h"`
 		RetentionInterval time.Duration `envconfig:"NOTIFICATIONS_RETENTION_INTERVAL" default:"1h"`
+
+		// ResendAPIKey sends email through Resend (a sending-only key restricted
+		// to the domain). Empty: dev mode logs emails instead, and every other
+		// environment refuses to start. EmailFrom is the sender, on a domain
+		// verified in Resend ("Rekreativko <no-reply@mail.example.com>"); before
+		// that, "Rekreativko <onboarding@resend.dev>" delivers only to the
+		// Resend account owner's own address.
+		ResendAPIKey string `envconfig:"RESEND_API_KEY"`
+		EmailFrom    string `envconfig:"EMAIL_FROM"`
 	}
 
 	LocationServiceConfig struct {
