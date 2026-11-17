@@ -36,6 +36,7 @@ const (
 	MessageVerificationCode MessageKind = "verification"
 	MessageWelcome          MessageKind = "welcome_message"
 	MessagePasswordChanged  MessageKind = "password_changed"
+	MessagePasswordReset    MessageKind = "password_reset"
 )
 
 // SettingsPolicy says whether a message respects the recipient's
@@ -58,6 +59,8 @@ const (
 var settingsPolicies = map[MessageKind]SettingsPolicy{
 	MessageVerificationCode: AlwaysSent,
 	MessagePasswordChanged:  AlwaysSent,
+	// the code the user asked for to get back into their account
+	MessagePasswordReset: AlwaysSent,
 	// sent once, the moment the address is verified - before the user could
 	// have turned email off - and it confirms the account exists
 	MessageWelcome: AlwaysSent,

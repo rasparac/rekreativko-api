@@ -32,7 +32,7 @@ There are **two independent, duplicated public-path allowlists** that both have 
 
 Current public paths (everything else under a registered prefix requires a valid `Bearer` JWT):
 ```
-^/identity/api/v1/(login|register|verify-account|resend-verification-code|refresh-token)$
+^/identity/api/v1/(login|register|verify-account|resend-verification-code|forgot-password|reset-password|refresh-token)$
 ^/swagger/.*
 ^/health$
 ```
@@ -110,7 +110,7 @@ Two places in the chain, three kinds of key:
 | `ACCOUNT` | after `RequireAuth`, logged-in callers | account id | 120 / 90 |
 | `ANONYMOUS` | after `RequireAuth`, public paths without a stricter class (`refresh-token`) | client address | 60 / 60 |
 | `LOGIN` | `login` | client address | 10 / 10 |
-| `SENSITIVE` | `register`, `verify-account`, `resend-verification-code` (they create accounts or send an SMS/email) | client address | 5 / 5 |
+| `SENSITIVE` | `register`, `verify-account`, `resend-verification-code`, `forgot-password`, `reset-password` (they create accounts, send an SMS/email or check a code) | client address | 5 / 5 |
 
 - `IP` is a backstop in front of authentication: requests that auth rejects (missing or bad token) still cost something, so they are counted. Keep it generous, as many users can share one address (mobile carriers, offices). A logged-in request is counted against both its address and its account.
 - Logged-in callers are limited per account, so users behind one address do not share a bucket. A request's class for anonymous callers is declared on the router's auth rule (`AuthRule.RateClass`), next to whether it is public.

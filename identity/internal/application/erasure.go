@@ -54,6 +54,7 @@ type (
 		accounts          erasableAccountStore
 		refreshTokens     accountDataDeleter
 		verificationCodes accountDataDeleter
+		passwordResets    accountDataDeleter
 		erasures          erasureTracker
 		txManager         transactor
 		domainWriter      domainevent.EventWriter
@@ -68,6 +69,7 @@ func NewErasureService(
 	accounts erasableAccountStore,
 	refreshTokens accountDataDeleter,
 	verificationCodes accountDataDeleter,
+	passwordResets accountDataDeleter,
 	erasures erasureTracker,
 	txManager transactor,
 	domainWriter domainevent.EventWriter,
@@ -83,6 +85,7 @@ func NewErasureService(
 		accounts:          accounts,
 		refreshTokens:     refreshTokens,
 		verificationCodes: verificationCodes,
+		passwordResets:    passwordResets,
 		erasures:          erasures,
 		txManager:         txManager,
 		domainWriter:      domainWriter,
@@ -95,8 +98,8 @@ func NewErasureService(
 
 // EraseDueAccounts erases one batch of the deleted accounts whose grace period
 // has passed by now, and returns how many it erased. Each account's email,
-// phone and password are removed, its verification codes and refresh tokens
-// deleted and identity.account.erased raised, all in one transaction. Safe to
+// phone and password are removed, its verification codes, password reset
+// code and refresh tokens deleted and identity.account.erased raised, all in one transaction. Safe to
 // run from several instances at once: an account another instance is erasing
 // is skipped.
 func (s *ErasureService) EraseDueAccounts(ctx context.Context, now time.Time) (int, error) {
@@ -155,6 +158,10 @@ func (s *ErasureService) erase(ctx context.Context, account *domain.Account) err
 
 	if err := s.refreshTokens.DeleteAllForAccount(ctx, account.ID()); err != nil {
 		return fmt.Errorf("delete refresh tokens: %w", err)
+	}
+
+	if err := s.passwordResets.DeleteAllForAccount(ctx, account.ID()); err != nil {
+		return fmt.Errorf("delete password resets: %w", err)
 	}
 
 	return nil

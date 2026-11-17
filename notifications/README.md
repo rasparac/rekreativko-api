@@ -3,7 +3,7 @@
 One bounded context with two layers (name is a bit narrow for what it does — see [Known issues](#known-issues)):
 
 1. **In-app feed** — list/mark-read for notifications generated from activity-domain events (member joins, invites, attendee approvals/removals).
-2. **Message delivery** — the actual email/SMS for identity account-lifecycle events: verification codes, the welcome email and password-changed alerts. Moved here from `gateway`, since gateway had no business owning delivery-channel concerns.
+2. **Message delivery** — the actual email/SMS for identity account-lifecycle events: verification codes, password reset codes, the welcome email and password-changed alerts. Moved here from `gateway`, since gateway had no business owning delivery-channel concerns.
 
 ## How it works
 
@@ -61,6 +61,7 @@ One file per message and channel: `internal/infrastructure/templates/<locale>/<k
 | `verification` | yes (`code`) | yes (`code`) | always sent |
 | `welcome_message` | yes | — | always sent |
 | `password_changed` | yes | yes | always sent |
+| `password_reset` | yes (`code`) | yes (`code`) | always sent |
 
 ### Which messages respect the user's settings
 
@@ -107,7 +108,8 @@ Each subscription creates its own durable JetStream consumer (`<service>+<subjec
 |---|---|
 | `identity.verification_code.created` | send the actual code (email, or SMS for `phone`) |
 | `identity.account.verified` | send welcome email — email accounts only; a phone account sends nothing, and neither does an event with `unconfirmed: true` (identity's `ACCOUNT_VERIFICATION_REQUIRED=false`: the address was never proven) |
-| `identity.account.password.changed` | send alert — **dead today**, identity has no route that changes passwords yet |
+| `identity.account.password.changed` | send the password-changed alert (email, or SMS for `phone`) - after `change-password` or `reset-password` |
+| `identity.password_reset.requested` | send the forgot-password code (`password_reset`, email or SMS by `code_type`; same payload and handling as a verification code) |
 
 **Identity account deletion and erasure** (`AccountLifecycleHandlers`, see [Account deletion and erasure](#account-deletion-and-erasure)):
 
@@ -234,7 +236,6 @@ A bad payload is dead-lettered; any other failure is retried (both operations ar
 - **This service cannot start outside dev mode, regardless of `PHONE_REGISTRATION_ENABLED`.** The sender-construction `if`/`else if` never assigns `emailSender` in the non-dev branch at all — only `smsSender` gets a fallback there. So in any non-dev environment, `emailSender` stays `nil` and startup fails on "no email sender configured," whether or not phone registration is on. This is intentional (no real SMTP sender exists yet) but means **a real `EmailSender` implementation is a hard prerequisite for any non-dev deployment**, not just an eventual nice-to-have.
 - When both senders end up `nil` (non-dev + `PHONE_REGISTRATION_ENABLED=true`), only the email error is ever surfaced (checked first) — the SMS error is equally true but never shown, which could confuse debugging.
 - **Dev senders log the code, email and phone.** `InMemoryEmailSender`/`InMemorySMSSender` (dev mode only) log recipient and message body, which is the only way to read a verification code locally. Nothing else logs or traces a code, email or phone: the handlers' spans carry only `event.id`, `event.account_id` and `event.delivery_type` (`TestEventHandlers_SpansCarryNoCodeEmailOrPhone`), and identity's log lines no longer carry the code, email or phone (`rekreativko-api-7r1`).
-- `identity.account.password.changed` is subscribed, but nothing publishes it — identity has no route wired to `Account.ChangePassword()` yet (see `identity/README.md`).
 - `notification.email.enabled`/`sms.enabled`/`push.enabled` (account-profile settings) aren't read: nothing sent today respects them (all `AlwaysSent`); the first message that does brings them here (`rekreativko-api-79p.3`).
 - Cosmetic: `Notification`'s private field is misspelled `recipientAccontID` (missing a `u`) — the exported getter `RecipientAccountID()` is correct, so this doesn't affect callers.
 - The service name doesn't really describe its identity-delivery responsibility anymore; renaming has been discussed (e.g. "feed" service) but deliberately deferred — see project history if picking this up.

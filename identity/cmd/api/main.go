@@ -131,6 +131,8 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		log,
 	)
 
+	passwordResetRepo := persistence.NewPasswordResetManager(txManager, log)
+
 	verificationCodeGenerator := token.NewVerificationCodeGenerator(6)
 	passwordHasher := token.NewPasswordHasher(10)
 
@@ -175,11 +177,14 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		erasureCfg.ErasureGrace,
 	)
 
+	passwordService := application.NewPasswordService(identityService, passwordResetRepo)
+
 	erasureContexts := erasureCfg.GetErasureContexts()
 	erasureService, err := application.NewErasureService(
 		identityAccountRepo,
 		identityRefreshTokenRepo,
 		verificationCodeRepo,
+		passwordResetRepo,
 		persistence.NewAccountErasureManager(pg.Pool, txManager, log),
 		txManager,
 		eventWriter,
@@ -221,6 +226,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	identityHandler := identityHttp.NewHandler(
 		identityService,
+		passwordService,
 		log,
 	)
 

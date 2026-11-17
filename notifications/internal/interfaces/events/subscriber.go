@@ -13,6 +13,7 @@ type identityNotifier interface {
 	HandleAccountVerified(ctx context.Context, payload []byte) error
 	HandlePasswordChanged(ctx context.Context, payload []byte) error
 	HandleVerificationCodeGenerated(ctx context.Context, payload []byte) error
+	HandlePasswordResetRequested(ctx context.Context, payload []byte) error
 }
 
 // Subscriber wires every notification-producing domain event this service
@@ -103,6 +104,7 @@ func (s *Subscriber) Subscribe(ctx context.Context) error {
 		{"identity.account.verified", s.identityNotifier.HandleAccountVerified},
 		{"identity.account.password.changed", s.identityNotifier.HandlePasswordChanged},
 		{"identity.verification_code.created", s.identityNotifier.HandleVerificationCodeGenerated},
+		{"identity.password_reset.requested", s.identityNotifier.HandlePasswordResetRequested},
 		{"identity.account.deleted", s.accountLifecycleHandlers.HandleAccountDeleted},
 		{"identity.account.erased", s.accountLifecycleHandlers.HandleAccountErased},
 		{"activity.member.join_requested", s.memberJoinRequestedHandler.Handle},

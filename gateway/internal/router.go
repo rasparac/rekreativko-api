@@ -81,7 +81,7 @@ func (r *Router) loadRoutes() {
 				RateClass:   RateClassLogin,
 			},
 			{
-				PathPattern: "^/identity/api/v1/(register|verify-account|resend-verification-code)$",
+				PathPattern: "^/identity/api/v1/(register|verify-account|resend-verification-code|forgot-password|reset-password)$",
 				RequireAuth: false,
 				RateClass:   RateClassSensitive,
 			},

@@ -79,6 +79,9 @@ func TestEventHandlers_SpansCarryNoCodeEmailOrPhone(t *testing.T) {
 		},
 		"account verified": func(h *IdentityHandlers) func(context.Context, []byte) error { return h.HandleAccountVerified },
 		"password changed": func(h *IdentityHandlers) func(context.Context, []byte) error { return h.HandlePasswordChanged },
+		"password reset code": func(h *IdentityHandlers) func(context.Context, []byte) error {
+			return h.HandlePasswordResetRequested
+		},
 	}
 
 	// "sms" is no delivery type (identity sends "email" or "phone"), so it takes

@@ -93,6 +93,7 @@ type erasureTestEnv struct {
 	accounts *fakeAccounts
 	tokens   *fakeDeleter
 	codes    *fakeDeleter
+	resets   *fakeDeleter
 	tracker  *fakeTracker
 	tx       *fakeTx
 	writer   *fakeWriter
@@ -107,6 +108,7 @@ func newErasureTestEnv(t *testing.T, due ...*domain.Account) *erasureTestEnv {
 		accounts: &fakeAccounts{due: due},
 		tokens:   &fakeDeleter{},
 		codes:    &fakeDeleter{},
+		resets:   &fakeDeleter{},
 		tracker:  &fakeTracker{},
 		tx:       &fakeTx{},
 		writer:   &fakeWriter{},
@@ -118,7 +120,7 @@ func newErasureTestEnv(t *testing.T, due ...*domain.Account) *erasureTestEnv {
 	}
 
 	svc, err := NewErasureService(
-		env.accounts, env.tokens, env.codes, env.tracker, env.tx, env.writer,
+		env.accounts, env.tokens, env.codes, env.resets, env.tracker, env.tx, env.writer,
 		logger.NewWithWriter("info", "json", env.logs), env.metrics,
 		ErasurePolicy{Batch: 2, Contexts: []string{"activity", "notifications"}, IncompleteAfter: 7 * 24 * time.Hour},
 	)
@@ -160,7 +162,7 @@ func TestNewErasureService_RejectsNonPositiveSettings(t *testing.T) {
 		"batch":            {Batch: 0, IncompleteAfter: time.Hour},
 		"incomplete after": {Batch: 1, IncompleteAfter: 0},
 	} {
-		_, err := NewErasureService(nil, nil, nil, nil, nil, nil, logger.New("error", "json"), nil, policy)
+		_, err := NewErasureService(nil, nil, nil, nil, nil, nil, nil, logger.New("error", "json"), nil, policy)
 		assert.Error(t, err, name)
 	}
 }
@@ -186,6 +188,7 @@ func TestErasureService_RunOnce_ErasesEveryDueAccountBatchByBatch(t *testing.T) 
 		assert.Empty(t, account.Events(), "events cleared once written")
 		assert.Contains(t, env.tokens.accounts, account.ID())
 		assert.Contains(t, env.codes.accounts, account.ID())
+		assert.Contains(t, env.resets.accounts, account.ID())
 	}
 
 	require.Len(t, env.writer.events, 3)

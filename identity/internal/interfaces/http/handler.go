@@ -28,18 +28,27 @@ type service interface {
 	VerifyAccount(ctx context.Context, req application.VerifyAccountParams) (uuid.UUID, error)
 }
 
+type passwordService interface {
+	ForgotPassword(ctx context.Context, req application.ForgotPasswordParams) error
+	ResetPassword(ctx context.Context, req application.ResetPasswordParams) error
+	ChangePassword(ctx context.Context, req application.ChangePasswordParams) (*domain.RefreshToken, error)
+}
+
 type Handler struct {
-	service service
-	logger  *logger.Logger
+	service   service
+	passwords passwordService
+	logger    *logger.Logger
 }
 
 func NewHandler(
 	service service,
+	passwords passwordService,
 	logger *logger.Logger,
 ) *Handler {
 	return &Handler{
-		service: service,
-		logger:  logger,
+		service:   service,
+		passwords: passwords,
+		logger:    logger,
 	}
 }
 
@@ -80,6 +89,19 @@ func (h *Handler) RegisterRoutes(
 	mux.Handle(
 		"POST /api/v1/logout",
 		middlewares.ThenFunc(h.LogoutHandler),
+	)
+
+	mux.Handle(
+		"POST /api/v1/forgot-password",
+		middlewares.ThenFunc(h.ForgotPasswordHandler),
+	)
+	mux.Handle(
+		"POST /api/v1/reset-password",
+		middlewares.ThenFunc(h.ResetPasswordHandler),
+	)
+	mux.Handle(
+		"POST /api/v1/change-password",
+		middlewares.ThenFunc(h.ChangePasswordHandler),
 	)
 }
 
@@ -400,6 +422,114 @@ func (h *Handler) ResendVerificationCodeHandler(
 	}
 
 	api.WriteOkResponse(w, data, "Verification code resent")
+}
+
+// ForgotPasswordHandler
+//
+//	@Summary		Send a password reset code
+//	@Description	Sends a 6-digit code (valid 15 minutes) to the email or phone, if it belongs to an active account. Always answers 200 the same way, so it does not reveal whether an account exists. At most one code per minute per account; a new code replaces the previous one.
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		dtos.ForgotPasswordRequest		true	"Address to send the code to"
+//	@Success		200		{object}	api.Response[dtos.EmptyResponse]	"Code sent if the account exists"
+//	@Failure		400		{object}	api.Response[any]				"Invalid request"
+//	@Failure		429		{object}	api.Response[any]				"Too many requests (gateway)"
+//	@Failure		500		{object}	api.Response[any]				"Internal server error"
+//	@Router			/api/v1/forgot-password [post]
+func (h *Handler) ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req dtos.ForgotPasswordRequest
+	if err := api.DecodeJSONBody(r, &req); err != nil {
+		api.WriteValidationErrorResponse(w, err)
+		return
+	}
+
+	err := h.passwords.ForgotPassword(ctx, application.ForgotPasswordParams{
+		Type:     req.Type,
+		Identity: req.Identity,
+	})
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	api.WriteOkResponse(w, dtos.EmptyResponse{}, "If the account exists, a reset code was sent")
+}
+
+// ResetPasswordHandler
+//
+//	@Summary		Reset a forgotten password
+//	@Description	Sets a new password with the code from forgot-password. Every session is logged out; log in again with the new password. An unknown address and a wrong code both answer identity_invalid_verification_code. The 5th wrong code burns it (identity_too_many_verification_attempts): request a new one.
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		dtos.ResetPasswordRequest		true	"Address, code and new password"
+//	@Success		200		{object}	api.Response[dtos.EmptyResponse]	"Password reset"
+//	@Failure		400		{object}	api.Response[any]				"identity_invalid_verification_code, identity_verification_code_expired, identity_too_many_verification_attempts, identity_weak_password or invalid request"
+//	@Failure		429		{object}	api.Response[any]				"Too many requests (gateway)"
+//	@Failure		500		{object}	api.Response[any]				"Internal server error"
+//	@Router			/api/v1/reset-password [post]
+func (h *Handler) ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req dtos.ResetPasswordRequest
+	if err := api.DecodeJSONBody(r, &req); err != nil {
+		api.WriteValidationErrorResponse(w, err)
+		return
+	}
+
+	err := h.passwords.ResetPassword(ctx, application.ResetPasswordParams{
+		Type:        req.Type,
+		Identity:    req.Identity,
+		Code:        req.Code,
+		NewPassword: req.NewPassword,
+	})
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	api.WriteOkResponse(w, dtos.EmptyResponse{}, "Password reset")
+}
+
+// ChangePasswordHandler
+//
+//	@Summary		Change the password
+//	@Description	Replaces the logged-in account's password. Logs out every other session and returns a new token pair for this one. A wrong current password answers 400 identity_wrong_password (not 401) and counts towards the login lockout.
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Security		GatewayKeyAuth && BearerAuth
+//	@Param			request	body		dtos.ChangePasswordRequest			true	"Current and new password"
+//	@Success		200		{object}	api.Response[dtos.TokenPairResponse]	"Password changed; use the new tokens"
+//	@Failure		400		{object}	api.Response[any]					"identity_wrong_password, identity_password_unchanged, identity_weak_password or invalid request"
+//	@Failure		401		{object}	api.Response[any]					"Unauthorized"
+//	@Failure		403		{object}	api.Response[any]					"identity_account_locked"
+//	@Failure		500		{object}	api.Response[any]					"Internal server error"
+//	@Router			/api/v1/change-password [post]
+func (h *Handler) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req dtos.ChangePasswordRequest
+	if err := api.DecodeJSONBody(r, &req); err != nil {
+		api.WriteValidationErrorResponse(w, err)
+		return
+	}
+
+	token, err := h.passwords.ChangePassword(ctx, application.ChangePasswordParams{
+		AccountID:   authcontext.GetAccountID(ctx),
+		OldPassword: req.OldPassword,
+		NewPassword: req.NewPassword,
+	})
+	if err != nil {
+		h.handleServiceError(ctx, w, err)
+		return
+	}
+
+	// expires_in as LoginHandler sends it.
+	api.WriteOkResponse(w, dtos.DomainToTokenPairResponse(token, 123), "Password changed")
 }
 
 // handleServiceError converts service errors to HTTP responses

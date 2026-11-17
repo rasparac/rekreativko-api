@@ -56,7 +56,7 @@ func setupErasureTest(t *testing.T) *erasureTestEnv {
 	)
 
 	erasure, err := application.NewErasureService(
-		accounts, tokens, codes, erasures, txManager, events, logger, testMetrics(),
+		accounts, tokens, codes, persistence.NewPasswordResetManager(txManager, logger), erasures, txManager, events, logger, testMetrics(),
 		application.ErasurePolicy{Batch: 10, Contexts: []string{"activity", "notifications"}, IncompleteAfter: time.Hour},
 	)
 	require.NoError(t, err)

@@ -45,6 +45,9 @@ Verification codes are 6 digits; bcrypt cost is 10. Both are hardcoded, not conf
 | GET | `/me` | bearer | |
 | DELETE | `/me` | bearer | |
 | POST | `/logout` | bearer | |
+| POST | `/forgot-password` | public | |
+| POST | `/reset-password` | public | |
+| POST | `/change-password` | bearer | |
 
 Public/auth split is enforced at the gateway (`gateway/internal/router.go`), not by this service itself.
 
@@ -104,6 +107,27 @@ Soft-deletes the account (status `deleted`, can no longer log in), revokes **all
 ```
 Revokes only the one token passed in — not "all sessions" (despite older Swagger wording). Use `DELETE /me` if you actually need to invalidate every session.
 
+### Forgot password — `POST /forgot-password`
+
+```json
+{ "type": "email", "identity": "user@example.com" }
+```
+`type` is `email` or `phone`. Always `200` with the same body, whether or not the address has an account, so it can't be used to find out who is registered. If the address belongs to an **active** account, a 6-digit code valid 15 minutes (`domain.PasswordResetTTL`) is sent to it: `identity.password_reset.requested` → notifications (`password_reset` email/SMS). At most one code per minute per account (`PasswordResetResendAfter`; a request inside the minute is silently ignored), and a new code replaces the previous one. Pending, suspended and deleted accounts get nothing. Codes live in `identity.password_resets` (one row per account), apart from verification codes, so a reset code can never verify an account. **Delivery needs a real email sender in notifications (`rekreativko-api-ep8.1`); until then only dev mode delivers (the dev sender logs it).**
+
+### Reset password — `POST /reset-password`
+
+```json
+{ "type": "email", "identity": "user@example.com", "code": "123456", "new_password": "N3w!Passw0rd" }
+```
+→ `200`. Sets the password (same complexity rules as registration, `identity_weak_password`), revokes **every** refresh token (log in again), lifts a login lock (the code proved the address is the user's) and fires `identity.account.password.changed`. Errors (`400`): an unknown address, no outstanding code or a wrong code are all `identity_invalid_verification_code`; `identity_verification_code_expired`; the 5th wrong code burns it - `identity_too_many_verification_attempts`, and the code is gone (request a new one). Each wrong code is counted in its own committed transaction, so the counter can't be reset by the failing request.
+
+### Change password — `POST /change-password`
+
+```json
+{ "old_password": "0ld!Passw0rd", "new_password": "N3w!Passw0rd" }
+```
+Bearer auth. → `200` with a new token pair (same shape as login): every refresh token is revoked and a new one issued, so this device stays logged in and every other one has to log in again (access tokens already issued stay valid until they expire). Fires `identity.account.password.changed`. Errors: `400 identity_wrong_password` - deliberately not `401`, so a client doesn't take it for an expired session - which also counts as a failed login towards the lockout (a stolen access token can't be used to guess the password); `400 identity_password_unchanged`; `400 identity_weak_password`; `403 identity_account_locked`.
+
 ## Domain model
 
 ```
@@ -139,7 +163,8 @@ Published to `identity.event_outbox`, relayed to NATS by the outbox publisher. S
 | `identity.account.unlocked` | `Account.Unlock` | — |
 | `identity.account.login.succeeded` | successful login | — |
 | `identity.account.login.failed` | failed login attempt | — |
-| `identity.account.password.changed` | `Account.ChangePassword` | `notifications` — **currently unreachable**, no route calls this (see below) |
+| `identity.account.password.changed` | `POST /change-password`, `POST /reset-password`. Payload: `account_id`, `code_type` (the account's channel: email if it has one), `email`, `phone` | `notifications` (password-changed email/SMS) |
+| `identity.password_reset.requested` | `POST /forgot-password` for an active account. Payload: `account_id`, `code_type`, `code`, `email`, `phone` | `notifications` (sends the reset code, `password_reset` email/SMS) |
 | `identity.account.deleted` | `DELETE /me` | `notifications` (stops email/SMS and feed notifications), `activity` (cancels upcoming RSVPs, declines invites, leaves groups) |
 | `identity.account.erased` | erase job, `ACCOUNT_ERASURE_GRACE` after the deletion. Payload: `account_id` only | `account_profile`, `notifications` and `activity` - every context in `ACCOUNT_ERASURE_CONTEXTS` (each erases its data and confirms with `<context>.account.erased`) |
 | `identity.refresh_token.created` | any token issuance | — |
@@ -152,7 +177,7 @@ Published to `identity.event_outbox`, relayed to NATS by the outbox publisher. S
 GDPR Art. 17: a deleted account's personal data is erased, in every context, within a month. The grace period lives only here; every other context erases immediately on the event.
 
 1. `DELETE /me` sets `deleted_at` and `erase_after = now + ACCOUNT_ERASURE_GRACE`. The data stays until then.
-2. The erase job (`application.ErasureService`, every `ACCOUNT_ERASURE_INTERVAL`) takes accounts with `erase_after` passed and `erased_at` NULL, `ACCOUNT_ERASURE_BATCH` at a time with `FOR UPDATE SKIP LOCKED` (several instances are safe), and in one transaction per batch: NULLs `email` and `phone_number`, replaces `password` with `domain.ErasedPasswordHash` (`!erased` - not a bcrypt hash, nothing matches it), sets `erased_at`, deletes the account's `verification_codes` and `refresh_tokens`, and raises `identity.account.erased`. The account row and its id stay, so other contexts can show a "deleted user"; the email and phone are free for a new account.
+2. The erase job (`application.ErasureService`, every `ACCOUNT_ERASURE_INTERVAL`) takes accounts with `erase_after` passed and `erased_at` NULL, `ACCOUNT_ERASURE_BATCH` at a time with `FOR UPDATE SKIP LOCKED` (several instances are safe), and in one transaction per batch: NULLs `email` and `phone_number`, replaces `password` with `domain.ErasedPasswordHash` (`!erased` - not a bcrypt hash, nothing matches it), sets `erased_at`, deletes the account's `verification_codes`, `password_resets` and `refresh_tokens`, and raises `identity.account.erased`. The account row and its id stay, so other contexts can show a "deleted user"; the email and phone are free for a new account.
 3. Each context erases its own data on `identity.account.erased` and confirms with `<context>.account.erased` (payload `{"event_id", "account_id"}`). Identity records each confirmation in `identity.account_erasure(account_id, context, completed_at)`; a repeated one is a no-op, one for an unknown account is dead-lettered.
 4. Each run also sets the gauge `identity_account_erasures_incomplete`: accounts erased more than `ACCOUNT_ERASURE_INCOMPLETE_AFTER` ago that some context in `ACCOUNT_ERASURE_CONTEXTS` has not confirmed. The `AccountErasureIncomplete` alert fires when it stays above 0 for an hour. Find the missing contexts with:
    ```sql
@@ -194,5 +219,5 @@ Logs and traces need nothing: Loki and Jaeger keep them for less than the grace 
 ## Known issues
 
 - **`expires_in` in the login response is hardcoded to `123`**, not derived from `JWT_ACCESS_TOKEN_DURATION`. The refresh-token endpoint's response hardcodes a different wrong value (`365*24*60*60` seconds). Neither reflects the real token lifetime.
-- **`ChangePasswordRequest` DTO and `Account.ChangePassword()` domain method exist but no HTTP route calls them.** Password changes aren't actually possible through the API today, and the `password.changed` event/notification path is dead code until this ships.
+- **`forgot-password` answers faster for an unknown address** than for a real one (no write, no event), so response timing still hints whether an account exists. The gateway's `SENSITIVE` limit (5/min per address) makes probing slow; padding the response time would close it.
 - **Verification codes are unique across all accounts**, not per-account (`verification_codes_account_code_uq_idx` is a global unique index on `code` alone). Astronomically unlikely to collide in practice (6-digit code, 15-minute expiry), but worth knowing if you're ever debugging a "code already exists" insert failure.

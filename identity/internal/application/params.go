@@ -41,6 +41,25 @@ type (
 		Code string
 	}
 
+	// ForgotPasswordParams: Type is "email" or "phone", Identity the address.
+	ForgotPasswordParams struct {
+		Type     string
+		Identity string
+	}
+
+	ResetPasswordParams struct {
+		Type        string
+		Identity    string
+		Code        string
+		NewPassword string
+	}
+
+	ChangePasswordParams struct {
+		AccountID   uuid.UUID
+		OldPassword string
+		NewPassword string
+	}
+
 	VerifyAccount struct {
 		Code string
 	}

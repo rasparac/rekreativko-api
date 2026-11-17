@@ -45,10 +45,24 @@ type (
 		RefreshToken string `json:"refresh_token" validate:"required" example:"ey12344fwbfwbefiuwgfiiAA=="`
 	}
 
-	// ChangePasswordRequest is a request to change a password
+	// ChangePasswordRequest is a request to change a logged-in account's password
 	ChangePasswordRequest struct {
-		OldPassword string `json:"old_password" validate:"required,min=8" example:"12345678"`
-		NewPassword string `json:"new_password" validate:"required,min=8" example:"12345678"`
+		OldPassword string `json:"old_password" validate:"required" example:"OldPassw0rd!"`
+		NewPassword string `json:"new_password" validate:"required,min=8" example:"NewPassw0rd!"`
+	}
+
+	// ForgotPasswordRequest asks for a reset code sent to the address
+	ForgotPasswordRequest struct {
+		Type     string `json:"type" validate:"required,oneof=email phone" example:"email"`
+		Identity string `json:"identity" validate:"required" example:"user@gmail.com"`
+	}
+
+	// ResetPasswordRequest sets a new password with the code forgot-password sent
+	ResetPasswordRequest struct {
+		Type        string `json:"type" validate:"required,oneof=email phone" example:"email"`
+		Identity    string `json:"identity" validate:"required" example:"user@gmail.com"`
+		Code        string `json:"code" validate:"required,len=6" example:"123456"`
+		NewPassword string `json:"new_password" validate:"required,min=8" example:"NewPassw0rd!"`
 	}
 
 	// Response

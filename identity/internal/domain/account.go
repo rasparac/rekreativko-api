@@ -353,6 +353,30 @@ func (a *Account) ChangePassword(newPassword *Password) error {
 	return nil
 }
 
+// ResetPassword sets a new password after a forgot-password code proved the
+// address is the user's, so it also lifts a lock from failed logins, as a
+// successful login would.
+func (a *Account) ResetPassword(newPassword *Password) error {
+	if err := a.ChangePassword(newPassword); err != nil {
+		return err
+	}
+
+	a.failedLoginAttempts = 0
+	a.lockedUntil = nil
+
+	return nil
+}
+
+// ContactType is the channel identity reaches the account on: its email if it
+// has one, else its phone.
+func (a *Account) ContactType() CodeType {
+	if a.HasEmail() {
+		return CodeTypeEmail
+	}
+
+	return CodeTypePhone
+}
+
 func (a *Account) CanLogin() error {
 	if a.IsLocked() {
 		return NewAccountLockedError(

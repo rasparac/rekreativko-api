@@ -63,6 +63,13 @@ func TestEventHandlers_RouteByDeliveryType(t *testing.T) {
 			},
 			want: map[string]outcome{"email": emailed, "phone": texted, "sms": dropped, "": dropped},
 		},
+		"password reset code": {
+			notificationType: "password_reset",
+			handle: func(h *IdentityHandlers) func(context.Context, []byte) error {
+				return h.HandlePasswordResetRequested
+			},
+			want: map[string]outcome{"email": emailed, "phone": texted, "sms": dropped, "": dropped},
+		},
 		"account verified": {
 			notificationType: "welcome_message",
 			handle:           func(h *IdentityHandlers) func(context.Context, []byte) error { return h.HandleAccountVerified },

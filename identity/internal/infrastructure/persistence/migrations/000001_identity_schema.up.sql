@@ -93,6 +93,20 @@ CREATE UNIQUE INDEX verification_codes_account_code_uq_idx ON identity.verificat
 
 CREATE INDEX verification_codes_expires_at_idx ON identity.verification_codes(expires_at);
 
+-- The account's outstanding forgot-password code (POST forgot-password). One
+-- per account: a new request replaces it, and it is deleted once used or after
+-- too many wrong guesses. Kept apart from verification_codes so a reset code
+-- can never verify an account (verify-account looks codes up by value alone).
+-- Deleted by the account's erasure (application.ErasureService.erase).
+CREATE TABLE IF NOT EXISTS identity.password_resets(
+    account_id uuid PRIMARY KEY REFERENCES identity.accounts(id),
+    code varchar(6) NOT NULL,
+    code_type varchar(20) NOT NULL,
+    failed_attempts int NOT NULL DEFAULT 0,
+    expires_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
 ---Function to update update_at timestamp
 CREATE OR REPLACE FUNCTION identity.update_updated_at_column()
     RETURNS TRIGGER

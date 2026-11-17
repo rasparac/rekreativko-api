@@ -22,6 +22,10 @@ var (
 	ErrInvalidEmailFormat       = errors.New("invalid email format")
 	ErrInvalidPhoneNumberFormat = errors.New("invalid phone number format")
 	ErrWeakPassword             = errors.New("password does not meet complexity requirements")
+	// ErrWrongPassword is a wrong current password on change-password: a 400,
+	// not a 401, so the client doesn't take it for an expired session.
+	ErrWrongPassword     = errors.New("current password is wrong")
+	ErrPasswordUnchanged = errors.New("new password is the same as the current one")
 
 	// Token errors
 	ErrRefreshTokenInvalid  = errors.New("invalid token")

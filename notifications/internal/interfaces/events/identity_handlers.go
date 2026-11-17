@@ -92,6 +92,22 @@ func (h *IdentityHandlers) HandleVerificationCodeGenerated(ctx context.Context, 
 	ctx, span := h.tracer.Start(ctx, "HandleVerificationCodeGenerated")
 	defer span.End()
 
+	return h.sendCode(ctx, span, domain.MessageVerificationCode, payload)
+}
+
+// HandlePasswordResetRequested sends the forgot-password code
+// (identity.password_reset.requested, same payload as a verification code).
+func (h *IdentityHandlers) HandlePasswordResetRequested(ctx context.Context, payload []byte) error {
+	ctx, span := h.tracer.Start(ctx, "HandlePasswordResetRequested")
+	defer span.End()
+
+	return h.sendCode(ctx, span, domain.MessagePasswordReset, payload)
+}
+
+// sendCode delivers a one-time code as a message of kind, on the channel the
+// event's code_type names.
+func (h *IdentityHandlers) sendCode(ctx context.Context, span trace.Span, kind domain.MessageKind, payload []byte) error {
+
 	var event verificationCodeGeneratedEvent
 	if err := json.Unmarshal(payload, &event); err != nil {
 		span.RecordError(err)
@@ -111,14 +127,14 @@ func (h *IdentityHandlers) HandleVerificationCodeGenerated(ctx context.Context, 
 	switch event.DeliveryType {
 	case DeliveryTypeEmail:
 		return h.deliver(ctx, span, event.AccountID, domain.Message{
-			Kind: domain.MessageVerificationCode, Channel: domain.ChannelEmail, Recipient: event.Email, Data: data,
+			Kind: kind, Channel: domain.ChannelEmail, Recipient: event.Email, Data: data,
 		})
 	case DeliveryTypePhone:
 		return h.deliver(ctx, span, event.AccountID, domain.Message{
-			Kind: domain.MessageVerificationCode, Channel: domain.ChannelSMS, Recipient: event.Phone, Data: data,
+			Kind: kind, Channel: domain.ChannelSMS, Recipient: event.Phone, Data: data,
 		})
 	default:
-		return h.dropUnknownDeliveryType(ctx, span, domain.MessageVerificationCode, event.DeliveryType)
+		return h.dropUnknownDeliveryType(ctx, span, kind, event.DeliveryType)
 	}
 }
 

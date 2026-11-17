@@ -46,6 +46,8 @@ func TestRenderer_Render(t *testing.T) {
 			{domain.MessageWelcome, domain.ChannelEmail},
 			{domain.MessagePasswordChanged, domain.ChannelEmail},
 			{domain.MessagePasswordChanged, domain.ChannelSMS},
+			{domain.MessagePasswordReset, domain.ChannelEmail},
+			{domain.MessagePasswordReset, domain.ChannelSMS},
 		} {
 			got, err := r.Render(domain.Message{
 				Kind: tc.kind, Channel: tc.channel,

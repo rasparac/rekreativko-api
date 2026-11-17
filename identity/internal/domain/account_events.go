@@ -203,8 +203,14 @@ func NewLoginFailedEvent(account *Account, ipAddress, reason string, attempts in
 	}
 }
 
+// PasswordChangedEvent tells the user their password changed (notifications
+// mails or texts the address in it), so a change they didn't make is noticed.
 type PasswordChangedEvent struct {
 	domainevent.BaseEvent
+	AccountID uuid.UUID `json:"account_id"`
+	CodeType  CodeType  `json:"code_type"`
+	Email     string    `json:"email"`
+	Phone     string    `json:"phone"`
 }
 
 func NewPasswordChangedEvent(account *Account) *PasswordChangedEvent {
@@ -215,6 +221,10 @@ func NewPasswordChangedEvent(account *Account) *PasswordChangedEvent {
 			OccurredAt:  time.Now().UTC(),
 			AggregateID: account.ID(),
 		},
+		AccountID: account.ID(),
+		CodeType:  account.ContactType(),
+		Email:     account.Email().String(),
+		Phone:     account.PhoneNumber().String(),
 	}
 }
 

@@ -60,6 +60,10 @@ func mapDomainErr(err error) *domainerror.AppError {
 		return domainerror.BadRequest("identity_invalid_email_format", "Invalid email format", err)
 	case errors.Is(err, domain.ErrInvalidPhoneNumberFormat):
 		return domainerror.BadRequest("identity_invalid_phone_number_format", "Invalid phone number format", err)
+	case errors.Is(err, domain.ErrWrongPassword):
+		return domainerror.BadRequest("identity_wrong_password", "Current password is wrong", err)
+	case errors.Is(err, domain.ErrPasswordUnchanged):
+		return domainerror.BadRequest("identity_password_unchanged", "New password must differ from the current one", err)
 	}
 
 	// Verification errors
