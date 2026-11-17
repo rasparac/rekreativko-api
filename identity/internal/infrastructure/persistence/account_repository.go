@@ -96,8 +96,10 @@ func (am *AccountManager) GetBy(ctx context.Context, filter application.AccountF
 		filters = []string{}
 	)
 
+	// stored normalized, while login, resend and forgot/reset password pass
+	// what the user typed
 	if filter.PhoneNumber != nil {
-		args = append(args, *filter.PhoneNumber)
+		args = append(args, domain.NormalizePhoneNumber(*filter.PhoneNumber))
 		filters = append(
 			filters,
 			fmt.Sprintf("phone_number = $%d", len(args)),
@@ -105,7 +107,7 @@ func (am *AccountManager) GetBy(ctx context.Context, filter application.AccountF
 	}
 
 	if filter.Email != nil {
-		args = append(args, *filter.Email)
+		args = append(args, domain.NormalizeEmail(*filter.Email))
 
 		filters = append(
 			filters,

@@ -107,6 +107,15 @@ func TestForgotPassword(t *testing.T) {
 		assert.Len(t, codes[0], 6)
 	})
 
+	t.Run("the address is found however the user capitalized it", func(t *testing.T) {
+		id := env.activeAccount(t, "capitals@example.com", "+38591000103")
+
+		env.forgot(t, " Capitals@Example.COM ")
+
+		assert.Len(t, env.sentCodes(t, id), 1)
+		assert.True(t, env.canLogin("Capitals@Example.com", correctPassword))
+	})
+
 	t.Run("a deleted account is sent nothing", func(t *testing.T) {
 		id := env.activeAccount(t, "gone@example.com", "+38591000102")
 		require.NoError(t, env.svc.DeleteAccount(env.ctx, id))

@@ -14,7 +14,7 @@ func NewEmail(value string) (*Email, error) {
 		return nil, nil
 	}
 
-	email := strings.TrimSpace(strings.ToLower(value))
+	email := NormalizeEmail(value)
 
 	if !isValidEmail(email) {
 		return nil, ErrInvalidEmailFormat
@@ -22,6 +22,17 @@ func NewEmail(value string) (*Email, error) {
 
 	return &Email{value: email}, nil
 
+}
+
+// NormalizeEmail is the form an email is stored in, so a lookup by what the
+// user typed ("User@Gmail.com ", as a phone keyboard capitalizes it) finds it.
+func NormalizeEmail(value string) string {
+	return strings.TrimSpace(strings.ToLower(value))
+}
+
+// NormalizePhoneNumber is the form a phone number is stored in.
+func NormalizePhoneNumber(value string) string {
+	return strings.TrimSpace(value)
 }
 
 func (e *Email) String() string {
@@ -54,7 +65,7 @@ func NewPhoneNumber(value string) (*PhoneNumber, error) {
 		return nil, nil
 	}
 
-	phone := strings.TrimSpace(value)
+	phone := NormalizePhoneNumber(value)
 
 	if !isValidPhoneNumber(phone) {
 		return nil, ErrInvalidPhoneNumberFormat
