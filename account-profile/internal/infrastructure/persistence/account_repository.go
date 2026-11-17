@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/rasparac/rekreativko-api/account-profile/internal/application"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -39,35 +40,6 @@ type (
 	accountProfileActivityInterest struct {
 		ActivityType  string `json:"activity_type"`
 		ActivityLevel string `json:"activity_level"`
-	}
-
-	AccountProfileFilter struct {
-		AccountID *uuid.UUID
-		Nickname  *string
-		Limit     *int
-		Offset    *int
-	}
-
-	AccountProfilesFilter struct {
-		ByAccounIDs       []uuid.UUID
-		ByNicknames       []string
-		ByLocationCountry *string
-		ByLocationCity    *string
-		DateOfBirthOver   *time.Time
-		DateOfBirthUnder  *time.Time
-		Limit             int
-		PageToken         string
-
-		// SortBy must be a key of accountProfileSortColumns; empty means the default (created_at).
-		SortBy    *string
-		SortOrder *string
-	}
-
-	AccountProfileReaderWriter interface {
-		CreateAccountProfile(ctx context.Context, profile *domain.AccountProfile) error
-		UpdateAccountProfile(ctx context.Context, profile *domain.AccountProfile) error
-		FindBy(ctx context.Context, filter AccountProfileFilter) (*domain.AccountProfile, error)
-		FindAllBy(ctx context.Context, filter AccountProfilesFilter) ([]*domain.AccountProfile, string, error)
 	}
 
 	accountProfileManager struct {
@@ -270,7 +242,7 @@ func (m *accountProfileManager) UpdateAccountProfile(
 
 func (m *accountProfileManager) FindBy(
 	ctx context.Context,
-	filter AccountProfileFilter,
+	filter application.AccountProfileFilter,
 ) (*domain.AccountProfile, error) {
 	var (
 		whereClause, args = buildSingleProfileWhereQuery(filter)
@@ -321,7 +293,7 @@ func (m *accountProfileManager) FindBy(
 
 func (m *accountProfileManager) FindAllBy(
 	ctx context.Context,
-	filter AccountProfilesFilter,
+	filter application.AccountProfilesFilter,
 ) ([]*domain.AccountProfile, string, error) {
 	sortKey := defaultAccountProfileSortColumn
 	if filter.SortBy != nil && *filter.SortBy != "" {
@@ -676,7 +648,7 @@ func toDomainActivityInterests(models []accountProfileActivityInterest) ([]*doma
 }
 
 // apply filters and limit to baseAccountProfileSelectBlueprint
-func buildSingleProfileWhereQuery(filter AccountProfileFilter) (string, []any) {
+func buildSingleProfileWhereQuery(filter application.AccountProfileFilter) (string, []any) {
 	var (
 		conditions []string
 		args       []any
@@ -696,7 +668,7 @@ func buildSingleProfileWhereQuery(filter AccountProfileFilter) (string, []any) {
 	return strings.Join(conditions, " AND "), args
 }
 
-func buildMulitpleProfilesWhereQuery(filter AccountProfilesFilter) (string, []any) {
+func buildMulitpleProfilesWhereQuery(filter application.AccountProfilesFilter) (string, []any) {
 	var (
 		conditions []string
 		args       []any

@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -55,8 +56,8 @@ type SessionRepository interface {
 	GetSessionByID(ctx context.Context, id uuid.UUID) (*domain.Session, error)
 	GetFormationVersion(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	IsSessionVisibleTo(ctx context.Context, sessionID, userID uuid.UUID) (bool, error)
-	ListSessions(ctx context.Context, filter SessionFilter) ([]*domain.Session, string, error)
-	DiscoverSessions(ctx context.Context, filter DiscoverSessionsFilter) ([]SessionWithDistance, string, error)
+	ListSessions(ctx context.Context, filter application.SessionFilter) ([]*domain.Session, string, error)
+	DiscoverSessions(ctx context.Context, filter application.DiscoverSessionsFilter) ([]application.SessionWithDistance, string, error)
 	DeleteSession(ctx context.Context, id uuid.UUID) error
 	FindSessionsPastEndTime(ctx context.Context) ([]*domain.Session, error)
 	// SoftDeleteGroupSessions marks every session of a group deleted, whatever
@@ -69,57 +70,12 @@ type SessionRepository interface {
 	ReplaceTeams(ctx context.Context, session *domain.Session) error
 }
 
-// SessionFilter defines query filters for listing sessions
-// SessionTimeframe restricts a session listing by whether the sessions have
-// ended (see sessionEndExpr).
-type SessionTimeframe string
-
-const (
-	// SessionTimeframeAll applies no time restriction; sorted soonest first.
-	SessionTimeframeAll SessionTimeframe = ""
-	// SessionTimeframeUpcoming is sessions that have not ended yet (running ones
-	// included), sorted soonest first.
-	SessionTimeframeUpcoming SessionTimeframe = "upcoming"
-	// SessionTimeframePast is sessions that have ended, most recent first.
-	SessionTimeframePast SessionTimeframe = "past"
-)
-
 // sessionEndExpr is the SQL form of domain.SessionSchedule.EffectiveEndTime:
 // the end time, or the start time plus domain.DefaultSessionDuration.
 var sessionEndExpr = fmt.Sprintf(
 	"COALESCE(end_time, start_time + interval '%d seconds')",
 	int(domain.DefaultSessionDuration.Seconds()),
 )
-
-type SessionFilter struct {
-	Timeframe         SessionTimeframe
-	ActivityGroupID   *uuid.UUID
-	SessionTemplateID *uuid.UUID
-	CreatedByID       *uuid.UUID
-	Status            *domain.SessionStatus
-	Visibility        *domain.SessionVisibility
-	ActivityType      *domain.ActivityType
-	DifficultyLevel   *domain.DifficultyLevel
-	IsRecurring       *bool
-	StartTimeFrom     *sql.NullTime
-	StartTimeTo       *sql.NullTime
-	// AttendeeID filters to sessions this account has RSVP'd to. AttendeeStatuses,
-	// when non-empty, further restricts to those RSVP statuses (e.g. "going"/
-	// "promoted" for "currently holds a spot"); empty means any status.
-	AttendeeID       *uuid.UUID
-	AttendeeStatuses []domain.AttendeeStatus
-	// RequesterID scopes results to what this caller may actually see: public
-	// sessions, plus any private session they created, are an attendee of,
-	// hold a pending unexpired invite to, or belong to a group they're a
-	// confirmed member of. Mirrors
-	// ActivityGroupFilter.RequesterID - applied unconditionally, regardless of
-	// which other filters (ActivityGroupID, CreatedByID, AttendeeID, ...) are
-	// also set, so a private session an unrelated caller has no relationship
-	// to is excluded from every listing shape, not just direct fetch.
-	RequesterID uuid.UUID
-	Limit       int
-	PageToken   string
-}
 
 type sessionManager struct {
 	tx     *postgres.TransactionManager
@@ -603,7 +559,7 @@ func (m *sessionManager) SoftDeleteGroupSessions(ctx context.Context, activityGr
 	return result.RowsAffected(), nil
 }
 
-func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter) ([]*domain.Session, string, error) {
+func (m *sessionManager) ListSessions(ctx context.Context, filter application.SessionFilter) ([]*domain.Session, string, error) {
 	qb := &postgres.QueryBuilder{
 		BaseQuery: `
 		SELECT
@@ -682,9 +638,9 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 	}
 
 	switch filter.Timeframe {
-	case SessionTimeframeUpcoming:
+	case application.SessionTimeframeUpcoming:
 		qb.AddRawCondition(sessionEndExpr + " > now()")
-	case SessionTimeframePast:
+	case application.SessionTimeframePast:
 		qb.AddRawCondition(sessionEndExpr + " <= now()")
 	}
 
@@ -743,7 +699,7 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 			return nil, "", postgres.ErrInvalidPageToken
 		}
 		direction := "ASC"
-		if filter.Timeframe == SessionTimeframePast {
+		if filter.Timeframe == application.SessionTimeframePast {
 			direction = "DESC"
 		}
 		qb.AddKeysetCondition("start_time", direction, sortValue, cursor.ID)
@@ -751,7 +707,7 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 
 	// Ordering - id is a tiebreaker for rows with an identical start_time.
 	// Past sessions are history: most recent first.
-	if filter.Timeframe == SessionTimeframePast {
+	if filter.Timeframe == application.SessionTimeframePast {
 		qb.BaseQuery += " ORDER BY start_time DESC, id DESC"
 	} else {
 		qb.BaseQuery += " ORDER BY start_time ASC, id ASC"
@@ -837,28 +793,12 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter SessionFilter)
 // the precise Haversine distance formula.
 const kmPerDegreeLatitude = 111.045
 
-// DiscoverSessionsFilter defines query filters for finding public sessions near a location
-type DiscoverSessionsFilter struct {
-	Lat       float64
-	Lng       float64
-	RadiusKM  float64
-	Interests []postgres.InterestPair
-	Limit     int
-	PageToken string
-}
-
-// SessionWithDistance pairs a session with its distance from the search location
-type SessionWithDistance struct {
-	Session    *domain.Session
-	DistanceKM float64
-}
-
 // DiscoverSessions finds scheduled, public sessions within RadiusKM of (Lat, Lng),
 // ordered by distance. Uses a bounding-box pre-filter (indexed range scan on
 // location_lat/location_lng) followed by the exact Haversine formula for the
 // final radius filter and ordering - no PostGIS/earthdistance extension needed
 // at this scale.
-func (m *sessionManager) DiscoverSessions(ctx context.Context, filter DiscoverSessionsFilter) ([]SessionWithDistance, string, error) {
+func (m *sessionManager) DiscoverSessions(ctx context.Context, filter application.DiscoverSessionsFilter) ([]application.SessionWithDistance, string, error) {
 	latDelta := filter.RadiusKM / kmPerDegreeLatitude
 	lngDelta := filter.RadiusKM / (kmPerDegreeLatitude * math.Cos(filter.Lat*math.Pi/180))
 
@@ -989,7 +929,7 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter DiscoverSe
 	}
 	defer rows.Close()
 
-	var results []SessionWithDistance
+	var results []application.SessionWithDistance
 	for rows.Next() {
 		var model sessionModel
 		var distanceKM float64
@@ -1035,7 +975,7 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter DiscoverSe
 			continue
 		}
 
-		results = append(results, SessionWithDistance{
+		results = append(results, application.SessionWithDistance{
 			Session:    session,
 			DistanceKM: distanceKM,
 		})
@@ -1045,7 +985,7 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter DiscoverSe
 		return nil, "", fmt.Errorf("error iterating nearby sessions: %w", rows.Err())
 	}
 
-	page, nextPageToken := postgres.BuildPage(results, filter.Limit, func(r SessionWithDistance) (string, uuid.UUID) {
+	page, nextPageToken := postgres.BuildPage(results, filter.Limit, func(r application.SessionWithDistance) (string, uuid.UUID) {
 		return strconv.FormatFloat(r.DistanceKM, 'f', -1, 64), r.Session.ID()
 	})
 

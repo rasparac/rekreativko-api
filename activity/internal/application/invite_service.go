@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/logger"
@@ -382,7 +381,7 @@ func (s *InviteService) ListMyInvites(
 
 	span.SetAttributes(attribute.String("user_id", userID.String()))
 
-	invites, nextPageToken, err := s.inviteRepo.ListPendingInvitesForUser(ctx, persistence.ListPendingInvitesFilter{
+	invites, nextPageToken, err := s.inviteRepo.ListPendingInvitesForUser(ctx, ListPendingInvitesFilter{
 		InvitedUserID: userID,
 		Limit:         MaxListedInvites,
 	})

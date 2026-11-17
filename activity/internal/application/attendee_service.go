@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/logger"
@@ -1006,7 +1005,7 @@ func (s *AttendeeService) ListRSVPs(
 		}
 	}
 
-	filter := persistence.AttendeeFilter{
+	filter := AttendeeFilter{
 		SessionID:       params.SessionID,
 		ActivityGroupID: params.ActivityGroupID,
 		UserID:          params.UserID,
@@ -1110,7 +1109,7 @@ func (s *AttendeeService) resolveSessionManagers(
 	}
 
 	confirmedStatus := domain.MemberStatusConfirmed
-	confirmedMembers, _, err := s.memberRepo.ListMembers(ctx, persistence.MemberFilter{
+	confirmedMembers, _, err := s.memberRepo.ListMembers(ctx, MemberFilter{
 		ActivityGroupID: session.ActivityGroupID(),
 		Status:          &confirmedStatus,
 	})

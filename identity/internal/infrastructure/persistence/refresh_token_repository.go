@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rasparac/rekreativko-api/identity/internal/application"
 	"github.com/rasparac/rekreativko-api/identity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -18,7 +19,7 @@ import (
 type (
 	RefreshTokenReaderWriter interface {
 		CreateRefreshToken(ctx context.Context, token *domain.RefreshToken) error
-		GetTokenBy(ctx context.Context, filter RefreshTokenFilter) (*domain.RefreshToken, error)
+		GetTokenBy(ctx context.Context, filter application.RefreshTokenFilter) (*domain.RefreshToken, error)
 		Revoke(ctx context.Context, uuid uuid.UUID) error
 		RevokeAll(ctx context.Context, accountID uuid.UUID) error
 		DeleteExpired(ctx context.Context) error
@@ -34,11 +35,6 @@ type (
 		RevokedAt sql.NullTime
 	}
 
-	RefreshTokenFilter struct {
-		AccountID uuid.UUID
-		TokenHash string
-	}
-
 	refreshTokenManager struct {
 		db     *pgxpool.Pool
 		tx     *postgres.TransactionManager
@@ -46,7 +42,8 @@ type (
 	}
 )
 
-func (rtf RefreshTokenFilter) Validate() error {
+// validateRefreshTokenFilter refuses a filter that would select every token.
+func validateRefreshTokenFilter(rtf application.RefreshTokenFilter) error {
 	if rtf.AccountID == uuid.Nil && rtf.TokenHash == "" {
 		return errors.New("missing filter")
 	}
@@ -91,8 +88,8 @@ func (m *refreshTokenManager) CreateRefreshToken(ctx context.Context, token *dom
 	return err
 }
 
-func (m *refreshTokenManager) GetTokenBy(ctx context.Context, filter RefreshTokenFilter) (*domain.RefreshToken, error) {
-	if err := filter.Validate(); err != nil {
+func (m *refreshTokenManager) GetTokenBy(ctx context.Context, filter application.RefreshTokenFilter) (*domain.RefreshToken, error) {
+	if err := validateRefreshTokenFilter(filter); err != nil {
 		return nil, err
 	}
 

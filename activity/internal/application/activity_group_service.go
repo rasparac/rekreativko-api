@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/logger"
@@ -550,7 +549,7 @@ func (s *ActivityGroupService) ListActivityGroups(
 		status = domain.ActivityGroupStatus(*params.Status)
 	}
 
-	filter := persistence.ActivityGroupFilter{
+	filter := ActivityGroupFilter{
 		CreatorID:   uuid.Nil,
 		Status:      status,
 		Title:       "",
@@ -638,7 +637,7 @@ func (s *ActivityGroupService) DiscoverActivityGroups(
 	)
 
 	// Convert params to repository filter
-	filter := persistence.DiscoveryFilter{
+	filter := DiscoveryFilter{
 		Limit:     params.Limit,
 		PageToken: params.PageToken,
 	}

@@ -6,7 +6,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/mapper"
 	"github.com/rasparac/rekreativko-api/shared/api"
@@ -473,7 +472,7 @@ func (h *Handler) DiscoverSessions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.WriteOkResponse(w,
-		api.NewPage(results, params.Limit, nextPageToken, func(r persistence.SessionWithDistance) dtos.NearbySessionResponse {
+		api.NewPage(results, params.Limit, nextPageToken, func(r application.SessionWithDistance) dtos.NearbySessionResponse {
 			return mapper.SessionWithDistanceToResponse(r, attendeeStatuses)
 		}),
 		"")

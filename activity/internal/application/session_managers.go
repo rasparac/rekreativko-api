@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 )
 
 // sessionManagerIDs returns who can manage the session: its creator and, for a
@@ -17,7 +16,7 @@ func sessionManagerIDs(ctx context.Context, memberRepo MemberRepository, session
 
 	if groupID := session.ActivityGroupID(); groupID != nil {
 		confirmed := domain.MemberStatusConfirmed
-		members, _, err := memberRepo.ListMembers(ctx, persistence.MemberFilter{
+		members, _, err := memberRepo.ListMembers(ctx, MemberFilter{
 			ActivityGroupID: groupID,
 			Status:          &confirmed,
 		})

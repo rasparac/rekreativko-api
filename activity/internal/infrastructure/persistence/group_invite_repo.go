@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -26,20 +27,13 @@ type groupInviteModel struct {
 	respondedAt     sql.NullTime
 }
 
-// ListPendingInvitesFilter contains parameters for listing a user's pending invites
-type ListPendingInvitesFilter struct {
-	InvitedUserID uuid.UUID
-	Limit         int
-	PageToken     string
-}
-
 // GroupInviteRepository defines the interface for group invite persistence
 type GroupInviteRepository interface {
 	CreateInvite(ctx context.Context, invite *domain.GroupInvite) error
 	UpdateInvite(ctx context.Context, invite *domain.GroupInvite) error
 	GetInviteByID(ctx context.Context, id uuid.UUID) (*domain.GroupInvite, error)
 	GetPendingInviteByGroupAndUser(ctx context.Context, activityGroupID, invitedUserID uuid.UUID) (*domain.GroupInvite, error)
-	ListPendingInvitesForUser(ctx context.Context, filter ListPendingInvitesFilter) ([]*domain.GroupInvite, string, error)
+	ListPendingInvitesForUser(ctx context.Context, filter application.ListPendingInvitesFilter) ([]*domain.GroupInvite, string, error)
 	// FindExpiredPendingInvites returns every still-pending invite whose expiry has
 	// passed. Unbounded on purpose - only ever called from the cron sweep.
 	FindExpiredPendingInvites(ctx context.Context) ([]*domain.GroupInvite, error)
@@ -208,7 +202,7 @@ func (m *groupInviteManager) GetPendingInviteByGroupAndUser(
 
 func (m *groupInviteManager) ListPendingInvitesForUser(
 	ctx context.Context,
-	filter ListPendingInvitesFilter,
+	filter application.ListPendingInvitesFilter,
 ) ([]*domain.GroupInvite, string, error) {
 	cursor, err := postgres.DecodePageToken(filter.PageToken)
 	if err != nil {

@@ -36,7 +36,7 @@ func TestGroupInviteRepository_ListPendingInvitesForUser_SkipsExpired(t *testing
 	newer := createInvite(domain.InviteStatusPending, now.Add(-time.Hour), now.Add(time.Hour))
 	createInvite(domain.InviteStatusPending, now.Add(-8*24*time.Hour), now.Add(-time.Hour)) // expired, not yet swept
 
-	listed, nextPageToken, err := repo.ListPendingInvitesForUser(env.ctx, persistence.ListPendingInvitesFilter{
+	listed, nextPageToken, err := repo.ListPendingInvitesForUser(env.ctx, application.ListPendingInvitesFilter{
 		InvitedUserID: invitee,
 		Limit:         application.MaxListedInvites,
 	})

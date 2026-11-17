@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/identity/internal/domain"
-	"github.com/rasparac/rekreativko-api/identity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/identity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/domainerror"
@@ -24,13 +23,13 @@ import (
 type (
 	accountReaderWriter interface {
 		CreateAccount(ctx context.Context, account *domain.Account) error
-		GetBy(ctx context.Context, filter persistence.AccountFilter) (*domain.Account, error)
+		GetBy(ctx context.Context, filter AccountFilter) (*domain.Account, error)
 		UpdateAccount(ctx context.Context, account *domain.Account) error
 	}
 
 	refreshTokenReaderWriter interface {
 		CreateRefreshToken(ctx context.Context, token *domain.RefreshToken) error
-		GetTokenBy(ctx context.Context, filter persistence.RefreshTokenFilter) (*domain.RefreshToken, error)
+		GetTokenBy(ctx context.Context, filter RefreshTokenFilter) (*domain.RefreshToken, error)
 		Revoke(ctx context.Context, uuid uuid.UUID) error
 		RevokeAll(ctx context.Context, accountID uuid.UUID) error
 		DeleteExpired(ctx context.Context) error
@@ -38,20 +37,31 @@ type (
 
 	verificationCodeReaderWriter interface {
 		CreateVerificationCode(ctx context.Context, code *domain.VerificationCode) error
-		GetVerificationCodesBy(ctx context.Context, filter persistence.VerificationCodeFilter) ([]*domain.VerificationCode, error)
+		GetVerificationCodesBy(ctx context.Context, filter VerificationCodeFilter) ([]*domain.VerificationCode, error)
 		MarkAsUsed(ctx context.Context, code string) error
 		DeleteExpiredVerificationCodes(ctx context.Context) error
 	}
 
+	// AccountFilter selects one account. By email or phone number it finds
+	// only an account that is not deleted: a deleted account keeps its
+	// address until the erasure, but the address is free to register again
+	// (the unique indexes ignore deleted rows), so it would be ambiguous. By
+	// id it finds a deleted account too.
 	AccountFilter struct {
 		PhoneNumber *string
 		UUID        *uuid.UUID
 		Email       *string
+
+		// ForUpdate locks the row until the surrounding transaction ends, so
+		// concurrent read-modify-write cycles on one account (counting failed
+		// logins) queue up instead of overwriting each other. Only meaningful
+		// inside a transaction.
+		ForUpdate bool
 	}
 
 	RefreshTokenFilter struct {
 		AccountID uuid.UUID
-		Token     string
+		TokenHash string
 	}
 
 	VerificationCodeFilter struct {
@@ -131,7 +141,7 @@ func (s *Service) GetAccount(ctx context.Context, accountID uuid.UUID) (*domain.
 		"account_id", accountID.String(),
 	))
 
-	account, err := s.accountRepository.GetBy(ctx, persistence.AccountFilter{
+	account, err := s.accountRepository.GetBy(ctx, AccountFilter{
 		UUID: &accountID,
 	})
 	if err != nil {
@@ -214,7 +224,7 @@ func (s *Service) RedoAccountDeletion(ctx context.Context, accountID uuid.UUID, 
 
 func (s *Service) deleteAccount(ctx context.Context, accountID uuid.UUID, deletedAt time.Time) error {
 	return s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		account, err := s.accountRepository.GetBy(tCtx, persistence.AccountFilter{
+		account, err := s.accountRepository.GetBy(tCtx, AccountFilter{
 			UUID: &accountID,
 		})
 		if err != nil {
@@ -413,7 +423,7 @@ func (s *Service) Login(ctx context.Context, req LoginParams) (*domain.RefreshTo
 		return nil, domainerror.BadRequest("email_or_phone_required", "Email or phone number is required", nil)
 	}
 
-	var filter persistence.AccountFilter
+	var filter AccountFilter
 	if req.PhoneNumber != "" {
 		filter.PhoneNumber = &req.PhoneNumber
 	} else if req.Email != "" {
@@ -463,7 +473,7 @@ func (s *Service) Login(ctx context.Context, req LoginParams) (*domain.RefreshTo
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
 		// Reloaded under a row lock: the copy above is stale if a concurrent
 		// request has since failed (or locked) this account.
-		locked, err := s.accountRepository.GetBy(tCtx, persistence.AccountFilter{UUID: &accountID, ForUpdate: true})
+		locked, err := s.accountRepository.GetBy(tCtx, AccountFilter{UUID: &accountID, ForUpdate: true})
 		if err != nil {
 			return fmt.Errorf("lock account: %w", err)
 		}
@@ -523,7 +533,7 @@ func (s *Service) Login(ctx context.Context, req LoginParams) (*domain.RefreshTo
 // read-modify-write, so parallel wrong passwords all count.
 func (s *Service) recordFailedLogin(ctx context.Context, accountID uuid.UUID) error {
 	return s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		account, err := s.accountRepository.GetBy(tCtx, persistence.AccountFilter{UUID: &accountID, ForUpdate: true})
+		account, err := s.accountRepository.GetBy(tCtx, AccountFilter{UUID: &accountID, ForUpdate: true})
 		if err != nil {
 			return fmt.Errorf("lock account: %w", err)
 		}
@@ -564,7 +574,7 @@ func (s *Service) Logout(ctx context.Context, req LogoutParams) (*EmptyResponse,
 	)
 
 	err := s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
-		token, err := s.refreshTokenRepository.GetTokenBy(ctx, persistence.RefreshTokenFilter{
+		token, err := s.refreshTokenRepository.GetTokenBy(ctx, RefreshTokenFilter{
 			AccountID: req.AccountID,
 			TokenHash: s.tokenGenerator.HashRefreshToken(req.RefreshToken),
 		})
@@ -620,7 +630,7 @@ func (s *Service) VerifyAccount(ctx context.Context, req VerifyAccountParams) (u
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
 		verificationCodes, err := s.verificationCodeRepository.GetVerificationCodesBy(
 			tCtx,
-			persistence.VerificationCodeFilter{
+			VerificationCodeFilter{
 				Code: req.Code,
 			},
 		)
@@ -639,7 +649,7 @@ func (s *Service) VerifyAccount(ctx context.Context, req VerifyAccountParams) (u
 			"account_id", accountID,
 		)
 
-		account, err := s.accountRepository.GetBy(tCtx, persistence.AccountFilter{
+		account, err := s.accountRepository.GetBy(tCtx, AccountFilter{
 			UUID: &accountID,
 		})
 		if err != nil {
@@ -726,7 +736,7 @@ func (s *Service) RefreshToken(ctx context.Context, req RefreshTokenParams) (*do
 
 	var newToken *domain.RefreshToken
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		oldToken, err := s.refreshTokenRepository.GetTokenBy(tCtx, persistence.RefreshTokenFilter{
+		oldToken, err := s.refreshTokenRepository.GetTokenBy(tCtx, RefreshTokenFilter{
 			TokenHash: s.tokenGenerator.HashRefreshToken(req.RefreshToken),
 		})
 		if err != nil {
@@ -800,7 +810,7 @@ func (s *Service) ResendVerificationCode(ctx context.Context, req ResendVerifica
 	)
 
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		filter := persistence.AccountFilter{}
+		filter := AccountFilter{}
 		if req.Type == "email" {
 			filter.Email = &req.Identity
 		} else {

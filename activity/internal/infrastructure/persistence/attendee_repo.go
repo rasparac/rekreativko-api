@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -32,26 +33,12 @@ type AttendeeRepository interface {
 	UpdateAttendee(ctx context.Context, attendee *domain.Attendee) error
 	GetAttendeeByID(ctx context.Context, id uuid.UUID) (*domain.Attendee, error)
 	GetAttendeeBySessionAndUser(ctx context.Context, sessionID, userID uuid.UUID) (*domain.Attendee, error)
-	ListAttendees(ctx context.Context, filter AttendeeFilter) ([]*domain.Attendee, string, error)
+	ListAttendees(ctx context.Context, filter application.AttendeeFilter) ([]*domain.Attendee, string, error)
 	DeleteAttendee(ctx context.Context, id uuid.UUID) error
 	GetFirstPendingAttendee(ctx context.Context, sessionID uuid.UUID) (*domain.Attendee, error)
 	CountConfirmedAttendees(ctx context.Context, sessionID uuid.UUID) (int, error)
 	GetAttendeeStatusesForUser(ctx context.Context, userID uuid.UUID, sessionIDs []uuid.UUID) (map[uuid.UUID]domain.AttendeeStatus, error)
 	ListTeamMembers(ctx context.Context, sessionID uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
-}
-
-// AttendeeFilter defines query filters for listing attendees
-type AttendeeFilter struct {
-	SessionID       *uuid.UUID
-	ActivityGroupID *uuid.UUID
-	UserID          *uuid.UUID
-	Status          *domain.AttendeeStatus
-	// Statuses limits the list to these statuses (any of them); combine with
-	// Status and nothing matches unless it is among them.
-	Statuses  []domain.AttendeeStatus
-	Source    *domain.AttendeeSource
-	Limit     int
-	PageToken string
 }
 
 type attendeeManager struct {
@@ -223,7 +210,7 @@ func (a *attendeeManager) GetAttendeeBySessionAndUser(
 	return attendeeModelToDomain(&model)
 }
 
-func (a *attendeeManager) ListAttendees(ctx context.Context, filter AttendeeFilter) ([]*domain.Attendee, string, error) {
+func (a *attendeeManager) ListAttendees(ctx context.Context, filter application.AttendeeFilter) ([]*domain.Attendee, string, error) {
 	var (
 		conditions []string
 		args       []interface{}

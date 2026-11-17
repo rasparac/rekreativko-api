@@ -19,21 +19,8 @@ type geocodeCacheModel struct {
 	notFound    bool
 }
 
-// GeocodeCacheRepository persists resolved City/Country lookups keyed by a
-// rounded lat/long grid bucket (see domain.Coordinates.Bucket), so repeated
-// lookups for nearby coordinates avoid another Nominatim call. City/Country
-// resolution is treated as effectively immutable - entries have no TTL and
-// are only ever overwritten by a fresher Nominatim answer for the same bucket.
-//
-// A bucket Nominatim definitively couldn't resolve is cached too (via
-// SaveNotFound) - FindByBucket returns domain.ErrLocationNotFound for it,
-// distinct from domain.ErrCacheMiss (nothing cached yet, go ask Nominatim).
-type GeocodeCacheRepository interface {
-	FindByBucket(ctx context.Context, latBucket, lngBucket float64) (*domain.GeocodeResult, error)
-	Save(ctx context.Context, latBucket, lngBucket float64, result *domain.GeocodeResult) error
-	SaveNotFound(ctx context.Context, latBucket, lngBucket float64) error
-}
-
+// geocodeCacheManager caches reverse geocoding answers per lat/long bucket
+// (application.geocodeCache describes the contract).
 type geocodeCacheManager struct {
 	tx     *postgres.TransactionManager
 	logger *logger.Logger
@@ -43,7 +30,7 @@ type geocodeCacheManager struct {
 func NewGeocodeCacheRepository(
 	tx *postgres.TransactionManager,
 	logger *logger.Logger,
-) GeocodeCacheRepository {
+) *geocodeCacheManager {
 	return &geocodeCacheManager{
 		tx:     tx,
 		logger: logger,

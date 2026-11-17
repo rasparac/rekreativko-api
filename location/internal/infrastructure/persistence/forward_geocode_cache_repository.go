@@ -22,22 +22,8 @@ type forwardGeocodeCacheModel struct {
 	notFound    bool
 }
 
-// ForwardGeocodeCacheRepository persists resolved coordinates for forward
-// geocoding queries keyed by a normalized query string (see
-// domain.ForwardGeocodeQuery.CacheKey), so repeated lookups for the same
-// City/Country (or street) avoid another Nominatim call. Like the reverse
-// cache, resolution is treated as effectively immutable - entries have no
-// TTL and are only overwritten by a fresher Nominatim answer.
-//
-// A query Nominatim definitively couldn't resolve is cached too (via
-// SaveNotFound) - FindByQuery returns domain.ErrLocationNotFound for it,
-// distinct from domain.ErrCacheMiss (nothing cached yet, go ask Nominatim).
-type ForwardGeocodeCacheRepository interface {
-	FindByQuery(ctx context.Context, queryKey string) (*domain.ForwardGeocodeResult, error)
-	Save(ctx context.Context, queryKey string, result *domain.ForwardGeocodeResult) error
-	SaveNotFound(ctx context.Context, queryKey string) error
-}
-
+// forwardGeocodeCacheManager caches forward geocoding answers per normalized
+// query (application.forwardGeocodeCache describes the contract).
 type forwardGeocodeCacheManager struct {
 	tx     *postgres.TransactionManager
 	logger *logger.Logger
@@ -47,7 +33,7 @@ type forwardGeocodeCacheManager struct {
 func NewForwardGeocodeCacheRepository(
 	tx *postgres.TransactionManager,
 	logger *logger.Logger,
-) ForwardGeocodeCacheRepository {
+) *forwardGeocodeCacheManager {
 	return &forwardGeocodeCacheManager{
 		tx:     tx,
 		logger: logger,

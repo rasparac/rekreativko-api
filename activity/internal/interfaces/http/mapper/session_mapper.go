@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/http/dtos"
 	"github.com/rasparac/rekreativko-api/shared/api"
 )
@@ -153,7 +152,7 @@ func SessionWithTeamsToResponse(session *domain.Session, teamMembers map[uuid.UU
 }
 
 // SessionWithDistanceToResponse converts a SessionWithDistance to a NearbySessionResponse
-func SessionWithDistanceToResponse(result persistence.SessionWithDistance, attendeeStatuses map[uuid.UUID]domain.AttendeeStatus) dtos.NearbySessionResponse {
+func SessionWithDistanceToResponse(result application.SessionWithDistance, attendeeStatuses map[uuid.UUID]domain.AttendeeStatus) dtos.NearbySessionResponse {
 	return dtos.NearbySessionResponse{
 		SessionResponse: *SessionToResponse(result.Session, attendeeStatuses),
 		DistanceKm:      result.DistanceKM,

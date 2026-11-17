@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -33,19 +34,9 @@ type MemberRepository interface {
 	UpdateMember(ctx context.Context, member *domain.Member) error
 	GetMemberByID(ctx context.Context, id uuid.UUID) (*domain.Member, error)
 	GetMemberByGroupAndUser(ctx context.Context, activityGroupID, userID uuid.UUID) (*domain.Member, error)
-	ListMembers(ctx context.Context, filter MemberFilter) ([]*domain.Member, string, error)
+	ListMembers(ctx context.Context, filter application.MemberFilter) ([]*domain.Member, string, error)
 	DeleteMember(ctx context.Context, id uuid.UUID) error
 	CountConfirmedMembers(ctx context.Context, activityGroupID uuid.UUID) (int, error)
-}
-
-// MemberFilter defines query filters for listing members
-type MemberFilter struct {
-	ActivityGroupID *uuid.UUID
-	UserID          *uuid.UUID
-	Status          *domain.MemberStatus
-	Role            *domain.MemberRole
-	Limit           int
-	PageToken       string
 }
 
 type memberManager struct {
@@ -224,7 +215,7 @@ func (m *memberManager) GetMemberByGroupAndUser(
 	return memberModelToDomain(&model)
 }
 
-func (m *memberManager) ListMembers(ctx context.Context, filter MemberFilter) ([]*domain.Member, string, error) {
+func (m *memberManager) ListMembers(ctx context.Context, filter application.MemberFilter) ([]*domain.Member, string, error) {
 	var (
 		conditions []string
 		args       []interface{}

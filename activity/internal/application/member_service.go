@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/domainerror"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
@@ -230,7 +229,7 @@ func (s *MemberService) RequestToJoinGroup(
 		// downstream consumer to resolve) so nothing outside activity's own
 		// schema ever needs to query its membership data directly.
 		confirmedStatus := domain.MemberStatusConfirmed
-		confirmedMembers, _, err := s.memberRepo.ListMembers(tCtx, persistence.MemberFilter{
+		confirmedMembers, _, err := s.memberRepo.ListMembers(tCtx, MemberFilter{
 			ActivityGroupID: &params.ActivityGroupID,
 			Status:          &confirmedStatus,
 		})
@@ -884,7 +883,7 @@ func (s *MemberService) ListMembers(
 		role = &r
 	}
 
-	filter := persistence.MemberFilter{
+	filter := MemberFilter{
 		ActivityGroupID: params.ActivityGroupID,
 		UserID:          params.UserID,
 		Status:          status,

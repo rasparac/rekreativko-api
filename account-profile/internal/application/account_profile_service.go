@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/domain"
-	"github.com/rasparac/rekreativko-api/account-profile/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/domainerror"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
@@ -21,10 +20,39 @@ import (
 )
 
 type (
+	accountProfileReaderWriter interface {
+		CreateAccountProfile(ctx context.Context, profile *domain.AccountProfile) error
+		UpdateAccountProfile(ctx context.Context, profile *domain.AccountProfile) error
+		FindBy(ctx context.Context, filter AccountProfileFilter) (*domain.AccountProfile, error)
+		FindAllBy(ctx context.Context, filter AccountProfilesFilter) ([]*domain.AccountProfile, string, error)
+	}
+
+	AccountProfileFilter struct {
+		AccountID *uuid.UUID
+		Nickname  *string
+		Limit     *int
+		Offset    *int
+	}
+
+	AccountProfilesFilter struct {
+		ByAccounIDs       []uuid.UUID
+		ByNicknames       []string
+		ByLocationCountry *string
+		ByLocationCity    *string
+		DateOfBirthOver   *time.Time
+		DateOfBirthUnder  *time.Time
+		Limit             int
+		PageToken         string
+
+		// SortBy must be a key of the repository's sort columns; empty means the default (created_at).
+		SortBy    *string
+		SortOrder *string
+	}
+
 	service struct {
 		logger         *logger.Logger
 		txManager      *postgres.TransactionManager
-		accountProfile persistence.AccountProfileReaderWriter
+		accountProfile accountProfileReaderWriter
 		tracer         trace.Tracer
 		eventWriter    domainevent.EventWriter
 		metrics        *metrics.Metrics
@@ -34,7 +62,7 @@ type (
 func NewService(
 	logger *logger.Logger,
 	txManager *postgres.TransactionManager,
-	accountProfile persistence.AccountProfileReaderWriter,
+	accountProfile accountProfileReaderWriter,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *service {
@@ -116,7 +144,7 @@ func (s *service) GetProfile(ctx context.Context, filter ProfileFilter) (*domain
 		"account_id", filter.AccountID.String(),
 	))
 
-	profile, err := s.accountProfile.FindBy(ctx, persistence.AccountProfileFilter{
+	profile, err := s.accountProfile.FindBy(ctx, AccountProfileFilter{
 		AccountID: filter.AccountID,
 	})
 	if err != nil {
@@ -145,7 +173,7 @@ func (s *service) UpdateProfile(ctx context.Context, accountID uuid.UUID, toUpda
 	)
 
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
-		profile, err := s.accountProfile.FindBy(tCtx, persistence.AccountProfileFilter{
+		profile, err := s.accountProfile.FindBy(tCtx, AccountProfileFilter{
 			AccountID: &accountID,
 		})
 		if err != nil {
@@ -332,7 +360,7 @@ func (s *service) GetProfiles(ctx context.Context, filter ProfilesFilter) ([]*do
 		"nicknames", filter.Nicknames,
 	)
 
-	profiles, nextPageToken, err := s.accountProfile.FindAllBy(ctx, persistence.AccountProfilesFilter{
+	profiles, nextPageToken, err := s.accountProfile.FindAllBy(ctx, AccountProfilesFilter{
 		ByAccounIDs:       filter.AccountIDs,
 		ByNicknames:       filter.Nicknames,
 		ByLocationCountry: filter.LocationCountry,

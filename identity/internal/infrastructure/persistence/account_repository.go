@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rasparac/rekreativko-api/identity/internal/application"
 	"github.com/rasparac/rekreativko-api/identity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -19,26 +20,9 @@ import (
 type (
 	AccountReaderWriter interface {
 		CreateAccount(ctx context.Context, account *domain.Account) error
-		GetBy(ctx context.Context, filter AccountFilter) (*domain.Account, error)
+		GetBy(ctx context.Context, filter application.AccountFilter) (*domain.Account, error)
 		UpdateAccount(ctx context.Context, account *domain.Account) error
 		ListDueForErasure(ctx context.Context, now time.Time, limit int) ([]*domain.Account, error)
-	}
-
-	// AccountFilter selects one account. By email or phone number it finds
-	// only an account that is not deleted: a deleted account keeps its
-	// address until the erasure, but the address is free to register again
-	// (the unique indexes ignore deleted rows), so it would be ambiguous. By
-	// id it finds a deleted account too.
-	AccountFilter struct {
-		PhoneNumber *string
-		UUID        *uuid.UUID
-		Email       *string
-
-		// ForUpdate locks the row until the surrounding transaction ends, so
-		// concurrent read-modify-write cycles on one account (counting failed
-		// logins) queue up instead of overwriting each other. Only meaningful
-		// inside a transaction.
-		ForUpdate bool
 	}
 
 	AccountManager struct {
@@ -78,7 +62,8 @@ const accountColumns = `
 		erase_after,
 		erased_at`
 
-func (f AccountFilter) Validate() error {
+// validateAccountFilter refuses a filter that would select every account.
+func validateAccountFilter(f application.AccountFilter) error {
 	if f.PhoneNumber == nil && f.Email == nil && f.UUID == nil {
 		return errors.New("missing filter")
 	}
@@ -98,8 +83,8 @@ func NewAccountManager(
 	}
 }
 
-func (am *AccountManager) GetBy(ctx context.Context, filter AccountFilter) (*domain.Account, error) {
-	err := filter.Validate()
+func (am *AccountManager) GetBy(ctx context.Context, filter application.AccountFilter) (*domain.Account, error) {
+	err := validateAccountFilter(filter)
 	if err != nil {
 		return nil, err
 	}

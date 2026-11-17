@@ -10,20 +10,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rasparac/rekreativko-api/identity/internal/application"
 	"github.com/rasparac/rekreativko-api/identity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
 )
 
 type (
-	VerificationCodeFilter struct {
-		AccountID uuid.UUID
-		Code      string
-	}
-
 	VerificationCodeReaderWriter interface {
 		CreateVerificationCode(ctx context.Context, code *domain.VerificationCode) error
-		GetVerificationCodesBy(ctx context.Context, filter VerificationCodeFilter) ([]*domain.VerificationCode, error)
+		GetVerificationCodesBy(ctx context.Context, filter application.VerificationCodeFilter) ([]*domain.VerificationCode, error)
 		MarkAsUsed(ctx context.Context, code string) error
 		DeleteExpiredVerificationCodes(ctx context.Context) error
 		DeleteAllForAccount(ctx context.Context, accountID uuid.UUID) error
@@ -87,7 +83,7 @@ func (m *verificationCodeManager) CreateVerificationCode(ctx context.Context, co
 	return err
 }
 
-func (m *verificationCodeManager) GetVerificationCodesBy(ctx context.Context, filter VerificationCodeFilter) ([]*domain.VerificationCode, error) {
+func (m *verificationCodeManager) GetVerificationCodesBy(ctx context.Context, filter application.VerificationCodeFilter) ([]*domain.VerificationCode, error) {
 	var (
 		query = `
 		SELECT

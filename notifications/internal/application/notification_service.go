@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/notifications/internal/domain"
-	"github.com/rasparac/rekreativko-api/notifications/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/notifications/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/domainerror"
 	"github.com/rasparac/rekreativko-api/shared/logger"
@@ -23,11 +23,33 @@ type inactiveAccountChecker interface {
 	IsInactive(ctx context.Context, accountID uuid.UUID) (bool, error)
 }
 
+// NotificationFilter defines query filters for listing a recipient's notifications
+type NotificationFilter struct {
+	RecipientAccountID uuid.UUID
+	UnreadOnly         bool
+	// Limit caps the number of rows returned, newest first; 0 means no cap.
+	Limit int
+}
+
+// notificationRepository stores the notifications.
+type notificationRepository interface {
+	// Create inserts the notification. It is idempotent per (event_id, recipient):
+	// created is false when one already exists for that event and recipient.
+	Create(ctx context.Context, notification *domain.Notification) (created bool, err error)
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Notification, error)
+	ListByRecipient(ctx context.Context, filter NotificationFilter) ([]*domain.Notification, error)
+	CountUnread(ctx context.Context, recipientAccountID uuid.UUID) (int, error)
+	MarkRead(ctx context.Context, notification *domain.Notification) error
+	// DeleteExpired deletes every notification created before createdBefore,
+	// and read ones created before readCreatedBefore. Returns how many it deleted.
+	DeleteExpired(ctx context.Context, readCreatedBefore, createdBefore time.Time) (int64, error)
+}
+
 // NotificationService handles business logic for notifications
 type NotificationService struct {
 	logger           *logger.Logger
 	txManager        *postgres.TransactionManager
-	repo             persistence.NotificationRepository
+	repo             notificationRepository
 	inactiveAccounts inactiveAccountChecker
 	tracer           trace.Tracer
 	metrics          *metrics.Metrics
@@ -37,7 +59,7 @@ type NotificationService struct {
 func NewNotificationService(
 	logger *logger.Logger,
 	txManager *postgres.TransactionManager,
-	repo persistence.NotificationRepository,
+	repo notificationRepository,
 	inactiveAccounts inactiveAccountChecker,
 	metrics *metrics.Metrics,
 ) *NotificationService {
@@ -139,7 +161,7 @@ func (s *NotificationService) ListNotifications(
 	span.SetAttributes(attribute.String("recipient_account_id", params.RecipientAccountID.String()))
 
 	// One row past the cap tells us whether the cap cut anything off.
-	notifications, err = s.repo.ListByRecipient(ctx, persistence.NotificationFilter{
+	notifications, err = s.repo.ListByRecipient(ctx, NotificationFilter{
 		RecipientAccountID: params.RecipientAccountID,
 		UnreadOnly:         params.UnreadOnly,
 		Limit:              MaxListedNotifications + 1,

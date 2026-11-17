@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/rasparac/rekreativko-api/notifications/internal/application"
 	"github.com/rasparac/rekreativko-api/notifications/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -25,28 +26,6 @@ type notificationModel struct {
 	createdAt          time.Time
 }
 
-// NotificationFilter defines query filters for listing a recipient's notifications
-type NotificationFilter struct {
-	RecipientAccountID uuid.UUID
-	UnreadOnly         bool
-	// Limit caps the number of rows returned, newest first; 0 means no cap.
-	Limit int
-}
-
-// NotificationRepository defines the interface for notification persistence
-type NotificationRepository interface {
-	// Create inserts the notification. It is idempotent per (event_id, recipient):
-	// created is false when one already exists for that event and recipient.
-	Create(ctx context.Context, notification *domain.Notification) (created bool, err error)
-	GetByID(ctx context.Context, id uuid.UUID) (*domain.Notification, error)
-	ListByRecipient(ctx context.Context, filter NotificationFilter) ([]*domain.Notification, error)
-	CountUnread(ctx context.Context, recipientAccountID uuid.UUID) (int, error)
-	MarkRead(ctx context.Context, notification *domain.Notification) error
-	// DeleteExpired deletes every notification created before createdBefore,
-	// and read ones created before readCreatedBefore. Returns how many it deleted.
-	DeleteExpired(ctx context.Context, readCreatedBefore, createdBefore time.Time) (int64, error)
-}
-
 type notificationManager struct {
 	tx     *postgres.TransactionManager
 	logger *logger.Logger
@@ -56,7 +35,7 @@ type notificationManager struct {
 func NewNotificationRepository(
 	tx *postgres.TransactionManager,
 	logger *logger.Logger,
-) NotificationRepository {
+) *notificationManager {
 	return &notificationManager{
 		tx:     tx,
 		logger: logger,
@@ -129,7 +108,7 @@ func (m *notificationManager) GetByID(ctx context.Context, id uuid.UUID) (*domai
 
 func (m *notificationManager) ListByRecipient(
 	ctx context.Context,
-	filter NotificationFilter,
+	filter application.NotificationFilter,
 ) ([]*domain.Notification, error) {
 	qb := &postgres.QueryBuilder{
 		BaseQuery: `

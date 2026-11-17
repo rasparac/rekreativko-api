@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -20,48 +21,6 @@ type activityGroupManager struct {
 }
 
 type (
-	ActivityGroupFilter struct {
-		ID              uuid.UUID
-		CreatorID       uuid.UUID
-		Title           string
-		Status          domain.ActivityGroupStatus
-		ActivityType    domain.ActivityType
-		DifficultyLevel domain.DifficultyLevel
-		// MemberID filters to groups this account has a membership row in.
-		// MemberStatuses restricts which membership statuses count (e.g.
-		// "pending" for outstanding join requests); the application layer
-		// defaults it to ["confirmed"] when not otherwise specified, so
-		// MemberID alone means "groups this account is a confirmed member
-		// of" (includes ones they created, since the creator is auto-added
-		// as a confirmed member) - existing callers see no behavior change.
-		MemberID       uuid.UUID
-		MemberStatuses []domain.MemberStatus
-		// RequesterID scopes results to what this caller may actually see:
-		// public groups, plus any private group they created or are a
-		// confirmed member of. A private group they have no relationship to
-		// is excluded entirely, not just access-denied on direct fetch. Note
-		// this means a private group can still surface via someone else's
-		// MemberID/CreatorID if the requester happens to independently be a
-		// member of that same group too - Visibility below is the harder cap
-		// the application layer uses to rule that out for profile-view.
-		RequesterID uuid.UUID
-		// Visibility, when set, restricts to that visibility only - used by
-		// the application layer to force "public only" when MemberID or
-		// CreatorID points at someone other than the requester, the same cap
-		// SessionFilter applies for a session's AttendeeID/CreatedByID.
-		Visibility domain.ActivityGroupVisibility
-		Limit      int
-		PageToken  string
-	}
-
-	DiscoveryFilter struct {
-		City      string
-		Country   string
-		Interests []postgres.InterestPair
-		Limit     int
-		PageToken string
-	}
-
 	activityGroupModel struct {
 		ID              uuid.UUID
 		CreatorID       uuid.UUID
@@ -311,7 +270,7 @@ func (agm *activityGroupManager) DeleteActivityGroup(
 
 func (agm *activityGroupManager) ListActivityGroups(
 	ctx context.Context,
-	filter ActivityGroupFilter,
+	filter application.ActivityGroupFilter,
 ) ([]*domain.ActivityGroup, string, error) {
 	query, args, err := buildActivityGroupQuery(filter)
 	if err != nil {
@@ -348,7 +307,7 @@ func (agm *activityGroupManager) ListActivityGroups(
 
 func (agm *activityGroupManager) DiscoverGroups(
 	ctx context.Context,
-	filter DiscoveryFilter,
+	filter application.DiscoveryFilter,
 ) ([]*domain.ActivityGroup, string, error) {
 	query, args, err := buildDiscoveryQuery(filter)
 	if err != nil {
@@ -383,7 +342,7 @@ func (agm *activityGroupManager) DiscoverGroups(
 	return page, nextPageToken, nil
 }
 
-func buildActivityGroupQuery(filter ActivityGroupFilter) (string, []interface{}, error) {
+func buildActivityGroupQuery(filter application.ActivityGroupFilter) (string, []interface{}, error) {
 	qb := &postgres.QueryBuilder{
 		BaseQuery: `
 		SELECT
@@ -496,7 +455,7 @@ func buildActivityGroupQuery(filter ActivityGroupFilter) (string, []interface{},
 	return query, args, nil
 }
 
-func buildDiscoveryQuery(filter DiscoveryFilter) (string, []interface{}, error) {
+func buildDiscoveryQuery(filter application.DiscoveryFilter) (string, []interface{}, error) {
 	qb := &postgres.QueryBuilder{
 		BaseQuery: `
 		SELECT

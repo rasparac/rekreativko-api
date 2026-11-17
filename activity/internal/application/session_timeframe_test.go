@@ -4,16 +4,15 @@ import (
 	"testing"
 
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestParseSessionTimeframe(t *testing.T) {
-	for raw, want := range map[string]persistence.SessionTimeframe{
-		"":         persistence.SessionTimeframeUpcoming,
-		"upcoming": persistence.SessionTimeframeUpcoming,
-		"past":     persistence.SessionTimeframePast,
-		"all":      persistence.SessionTimeframeAll,
+	for raw, want := range map[string]SessionTimeframe{
+		"":         SessionTimeframeUpcoming,
+		"upcoming": SessionTimeframeUpcoming,
+		"past":     SessionTimeframePast,
+		"all":      SessionTimeframeAll,
 	} {
 		got, err := parseSessionTimeframe(raw)
 		assert.NoError(t, err, raw)

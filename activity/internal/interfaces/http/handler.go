@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/live"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/middleware"
@@ -48,7 +47,7 @@ type (
 		CancelSession(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID, requesterRole string, reason string) error
 		SetSessionVisibility(ctx context.Context, sessionID uuid.UUID, requesterID uuid.UUID, requesterRole string, visibility string) error
 		ListSessions(ctx context.Context, params application.ListSessionsParams, requesterID uuid.UUID) ([]*domain.Session, string, map[uuid.UUID]domain.AttendeeStatus, error)
-		DiscoverSessions(ctx context.Context, params application.DiscoverSessionsParams, requesterID uuid.UUID) ([]persistence.SessionWithDistance, string, map[uuid.UUID]domain.AttendeeStatus, error)
+		DiscoverSessions(ctx context.Context, params application.DiscoverSessionsParams, requesterID uuid.UUID) ([]application.SessionWithDistance, string, map[uuid.UUID]domain.AttendeeStatus, error)
 		ListTeamMembers(ctx context.Context, sessionID uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
 		CreateTeams(ctx context.Context, params application.CreateTeamsParams) (*domain.Session, error)
 		ResetTeams(ctx context.Context, params application.ResetTeamsParams) error

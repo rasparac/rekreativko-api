@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/telemetry"
 	"github.com/stretchr/testify/assert"
@@ -20,10 +19,10 @@ import (
 type templateListRepo struct {
 	SessionTemplateRepository
 	rows      int
-	gotFilter persistence.SessionTemplateFilter
+	gotFilter SessionTemplateFilter
 }
 
-func (f *templateListRepo) ListSessionTemplates(_ context.Context, filter persistence.SessionTemplateFilter) ([]*domain.SessionTemplate, string, error) {
+func (f *templateListRepo) ListSessionTemplates(_ context.Context, filter SessionTemplateFilter) ([]*domain.SessionTemplate, string, error) {
 	f.gotFilter = filter
 
 	out := make([]*domain.SessionTemplate, min(f.rows, filter.Limit))

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	testutil "github.com/rasparac/rekreativko-api/shared/testing"
 	"github.com/stretchr/testify/assert"
@@ -250,7 +251,7 @@ func TestSessionTemplateRepository_Query(t *testing.T) {
 
 	t.Run("query by activity group", func(t *testing.T) {
 		// Act
-		templates, _, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
+		templates, _, err := repo.ListSessionTemplates(ctx, application.SessionTemplateFilter{
 			ActivityGroupID: &groupID,
 		})
 
@@ -264,7 +265,7 @@ func TestSessionTemplateRepository_Query(t *testing.T) {
 		status := domain.SessionTemplateStatusActive
 
 		// Act
-		templates, _, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
+		templates, _, err := repo.ListSessionTemplates(ctx, application.SessionTemplateFilter{
 			ActivityGroupID: &groupID,
 			Status:          &status,
 		})
@@ -282,7 +283,7 @@ func TestSessionTemplateRepository_Query(t *testing.T) {
 		isRecurring := true
 
 		// Act
-		templates, _, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
+		templates, _, err := repo.ListSessionTemplates(ctx, application.SessionTemplateFilter{
 			ActivityGroupID: &groupID,
 			IsRecurring:     &isRecurring,
 		})
@@ -295,7 +296,7 @@ func TestSessionTemplateRepository_Query(t *testing.T) {
 
 	t.Run("query with pagination", func(t *testing.T) {
 		// Act - first page
-		page1, nextPageToken, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
+		page1, nextPageToken, err := repo.ListSessionTemplates(ctx, application.SessionTemplateFilter{
 			ActivityGroupID: &groupID,
 			Limit:           2,
 		})
@@ -306,7 +307,7 @@ func TestSessionTemplateRepository_Query(t *testing.T) {
 		assert.NotEmpty(t, nextPageToken)
 
 		// Get next page
-		page2, nextPageToken2, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
+		page2, nextPageToken2, err := repo.ListSessionTemplates(ctx, application.SessionTemplateFilter{
 			ActivityGroupID: &groupID,
 			Limit:           2,
 			PageToken:       nextPageToken,
@@ -447,7 +448,7 @@ func TestSessionTemplateRepository_ConcurrentAccess(t *testing.T) {
 		}
 
 		// Assert - All templates should be created
-		templates, _, err := repo.ListSessionTemplates(ctx, SessionTemplateFilter{
+		templates, _, err := repo.ListSessionTemplates(ctx, application.SessionTemplateFilter{
 			ActivityGroupID: &groupID,
 		})
 		require.NoError(t, err)

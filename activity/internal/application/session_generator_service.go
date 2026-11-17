@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/logger"
@@ -22,7 +21,7 @@ type SessionGeneratorService struct {
 	logger          *logger.Logger
 	txManager       *postgres.TransactionManager
 	templateRepo    SessionTemplateRepository
-	sessionRepo     persistence.SessionRepository
+	sessionRepo     SessionRepository
 	groupRepo       ActivityGroupRepository
 	eventWriter     domainevent.EventWriter
 	tracer          trace.Tracer
@@ -35,7 +34,7 @@ func NewSessionGeneratorService(
 	logger *logger.Logger,
 	txManager *postgres.TransactionManager,
 	templateRepo SessionTemplateRepository,
-	sessionRepo persistence.SessionRepository,
+	sessionRepo SessionRepository,
 	groupRepo ActivityGroupRepository,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,

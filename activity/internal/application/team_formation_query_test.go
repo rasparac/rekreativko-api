@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -56,7 +55,7 @@ func (f *snapshotFakes) GetSessionByID(context.Context, uuid.UUID) (*domain.Sess
 	return f.session, nil
 }
 
-func (f *snapshotFakes) ListAttendees(context.Context, persistence.AttendeeFilter) ([]*domain.Attendee, string, error) {
+func (f *snapshotFakes) ListAttendees(context.Context, AttendeeFilter) ([]*domain.Attendee, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 

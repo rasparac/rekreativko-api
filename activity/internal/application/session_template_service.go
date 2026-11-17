@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/domainerror"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
@@ -497,7 +496,7 @@ func (s *SessionTemplateService) ListSessionTemplates(
 		status = &s
 	}
 
-	filter := persistence.SessionTemplateFilter{
+	filter := SessionTemplateFilter{
 		ActivityGroupID: params.ActivityGroupID,
 		CreatedByID:     params.CreatedByID,
 		Status:          status,

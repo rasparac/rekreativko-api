@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
 	"github.com/stretchr/testify/assert"
@@ -24,14 +25,14 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		filter        SessionTemplateFilter
+		filter        application.SessionTemplateFilter
 		expectedQuery string // substring that must be in query
 		expectedArgs  []interface{}
 		assertions    []func(query string) bool // additional query assertions
 	}{
 		{
 			name:          "empty filter - base query only",
-			filter:        SessionTemplateFilter{},
+			filter:        application.SessionTemplateFilter{},
 			expectedQuery: "WHERE deleted_at IS NULL",
 			expectedArgs:  []interface{}{},
 			assertions: []func(query string) bool{
@@ -41,7 +42,7 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 		},
 		{
 			name: "filter by activity group",
-			filter: SessionTemplateFilter{
+			filter: application.SessionTemplateFilter{
 				ActivityGroupID: &groupID,
 			},
 			expectedQuery: "AND activity_group_id = $1",
@@ -49,7 +50,7 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 		},
 		{
 			name: "filter by creator",
-			filter: SessionTemplateFilter{
+			filter: application.SessionTemplateFilter{
 				CreatedByID: &creatorID,
 			},
 			expectedQuery: "AND created_by_id = $1",
@@ -57,7 +58,7 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 		},
 		{
 			name: "filter by status",
-			filter: SessionTemplateFilter{
+			filter: application.SessionTemplateFilter{
 				Status: &status,
 			},
 			expectedQuery: "AND status = $1",
@@ -65,7 +66,7 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 		},
 		{
 			name: "filter by is recurring - true",
-			filter: SessionTemplateFilter{
+			filter: application.SessionTemplateFilter{
 				IsRecurring: &isRecurringTrue,
 			},
 			expectedQuery: "AND recurrence_frequency IS NOT NULL",
@@ -73,7 +74,7 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 		},
 		{
 			name: "filter by is recurring - false",
-			filter: SessionTemplateFilter{
+			filter: application.SessionTemplateFilter{
 				IsRecurring: &isRecurringFalse,
 			},
 			expectedQuery: "AND recurrence_frequency IS NULL",
@@ -81,7 +82,7 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 		},
 		{
 			name: "filter needs generation with lookahead",
-			filter: SessionTemplateFilter{
+			filter: application.SessionTemplateFilter{
 				NeedsGeneration: &needsGenerationTrue,
 				LookaheadWindow: &lookahead,
 			},
@@ -96,7 +97,7 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 		},
 		{
 			name: "filter needs generation without lookahead (default 7 days)",
-			filter: SessionTemplateFilter{
+			filter: application.SessionTemplateFilter{
 				NeedsGeneration: &needsGenerationTrue,
 			},
 			expectedQuery: "AND status = 'active'",
@@ -108,7 +109,7 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 		},
 		{
 			name: "pagination - limit only fetches one extra row",
-			filter: SessionTemplateFilter{
+			filter: application.SessionTemplateFilter{
 				Limit: 10,
 			},
 			expectedQuery: "LIMIT $1",
@@ -116,7 +117,7 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 		},
 		{
 			name: "pagination - page token resumes via keyset condition",
-			filter: SessionTemplateFilter{
+			filter: application.SessionTemplateFilter{
 				Limit:     10,
 				PageToken: postgres.EncodePageToken(cursorTime.Format(time.RFC3339Nano), cursorID),
 			},
@@ -129,7 +130,7 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 		},
 		{
 			name: "complex filter - multiple conditions",
-			filter: SessionTemplateFilter{
+			filter: application.SessionTemplateFilter{
 				ActivityGroupID: &groupID,
 				Status:          &status,
 				IsRecurring:     &isRecurringTrue,
@@ -146,7 +147,7 @@ func TestBuildSessionTemplateQuery(t *testing.T) {
 		},
 		{
 			name: "cron job scenario - all filters",
-			filter: SessionTemplateFilter{
+			filter: application.SessionTemplateFilter{
 				ActivityGroupID: &groupID,
 				NeedsGeneration: &needsGenerationTrue,
 				LookaheadWindow: &lookahead,

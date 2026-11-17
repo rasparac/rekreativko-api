@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rasparac/rekreativko-api/notifications/internal/application"
 	"github.com/rasparac/rekreativko-api/notifications/internal/domain"
 	testutil "github.com/rasparac/rekreativko-api/shared/testing"
 	"github.com/stretchr/testify/assert"
@@ -114,7 +115,7 @@ func TestNotificationRepository_GetByID_RoundTripsEventID(t *testing.T) {
 }
 
 // createAged inserts a notification created age ago, read or not.
-func createAged(t *testing.T, db *testutil.TestDatabase, repo NotificationRepository, recipientID uuid.UUID, age time.Duration, read bool) *domain.Notification {
+func createAged(t *testing.T, db *testutil.TestDatabase, repo *notificationManager, recipientID uuid.UUID, age time.Duration, read bool) *domain.Notification {
 	t.Helper()
 	ctx := context.Background()
 
@@ -155,19 +156,19 @@ func TestNotificationRepository_ListByRecipient(t *testing.T) {
 	}
 
 	t.Run("newest first, only the recipient's", func(t *testing.T) {
-		got, err := repo.ListByRecipient(ctx, NotificationFilter{RecipientAccountID: recipientID})
+		got, err := repo.ListByRecipient(ctx, application.NotificationFilter{RecipientAccountID: recipientID})
 		require.NoError(t, err)
 		assert.Equal(t, []uuid.UUID{newest.ID(), middle.ID(), oldest.ID()}, ids(got))
 	})
 
 	t.Run("limit keeps the newest", func(t *testing.T) {
-		got, err := repo.ListByRecipient(ctx, NotificationFilter{RecipientAccountID: recipientID, Limit: 2})
+		got, err := repo.ListByRecipient(ctx, application.NotificationFilter{RecipientAccountID: recipientID, Limit: 2})
 		require.NoError(t, err)
 		assert.Equal(t, []uuid.UUID{newest.ID(), middle.ID()}, ids(got))
 	})
 
 	t.Run("unread only", func(t *testing.T) {
-		got, err := repo.ListByRecipient(ctx, NotificationFilter{RecipientAccountID: recipientID, UnreadOnly: true})
+		got, err := repo.ListByRecipient(ctx, application.NotificationFilter{RecipientAccountID: recipientID, UnreadOnly: true})
 		require.NoError(t, err)
 		assert.Equal(t, []uuid.UUID{newest.ID(), middle.ID()}, ids(got))
 	})

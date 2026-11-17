@@ -171,7 +171,7 @@ func TestSessionRepository_TeamsRoundTrip(t *testing.T) {
 	assert.Equal(t, "#000000", loaded.Teams()[1].Color())
 
 	// list queries carry the config but not the teams
-	listed, _, err := env.sessionRepo.ListSessions(env.ctx, persistence.SessionFilter{
+	listed, _, err := env.sessionRepo.ListSessions(env.ctx, application.SessionFilter{
 		CreatedByID: testutil.Ptr(session.CreatedByID()),
 		RequesterID: session.CreatedByID(),
 	})

@@ -7,7 +7,6 @@ import (
 
 	"github.com/rasparac/rekreativko-api/identity/internal/application"
 	"github.com/rasparac/rekreativko-api/identity/internal/domain"
-	"github.com/rasparac/rekreativko-api/identity/internal/infrastructure/persistence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -59,7 +58,7 @@ func TestAccountLookup_ADeletedAccountIsFoundOnlyByID(t *testing.T) {
 	require.NoError(t, e.svc.DeleteAccount(e.ctx, deleted))
 
 	email, phone := "gone@example.com", "+38592222222"
-	for name, filter := range map[string]persistence.AccountFilter{
+	for name, filter := range map[string]application.AccountFilter{
 		"by email": {Email: &email},
 		"by phone": {PhoneNumber: &phone},
 	} {
@@ -67,7 +66,7 @@ func TestAccountLookup_ADeletedAccountIsFoundOnlyByID(t *testing.T) {
 		assert.ErrorIs(t, err, domain.ErrAccountNotFound, name)
 	}
 
-	account, err := e.accounts.GetBy(e.ctx, persistence.AccountFilter{UUID: &deleted})
+	account, err := e.accounts.GetBy(e.ctx, application.AccountFilter{UUID: &deleted})
 	require.NoError(t, err)
 	assert.Equal(t, domain.AccountStatusDeleted, account.Status())
 

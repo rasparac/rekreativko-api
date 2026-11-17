@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -42,7 +43,7 @@ type SessionInviteRepository interface {
 	UpdateInvite(ctx context.Context, invite *domain.SessionInvite) error
 	GetInviteByID(ctx context.Context, id uuid.UUID) (*domain.SessionInvite, error)
 	GetPendingInviteBySessionAndUser(ctx context.Context, sessionID, invitedUserID uuid.UUID) (*domain.SessionInvite, error)
-	ListPendingInvitesForUser(ctx context.Context, filter ListPendingInvitesFilter) ([]*domain.SessionInvite, string, error)
+	ListPendingInvitesForUser(ctx context.Context, filter application.ListPendingInvitesFilter) ([]*domain.SessionInvite, string, error)
 	// FindExpiredPendingInvites returns every still-pending invite whose expiry has
 	// passed. Unbounded on purpose - only ever called from the cron sweep.
 	FindExpiredPendingInvites(ctx context.Context) ([]*domain.SessionInvite, error)
@@ -173,7 +174,7 @@ func (m *sessionInviteManager) GetPendingInviteBySessionAndUser(
 
 func (m *sessionInviteManager) ListPendingInvitesForUser(
 	ctx context.Context,
-	filter ListPendingInvitesFilter,
+	filter application.ListPendingInvitesFilter,
 ) ([]*domain.SessionInvite, string, error) {
 	cursor, err := postgres.DecodePageToken(filter.PageToken)
 	if err != nil {

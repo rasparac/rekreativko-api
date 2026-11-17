@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/domainerror"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
@@ -393,7 +392,7 @@ func (s *SessionService) CreateTeams(
 
 		var unassigned []*domain.Attendee
 		if hadTeams {
-			attendees, _, err := s.attendeeRepo.ListAttendees(tCtx, persistence.AttendeeFilter{
+			attendees, _, err := s.attendeeRepo.ListAttendees(tCtx, AttendeeFilter{
 				SessionID: &params.SessionID,
 			})
 			if err != nil {
@@ -1166,7 +1165,7 @@ func (s *SessionService) resolveSessionAttendeeUserIDs(
 	sessionID uuid.UUID,
 	requesterID uuid.UUID,
 ) ([]uuid.UUID, error) {
-	attendees, _, err := s.attendeeRepo.ListAttendees(ctx, persistence.AttendeeFilter{
+	attendees, _, err := s.attendeeRepo.ListAttendees(ctx, AttendeeFilter{
 		SessionID: &sessionID,
 	})
 	if err != nil {
@@ -1306,7 +1305,7 @@ func (s *SessionService) ListSessions(
 		return nil, "", nil, mapToAppErr(err)
 	}
 
-	filter := persistence.SessionFilter{
+	filter := SessionFilter{
 		Timeframe:         timeframe,
 		ActivityGroupID:   params.ActivityGroupID,
 		SessionTemplateID: params.SessionTemplateID,
@@ -1409,14 +1408,14 @@ func (s *SessionService) ListSessions(
 
 // parseSessionTimeframe maps ListSessionsParams.When to the repository's
 // timeframe; an empty value means upcoming.
-func parseSessionTimeframe(when string) (persistence.SessionTimeframe, error) {
+func parseSessionTimeframe(when string) (SessionTimeframe, error) {
 	switch when {
-	case "", string(persistence.SessionTimeframeUpcoming):
-		return persistence.SessionTimeframeUpcoming, nil
-	case string(persistence.SessionTimeframePast):
-		return persistence.SessionTimeframePast, nil
+	case "", string(SessionTimeframeUpcoming):
+		return SessionTimeframeUpcoming, nil
+	case string(SessionTimeframePast):
+		return SessionTimeframePast, nil
 	case "all":
-		return persistence.SessionTimeframeAll, nil
+		return SessionTimeframeAll, nil
 	default:
 		return "", fmt.Errorf("%w: %q", domain.ErrInvalidSessionTimeframe, when)
 	}
@@ -1427,7 +1426,7 @@ func (s *SessionService) DiscoverSessions(
 	ctx context.Context,
 	params DiscoverSessionsParams,
 	requesterID uuid.UUID,
-) ([]persistence.SessionWithDistance, string, map[uuid.UUID]domain.AttendeeStatus, error) {
+) ([]SessionWithDistance, string, map[uuid.UUID]domain.AttendeeStatus, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
 		"activity.service.DiscoverSessions",
@@ -1485,7 +1484,7 @@ func (s *SessionService) DiscoverSessions(
 	}
 	span.SetAttributes(attribute.Int("interests_count", len(interests)))
 
-	results, nextPageToken, err := s.sessionRepo.DiscoverSessions(ctx, persistence.DiscoverSessionsFilter{
+	results, nextPageToken, err := s.sessionRepo.DiscoverSessions(ctx, DiscoverSessionsFilter{
 		Lat:       params.Lat,
 		Lng:       params.Lng,
 		RadiusKM:  params.RadiusKM,

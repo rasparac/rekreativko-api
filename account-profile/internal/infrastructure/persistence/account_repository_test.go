@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rasparac/rekreativko-api/account-profile/internal/application"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,13 +16,13 @@ func Test_buildSingleProfileWhereQuery(t *testing.T) {
 	accountUUID := uuid.New()
 	testCase := []struct {
 		name          string
-		filter        AccountProfileFilter
+		filter        application.AccountProfileFilter
 		expectedQuery string
 		expectedArgs  []any
 	}{
 		{
 			name: "only nickname",
-			filter: AccountProfileFilter{
+			filter: application.AccountProfileFilter{
 				Nickname: ptr("john_doe"),
 			},
 			expectedQuery: "upp.nickname = $1",
@@ -29,7 +30,7 @@ func Test_buildSingleProfileWhereQuery(t *testing.T) {
 		},
 		{
 			name: "only accountID",
-			filter: AccountProfileFilter{
+			filter: application.AccountProfileFilter{
 				AccountID: &accountUUID,
 			},
 			expectedQuery: "upp.account_id = $1",
@@ -37,7 +38,7 @@ func Test_buildSingleProfileWhereQuery(t *testing.T) {
 		},
 		{
 			name: "nickname and accountID",
-			filter: AccountProfileFilter{
+			filter: application.AccountProfileFilter{
 				Nickname:  ptr("john_doe"),
 				AccountID: &accountUUID,
 			},
@@ -64,13 +65,13 @@ func Test_buildMulitpleProfilesWhereQuery(t *testing.T) {
 
 	testCase := []struct {
 		name          string
-		filter        AccountProfilesFilter
+		filter        application.AccountProfilesFilter
 		expectedQuery string
 		expectedArgs  []any
 	}{
 		{
 			name: "only ByAccounIDs",
-			filter: AccountProfilesFilter{
+			filter: application.AccountProfilesFilter{
 				ByAccounIDs: []uuid.UUID{
 					accountUUID1,
 					accountUUID2,
@@ -81,7 +82,7 @@ func Test_buildMulitpleProfilesWhereQuery(t *testing.T) {
 		},
 		{
 			name: "only byNicknames",
-			filter: AccountProfilesFilter{
+			filter: application.AccountProfilesFilter{
 				ByNicknames: []string{
 					"john_doe",
 					"jane_doe",
@@ -92,7 +93,7 @@ func Test_buildMulitpleProfilesWhereQuery(t *testing.T) {
 		},
 		{
 			name: "ByAccounIDs and byNicknames",
-			filter: AccountProfilesFilter{
+			filter: application.AccountProfilesFilter{
 				ByAccounIDs: []uuid.UUID{
 					accountUUID1,
 					accountUUID2,
@@ -107,7 +108,7 @@ func Test_buildMulitpleProfilesWhereQuery(t *testing.T) {
 		},
 		{
 			name: "byLocationCountry",
-			filter: AccountProfilesFilter{
+			filter: application.AccountProfilesFilter{
 				ByLocationCountry: ptr("DE"),
 			},
 			expectedQuery: "upp.location_country = $1",
@@ -115,7 +116,7 @@ func Test_buildMulitpleProfilesWhereQuery(t *testing.T) {
 		},
 		{
 			name: "byLocationCity",
-			filter: AccountProfilesFilter{
+			filter: application.AccountProfilesFilter{
 				ByLocationCity: ptr("Berlin"),
 			},
 			expectedQuery: "upp.location_city = $1",
@@ -123,7 +124,7 @@ func Test_buildMulitpleProfilesWhereQuery(t *testing.T) {
 		},
 		{
 			name: "by DateOfBirthOver",
-			filter: AccountProfilesFilter{
+			filter: application.AccountProfilesFilter{
 				DateOfBirthOver: ptr(date.AddDate(-20, 0, 0)),
 			},
 			expectedQuery: "upp.date_of_birth > $1",

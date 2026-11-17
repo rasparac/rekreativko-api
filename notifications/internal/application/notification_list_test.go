@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/notifications/internal/domain"
-	"github.com/rasparac/rekreativko-api/notifications/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/telemetry"
 	"github.com/stretchr/testify/assert"
@@ -16,14 +15,14 @@ import (
 
 // listRepo returns up to filter.Limit of its rows and records the arguments it got.
 type listRepo struct {
-	persistence.NotificationRepository
+	notificationRepository
 	rows       int
-	gotFilter  persistence.NotificationFilter
+	gotFilter  NotificationFilter
 	readBefore time.Time
 	allBefore  time.Time
 }
 
-func (f *listRepo) ListByRecipient(_ context.Context, filter persistence.NotificationFilter) ([]*domain.Notification, error) {
+func (f *listRepo) ListByRecipient(_ context.Context, filter NotificationFilter) ([]*domain.Notification, error) {
 	f.gotFilter = filter
 	out := make([]*domain.Notification, min(f.rows, filter.Limit))
 	for i := range out {
@@ -39,7 +38,7 @@ func (f *listRepo) DeleteExpired(_ context.Context, readBefore, allBefore time.T
 	return 3, nil
 }
 
-func newListService(repo persistence.NotificationRepository) *NotificationService {
+func newListService(repo notificationRepository) *NotificationService {
 	return &NotificationService{
 		logger:           logger.New("error", "json"),
 		repo:             repo,

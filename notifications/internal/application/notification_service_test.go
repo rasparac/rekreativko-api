@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rasparac/rekreativko-api/notifications/internal/domain"
-	"github.com/rasparac/rekreativko-api/notifications/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/notifications/internal/metrics"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/telemetry"
@@ -17,7 +16,7 @@ import (
 
 // fakeRepo embeds the interface so only Create needs implementing here.
 type fakeRepo struct {
-	persistence.NotificationRepository
+	notificationRepository
 	seen map[[2]uuid.UUID]bool
 }
 

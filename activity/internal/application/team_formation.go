@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 )
 
@@ -94,7 +93,7 @@ func (c teamFormation) openVoting(ctx context.Context, sessionID uuid.UUID) (*do
 // confirmedAttendees returns the session's going/promoted attendees and their
 // user IDs, in join order.
 func (c teamFormation) confirmedAttendees(ctx context.Context, sessionID uuid.UUID) ([]*domain.Attendee, []uuid.UUID, error) {
-	attendees, _, err := c.attendeeRepo.ListAttendees(ctx, persistence.AttendeeFilter{SessionID: &sessionID})
+	attendees, _, err := c.attendeeRepo.ListAttendees(ctx, AttendeeFilter{SessionID: &sessionID})
 	if err != nil {
 		return nil, nil, fmt.Errorf("list attendees: %w", err)
 	}

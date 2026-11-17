@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/rasparac/rekreativko-api/activity/internal/application"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
 	"github.com/rasparac/rekreativko-api/shared/logger"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
@@ -18,21 +19,6 @@ type (
 	sessionTemplateManager struct {
 		tx     *postgres.TransactionManager
 		logger *logger.Logger
-	}
-
-	SessionTemplateFilter struct {
-		ActivityGroupID *uuid.UUID
-		CreatedByID     *uuid.UUID
-		Status          *domain.SessionTemplateStatus
-		IsRecurring     *bool // filter recurring vs non-recurring templates
-
-		// For cron job: find templates that need session generation
-		NeedsGeneration *bool          // templates where generated_up_to < NOW() + lookahead
-		LookaheadWindow *time.Duration // how far ahead to generate (e.g., 7 days)
-
-		// Pagination
-		Limit     int
-		PageToken string
 	}
 
 	// Database schema reference:
@@ -354,7 +340,7 @@ func (m *sessionTemplateManager) GetSessionTemplateByID(
 
 func (m *sessionTemplateManager) ListSessionTemplates(
 	ctx context.Context,
-	filter SessionTemplateFilter,
+	filter application.SessionTemplateFilter,
 ) ([]*domain.SessionTemplate, string, error) {
 	query, args, err := buildSessionTemplateQuery(filter)
 	if err != nil {
@@ -429,7 +415,7 @@ func (m *sessionTemplateManager) ListSessionTemplates(
 }
 
 // buildSessionTemplateQuery constructs the SQL query and arguments for filtering session templates
-func buildSessionTemplateQuery(filter SessionTemplateFilter) (string, []interface{}, error) {
+func buildSessionTemplateQuery(filter application.SessionTemplateFilter) (string, []interface{}, error) {
 	qb := &postgres.QueryBuilder{
 		BaseQuery: `
 		SELECT
@@ -533,7 +519,7 @@ func (m *sessionTemplateManager) ListSessionTemplatesByGroup(
 	ctx context.Context,
 	activityGroupID uuid.UUID,
 ) ([]*domain.SessionTemplate, error) {
-	templates, _, err := m.ListSessionTemplates(ctx, SessionTemplateFilter{
+	templates, _, err := m.ListSessionTemplates(ctx, application.SessionTemplateFilter{
 		ActivityGroupID: &activityGroupID,
 	})
 	return templates, err
@@ -546,7 +532,7 @@ func (m *sessionTemplateManager) FindRecurringTemplatesToGenerate(
 	lookaheadWindow time.Duration,
 ) ([]*domain.SessionTemplate, error) {
 	needsGeneration := true
-	templates, _, err := m.ListSessionTemplates(ctx, SessionTemplateFilter{
+	templates, _, err := m.ListSessionTemplates(ctx, application.SessionTemplateFilter{
 		NeedsGeneration: &needsGeneration,
 		LookaheadWindow: &lookaheadWindow,
 	})

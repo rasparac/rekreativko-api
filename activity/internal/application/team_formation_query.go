@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rasparac/rekreativko-api/activity/internal/domain"
-	"github.com/rasparac/rekreativko-api/activity/internal/infrastructure/persistence"
 )
 
 // TeamFormationSnapshot is a session's whole team-formation state at one
@@ -115,7 +114,7 @@ func (q *TeamFormationQuery) readSnapshot(ctx context.Context, sessionID uuid.UU
 		Version:     version,
 	}
 
-	attendees, _, err := q.attendeeRepo.ListAttendees(ctx, persistence.AttendeeFilter{SessionID: &sessionID})
+	attendees, _, err := q.attendeeRepo.ListAttendees(ctx, AttendeeFilter{SessionID: &sessionID})
 	if err != nil {
 		return nil, mapToAppErr(fmt.Errorf("list attendees: %w", err))
 	}
