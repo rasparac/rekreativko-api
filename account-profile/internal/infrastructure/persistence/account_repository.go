@@ -87,20 +87,6 @@ const baseAccountProfileSelectBlueprint = `
 	%s
 `
 
-// ErrInvalidSortBy is returned when an unsupported sort_by value is requested.
-var ErrInvalidSortBy = errors.New("invalid sort_by value")
-
-// accountProfileSortColumns allowlists the columns FindAllBy may sort/paginate by,
-// so a raw query param can never be interpolated into the ORDER BY clause.
-// Only NOT NULL, monotonic columns are exposed here since keyset pagination
-// on a nullable column would silently drop NULL rows from later pages.
-var accountProfileSortColumns = map[string]string{
-	"created_at": "upp.created_at",
-	"updated_at": "upp.updated_at",
-}
-
-const defaultAccountProfileSortColumn = "created_at"
-
 func NewAccountProfileManager(
 	tx *postgres.TransactionManager,
 	logger *logger.Logger,
@@ -294,79 +280,20 @@ func (m *accountProfileManager) FindBy(
 func (m *accountProfileManager) FindAllBy(
 	ctx context.Context,
 	filter application.AccountProfilesFilter,
-) ([]*domain.AccountProfile, string, error) {
-	sortKey := defaultAccountProfileSortColumn
-	if filter.SortBy != nil && *filter.SortBy != "" {
-		sortKey = *filter.SortBy
-	}
-	sortColumn, ok := accountProfileSortColumns[sortKey]
-	if !ok {
-		return nil, "", ErrInvalidSortBy
-	}
-
-	sortOrder := "DESC"
-	if filter.SortOrder != nil && *filter.SortOrder != "" {
-		switch strings.ToUpper(*filter.SortOrder) {
-		case "ASC":
-			sortOrder = "ASC"
-		case "DESC":
-			sortOrder = "DESC"
-		default:
-			return nil, "", fmt.Errorf("invalid sort_order value: %s", *filter.SortOrder)
-		}
-	}
-
-	cursor, err := postgres.DecodePageToken(filter.PageToken)
-	if err != nil {
-		return nil, "", err
-	}
-
+) ([]*domain.AccountProfile, error) {
+	// Only a lookup by account id and nickname, both unique, so the answer is
+	// bounded by the caller's list and needs no paging.
 	whereClause, args := buildMulitpleProfilesWhereQuery(filter)
-
-	if cursor != nil {
-		parts := strings.SplitN(cursor.SortValue, "\x1f", 2)
-		if len(parts) != 2 || parts[0] != sortKey {
-			return nil, "", postgres.ErrInvalidPageToken
-		}
-		cursorTime, parseErr := time.Parse(time.RFC3339Nano, parts[1])
-		if parseErr != nil {
-			return nil, "", postgres.ErrInvalidPageToken
-		}
-
-		op := ">"
-		if sortOrder == "DESC" {
-			op = "<"
-		}
-		args = append(args, cursorTime, cursor.ID)
-		whereClause = fmt.Sprintf(
-			"%s AND (%s, upp.account_id) %s ($%d, $%d)",
-			whereClause, sortColumn, op, len(args)-1, len(args),
-		)
-	}
-
-	tx := m.tx.Querier(ctx)
-
 	query := fmt.Sprintf(
 		baseAccountProfileSelectBlueprint,
 		whereClause,
-		fmt.Sprintf("ORDER BY %s %s, upp.account_id %s", sortColumn, sortOrder, sortOrder),
-	)
-
-	limit := 50
-	if filter.Limit > 0 {
-		limit = filter.Limit
-	}
-
-	query = fmt.Sprintf(
-		"%s LIMIT %d",
-		query,
-		limit+1,
+		"ORDER BY upp.created_at DESC, upp.account_id DESC",
 	)
 
 	var activityInterestsJSON sql.NullString
-	rows, err := tx.Query(ctx, query, args...)
+	rows, err := m.tx.Querier(ctx).Query(ctx, query, args...)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -390,14 +317,14 @@ func (m *accountProfileManager) FindAllBy(
 			&activityInterestsJSON,
 		)
 		if scanErr != nil {
-			return nil, "", scanErr
+			return nil, scanErr
 		}
 
 		var activityInterests []accountProfileActivityInterest
 		if activityInterestsJSON.Valid {
 			err = json.Unmarshal([]byte(activityInterestsJSON.String), &activityInterests)
 			if err != nil {
-				return nil, "", err
+				return nil, err
 			}
 		}
 
@@ -405,26 +332,18 @@ func (m *accountProfileManager) FindAllBy(
 		profiles = append(profiles, model)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
 	dm := make([]*domain.AccountProfile, len(profiles))
 	for i, profile := range profiles {
 		dm[i], err = toDomainAccountProfile(profile, profile.activityInterests)
 		if err != nil {
-			return nil, "", err
+			return nil, err
 		}
 	}
 
-	page, nextPageToken := postgres.BuildPage(dm, limit, func(p *domain.AccountProfile) (string, uuid.UUID) {
-		sortValue := p.CreatedAt()
-		if sortKey == "updated_at" {
-			sortValue = p.UpdatedAt()
-		}
-		return sortKey + "\x1f" + sortValue.UTC().Format(time.RFC3339Nano), p.ID()
-	})
-
-	return page, nextPageToken, nil
+	return dm, nil
 }
 
 func (m *accountProfileManager) replaceActivityInterests(
@@ -691,26 +610,6 @@ func buildMulitpleProfilesWhereQuery(filter application.AccountProfilesFilter) (
 			args = append(args, nickname)
 		}
 		conditions = append(conditions, fmt.Sprintf("upp.nickname IN (%s)", strings.Join(nicknamePlaceholders, ", ")))
-	}
-
-	if filter.ByLocationCountry != nil {
-		conditions = append(conditions, fmt.Sprintf("upp.location_country = $%d", len(args)+1))
-		args = append(args, *filter.ByLocationCountry)
-	}
-
-	if filter.ByLocationCity != nil {
-		conditions = append(conditions, fmt.Sprintf("upp.location_city = $%d", len(args)+1))
-		args = append(args, *filter.ByLocationCity)
-	}
-
-	if filter.DateOfBirthOver != nil {
-		conditions = append(conditions, fmt.Sprintf("upp.date_of_birth > $%d", len(args)+1))
-		args = append(args, *filter.DateOfBirthOver)
-	}
-
-	if filter.DateOfBirthUnder != nil {
-		conditions = append(conditions, fmt.Sprintf("upp.date_of_birth < $%d", len(args)+1))
-		args = append(args, *filter.DateOfBirthUnder)
 	}
 
 	return strings.Join(conditions, " AND "), args

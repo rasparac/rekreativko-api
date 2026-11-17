@@ -46,7 +46,7 @@ var settingRegistry = map[string]SettingDefinition{
 	SettingNotificationPushEnabled: {
 		Key:         SettingNotificationPushEnabled,
 		Type:        SettingTypeBool,
-		Default:     "true",
+		Default:     "false",
 		Description: "When enabled, you will receive push notifications on your mobile device for important updates and activity related to your account.",
 		Category:    CategoryNotification,
 		Label:       "Push notifications",
@@ -58,32 +58,16 @@ var settingRegistry = map[string]SettingDefinition{
 		Type:        SettingTypeBool,
 		Default:     "false",
 		Category:    CategoryPrivacy,
-		Description: "Show or hide your profile details from other users. When enabled, your profile information will be visible to everyone. When disabled, only you will be able to see your profile details.",
+		Description: "Show your full name, bio and activity interests to other users. Your nickname and profile picture are always visible, so groups and invites can show who you are.",
 		Label:       "Public profile",
 	},
-	SeetingPrivacyShowLocation: {
-		Key:         SeetingPrivacyShowLocation,
+	SettingPrivacyShowLocation: {
+		Key:         SettingPrivacyShowLocation,
 		Type:        SettingTypeBool,
 		Default:     "false",
-		Description: "Show or hide your location on your profile. When enabled, other users will be able to see your location information. When disabled, your location will be hidden from your profile.",
+		Description: "Show your city and country to other users. Your exact coordinates are never shown to anyone else.",
 		Category:    CategoryPrivacy,
 		Label:       "Show location",
-	},
-	SettingPrivacyShowActivities: {
-		Key:         SettingPrivacyShowActivities,
-		Type:        SettingTypeBool,
-		Default:     "true",
-		Description: "Show or hide your activities on your profile. When enabled, other users will be able to see your recent activities and posts. When disabled, your activities will be hidden from your profile.",
-		Category:    CategoryPrivacy,
-		Label:       "Show activities",
-	},
-	SettingsPrivacyShowStatistics: {
-		Key:         SettingsPrivacyShowStatistics,
-		Type:        SettingTypeBool,
-		Default:     "true",
-		Description: "Show or hide your statistics on your profile. When enabled, other users will be able to see your statistics. When disabled, your statistics will be hidden from your profile.",
-		Category:    CategoryPrivacy,
-		Label:       "Show statistics",
 	},
 
 	// Preferences

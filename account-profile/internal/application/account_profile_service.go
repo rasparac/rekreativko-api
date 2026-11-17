@@ -24,7 +24,13 @@ type (
 		CreateAccountProfile(ctx context.Context, profile *domain.AccountProfile) error
 		UpdateAccountProfile(ctx context.Context, profile *domain.AccountProfile) error
 		FindBy(ctx context.Context, filter AccountProfileFilter) (*domain.AccountProfile, error)
-		FindAllBy(ctx context.Context, filter AccountProfilesFilter) ([]*domain.AccountProfile, string, error)
+		FindAllBy(ctx context.Context, filter AccountProfilesFilter) ([]*domain.AccountProfile, error)
+	}
+
+	// profilePrivacyReader gives each account's privacy settings, the defaults
+	// for one that has none.
+	profilePrivacyReader interface {
+		FindProfilePrivacy(ctx context.Context, accountIDs []uuid.UUID) (map[uuid.UUID]domain.ProfilePrivacy, error)
 	}
 
 	AccountProfileFilter struct {
@@ -35,24 +41,15 @@ type (
 	}
 
 	AccountProfilesFilter struct {
-		ByAccounIDs       []uuid.UUID
-		ByNicknames       []string
-		ByLocationCountry *string
-		ByLocationCity    *string
-		DateOfBirthOver   *time.Time
-		DateOfBirthUnder  *time.Time
-		Limit             int
-		PageToken         string
-
-		// SortBy must be a key of the repository's sort columns; empty means the default (created_at).
-		SortBy    *string
-		SortOrder *string
+		ByAccounIDs []uuid.UUID
+		ByNicknames []string
 	}
 
 	service struct {
 		logger         *logger.Logger
 		txManager      *postgres.TransactionManager
 		accountProfile accountProfileReaderWriter
+		privacy        profilePrivacyReader
 		tracer         trace.Tracer
 		eventWriter    domainevent.EventWriter
 		metrics        *metrics.Metrics
@@ -63,6 +60,7 @@ func NewService(
 	logger *logger.Logger,
 	txManager *postgres.TransactionManager,
 	accountProfile accountProfileReaderWriter,
+	privacy profilePrivacyReader,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *service {
@@ -70,6 +68,7 @@ func NewService(
 	return &service{
 		logger:         logger.WithName("account_profile.service"),
 		accountProfile: accountProfile,
+		privacy:        privacy,
 		eventWriter:    eventWriter,
 		txManager:      txManager,
 		tracer:         telemetry.Tracer(telemetry.TracerAccountProfileService),
@@ -153,11 +152,47 @@ func (s *service) GetProfile(ctx context.Context, filter ProfileFilter) (*domain
 		return nil, mapToAppErr(err)
 	}
 
+	seen, err := s.seenBy(ctx, filter.ViewerID, []*domain.AccountProfile{profile})
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "read profile privacy", "error", err)
+		return nil, mapToAppErr(err)
+	}
+
 	span.SetStatus(codes.Ok, "account found")
 
 	log.Debug(ctx, "account found")
 
-	return profile, nil
+	return seen[0], nil
+}
+
+// seenBy returns the profiles as the viewer may see them: its own whole, the
+// others as their owners' privacy settings allow (domain.SeenByOthers).
+func (s *service) seenBy(ctx context.Context, viewerID uuid.UUID, profiles []*domain.AccountProfile) ([]*domain.AccountProfile, error) {
+	var others []uuid.UUID
+	for _, p := range profiles {
+		if p.ID() != viewerID {
+			others = append(others, p.ID())
+		}
+	}
+	if len(others) == 0 {
+		return profiles, nil
+	}
+
+	privacy, err := s.privacy.FindProfilePrivacy(ctx, others)
+	if err != nil {
+		return nil, fmt.Errorf("find profile privacy: %w", err)
+	}
+
+	seen := make([]*domain.AccountProfile, len(profiles))
+	for i, p := range profiles {
+		seen[i] = p
+		if p.ID() != viewerID {
+			seen[i] = p.SeenByOthers(privacy[p.ID()])
+		}
+	}
+
+	return seen, nil
 }
 
 func (s *service) UpdateProfile(ctx context.Context, accountID uuid.UUID, toUpdateProfile UpdateProfileParams) error {
@@ -347,43 +382,42 @@ func (s *service) UpdateProfile(ctx context.Context, accountID uuid.UUID, toUpda
 	return nil
 }
 
-func (s *service) GetProfiles(ctx context.Context, filter ProfilesFilter) ([]*domain.AccountProfile, string, error) {
+func (s *service) GetProfiles(ctx context.Context, filter ProfilesFilter) ([]*domain.AccountProfile, error) {
 	ctx, span := s.tracer.Start(
 		ctx,
 		"account_profile.service.GetProfiles",
 	)
 	defer span.End()
 
+	// nicknames are personal data: only their count is logged
 	log := s.logger.WithValues(
 		"method", "GetProfiles",
 		"account_ids", filter.AccountIDs,
-		"nicknames", filter.Nicknames,
+		"nicknames", len(filter.Nicknames),
 	)
 
-	profiles, nextPageToken, err := s.accountProfile.FindAllBy(ctx, AccountProfilesFilter{
-		ByAccounIDs:       filter.AccountIDs,
-		ByNicknames:       filter.Nicknames,
-		ByLocationCountry: filter.LocationCountry,
-		ByLocationCity:    filter.LocationCity,
-		DateOfBirthOver:   filter.DateOfBirthOver,
-		DateOfBirthUnder:  filter.DateOfBirthUnder,
-		SortBy:            filter.SortBy,
-		SortOrder:         filter.SortOrder,
-
-		Limit:     filter.Limit,
-		PageToken: filter.PageToken,
+	profiles, err := s.accountProfile.FindAllBy(ctx, AccountProfilesFilter{
+		ByAccounIDs: filter.AccountIDs,
+		ByNicknames: filter.Nicknames,
 	})
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		log.Error(ctx, "list account profiles", "error", err)
-		return nil, "", mapToAppErr(err)
+		return nil, mapToAppErr(err)
+	}
+
+	profiles, err = s.seenBy(ctx, filter.ViewerID, profiles)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		log.Error(ctx, "read profile privacy", "error", err)
+		return nil, mapToAppErr(err)
 	}
 
 	span.SetStatus(codes.Ok, "get profiles finished")
 
-	log.Debug(ctx, "get profiles finished")
+	log.Debug(ctx, "get profiles finished", "found", len(profiles))
 
-	return profiles, nextPageToken, nil
+	return profiles, nil
 }
 
 func mapToAppErr(err error) *domainerror.AppError {

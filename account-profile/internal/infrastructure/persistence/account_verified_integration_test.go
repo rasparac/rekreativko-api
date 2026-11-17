@@ -51,7 +51,7 @@ func setupAccountVerifiedTest(t *testing.T) *accountVerifiedTestEnv {
 	logger := testutil.CreateLogger()
 	eventWriter := domainevent.MustNewEventWriter(txManager, logger, "account_profile")
 
-	profileSvc := application.NewService(logger, txManager, persistence.NewAccountProfileManager(txManager, logger), eventWriter, testMetrics())
+	profileSvc := application.NewService(logger, txManager, persistence.NewAccountProfileManager(txManager, logger), persistence.NewAccountProfileSettingsManager(txManager), eventWriter, testMetrics())
 	settingsSvc := application.NewAccountSettingsService(persistence.NewAccountProfileSettingsManager(txManager), txManager, logger, testMetrics())
 
 	return &accountVerifiedTestEnv{

@@ -22,7 +22,7 @@ type (
 	accountProfiler interface {
 		GetProfile(ctx context.Context, filter application.ProfileFilter) (*domain.AccountProfile, error)
 		UpdateProfile(ctx context.Context, accountID uuid.UUID, toUpdateProfile application.UpdateProfileParams) error
-		GetProfiles(ctx context.Context, filter application.ProfilesFilter) ([]*domain.AccountProfile, string, error)
+		GetProfiles(ctx context.Context, filter application.ProfilesFilter) ([]*domain.AccountProfile, error)
 	}
 
 	accountSettingsService interface {
@@ -106,6 +106,7 @@ func (h *accountPorfileHandler) GetProfile(
 
 	profile, err := h.accountProfileService.GetProfile(r.Context(), application.ProfileFilter{
 		AccountID: &accountID,
+		ViewerID:  accountID,
 	})
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
@@ -122,7 +123,7 @@ func (h *accountPorfileHandler) GetProfile(
 // GetProfileByID
 //
 //	@Summary		Returns account profile by ID
-//	@Description	Returns a single account profile by account ID
+//	@Description	Returns a single account profile by account ID. Another account's profile shows the nickname and profile picture always, full_name, bio and activity_interest only if its privacy.profile.public setting is on, location (city and country, never coordinates) only if privacy.show_location is on, and never date_of_birth. Your own profile comes back whole.
 //	@Tags			account Profile
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
@@ -146,6 +147,7 @@ func (h *accountPorfileHandler) GetProfileByID(
 
 	profile, err := h.accountProfileService.GetProfile(ctx, application.ProfileFilter{
 		AccountID: &accountID,
+		ViewerID:  authcontext.GetAccountID(ctx),
 	})
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
@@ -162,23 +164,16 @@ func (h *accountPorfileHandler) GetProfileByID(
 // GetProfiles
 //
 //	@Summary		Returns account profiles
-//	@Description	Returns account profiles filtered by query parameters. At least one of account_id, nickname, dob_gt, dob_lt, country or city is required; limit, page_token, sort_by and sort_order alone are rejected. With account_id and/or nickname this is a lookup: every matching profile is returned in one response (limit and page_token are ignored, at most 100 values in total, 400 above that).
+//	@Description	Looks profiles up by account_id and/or nickname (at least one, at most 100 values together, 400 otherwise); every match comes back in one list, newest first. Other accounts' profiles are cut to what their privacy settings allow, as in GET /profiles/{id}.
 //	@Tags			account Profile
 //	@Accept			json
 //	@Produce		json
 //	@Security		GatewayKeyAuth && BearerAuth
 //
-//	@Param			account_id		query		[]string	false	"Filter by account IDs (can be repeated, at most 100 with nickname)"
-//	@Param			nickname		query		[]string	false	"Filter by nicknames (can be repeated, at most 100 with account_id)"
-//	@Param			dob_gt			query		string		false	"Date of birth after (YYYY-MM-DD)"
-//	@Param			dob_lt			query		string		false	"Date of birth before (YYYY-MM-DD)"
-//	@Param			sort_by			query		string		false	"Sort field (e.g. created_at, nickname)"
-//	@Param			sort_order		query		string		false	"Sort order (asc, desc)"
-//	@Param			country			query		string		false	"Filter by location country"
-//	@Param			limit			query		int			false	"Limit number of results (default 20, max 100; 0 means the default); ignored when account_id or nickname is given"
-//	@Param			page_token		query		string		false	"Token from the previous response's next_page_token, to fetch the next page"
+//	@Param			account_id		query		[]string	false	"Account IDs (can be repeated)"
+//	@Param			nickname		query		[]string	false	"Nicknames (can be repeated)"
 //
-//	@Success		200				{object}	api.Response[api.Page[dtos.AccountProfileResponse]]
+//	@Success		200				{object}	api.Response[api.List[dtos.AccountProfileResponse]]
 //	@Failure		400				{object}	api.Response[any]	"Invalid request"
 //	@Failure		500				{object}	api.Response[any]	"Internal server error"
 //	@Router			/api/v1/profiles [get]
@@ -194,7 +189,9 @@ func (h *accountPorfileHandler) GetProfiles(
 		return
 	}
 
-	profiles, nextPageToken, err := h.accountProfileService.GetProfiles(r.Context(), filter)
+	filter.ViewerID = authcontext.GetAccountID(ctx)
+
+	profiles, err := h.accountProfileService.GetProfiles(r.Context(), filter)
 	if err != nil {
 		h.handleServiceError(ctx, w, err)
 		return
@@ -202,7 +199,7 @@ func (h *accountPorfileHandler) GetProfiles(
 
 	api.WriteOkResponse(
 		w,
-		api.NewPage(profiles, filter.Limit, nextPageToken, mapper.DomainProfileToResponse),
+		api.NewList(profiles, mapper.DomainProfileToResponse),
 		"",
 	)
 }

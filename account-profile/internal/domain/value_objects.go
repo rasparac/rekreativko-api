@@ -281,10 +281,8 @@ const (
 	SettingNotificationPushEnabled  = "notification.push.enabled"
 
 	// Privacy settings
-	SettingPrivacyProfilePublic   = "privacy.profile.public"
-	SeetingPrivacyShowLocation    = "privacy.show_location"
-	SettingPrivacyShowActivities  = "privacy.show_activities"
-	SettingsPrivacyShowStatistics = "privacy.show_statistics"
+	SettingPrivacyProfilePublic = "privacy.profile.public"
+	SettingPrivacyShowLocation  = "privacy.show_location"
 
 	// Prefrerence settings
 	SettingLanguage = "preference.language"

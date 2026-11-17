@@ -4,9 +4,9 @@
 # activity_interests.name:  running, basketball, football, tennis,
 #   volleyball, gym, cycling, hiking, other
 # activity_interests.level: beginner, intermediate, advanced
-# settings: notification.{email,sms,push}.enabled, privacy.location.enabled,
-#   privacy.profile.public, privacy.activity.public, preference.language,
-#   preference.timezone
+# settings: notification.{email,sms,push}.enabled, privacy.profile.public,
+#   privacy.show_location, preference.{language,timezone,theme},
+#   activity.search_radius, activity.search_unit
 
 defaults:
   password: Test1234! # for every user without their own password

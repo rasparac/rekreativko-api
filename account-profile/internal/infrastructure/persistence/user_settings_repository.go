@@ -103,6 +103,50 @@ func (upsm *AccountProfileSettingsManager) GetSettings(
 	return domainSettings, nil
 }
 
+// FindProfilePrivacy returns the privacy settings of each account, in one
+// query for a whole roster. An account without them (no settings row) gets
+// the defaults, so it is never shown more than it chose.
+func (upsm *AccountProfileSettingsManager) FindProfilePrivacy(
+	ctx context.Context,
+	accountIDs []uuid.UUID,
+) (map[uuid.UUID]domain.ProfilePrivacy, error) {
+	rows, err := upsm.txManager.Querier(ctx).Query(ctx, `
+	SELECT account_id, key, value
+	FROM account_profile.settings
+	WHERE account_id = ANY($1) AND key = ANY($2)`,
+		accountIDs, domain.ProfilePrivacySettings,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	values := make(map[uuid.UUID]map[string]string, len(accountIDs))
+	for rows.Next() {
+		var (
+			accountID  uuid.UUID
+			key, value string
+		)
+		if err := rows.Scan(&accountID, &key, &value); err != nil {
+			return nil, err
+		}
+		if values[accountID] == nil {
+			values[accountID] = make(map[string]string, len(domain.ProfilePrivacySettings))
+		}
+		values[accountID][key] = value
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	privacy := make(map[uuid.UUID]domain.ProfilePrivacy, len(accountIDs))
+	for _, id := range accountIDs {
+		privacy[id] = domain.ProfilePrivacyFromSettings(values[id])
+	}
+
+	return privacy, nil
+}
+
 func (upsm *AccountProfileSettingsManager) CreateSettings(
 	ctx context.Context,
 	settings *domain.AccountProfileSettings,

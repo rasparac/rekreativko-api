@@ -61,8 +61,6 @@ func Test_buildMulitpleProfilesWhereQuery(t *testing.T) {
 	accountUUID1 := uuid.New()
 	accountUUID2 := uuid.New()
 
-	date := time.Date(2024, 3, 15, 10, 0, 0, 0, time.UTC)
-
 	testCase := []struct {
 		name          string
 		filter        application.AccountProfilesFilter
@@ -105,30 +103,6 @@ func Test_buildMulitpleProfilesWhereQuery(t *testing.T) {
 			},
 			expectedQuery: "upp.account_id IN ($1, $2) AND upp.nickname IN ($3, $4)",
 			expectedArgs:  []any{accountUUID1.String(), accountUUID2.String(), "john_doe", "jane_doe"},
-		},
-		{
-			name: "byLocationCountry",
-			filter: application.AccountProfilesFilter{
-				ByLocationCountry: ptr("DE"),
-			},
-			expectedQuery: "upp.location_country = $1",
-			expectedArgs:  []any{"DE"},
-		},
-		{
-			name: "byLocationCity",
-			filter: application.AccountProfilesFilter{
-				ByLocationCity: ptr("Berlin"),
-			},
-			expectedQuery: "upp.location_city = $1",
-			expectedArgs:  []any{"Berlin"},
-		},
-		{
-			name: "by DateOfBirthOver",
-			filter: application.AccountProfilesFilter{
-				DateOfBirthOver: ptr(date.AddDate(-20, 0, 0)),
-			},
-			expectedQuery: "upp.date_of_birth > $1",
-			expectedArgs:  []any{date.AddDate(-20, 0, 0)},
 		},
 	}
 

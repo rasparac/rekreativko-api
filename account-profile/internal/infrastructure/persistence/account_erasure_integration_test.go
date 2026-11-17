@@ -42,7 +42,7 @@ func setupAccountErasureTest(t *testing.T) *accountErasureTestEnv {
 	eventWriter := domainevent.MustNewEventWriter(txManager, logger, "account_profile")
 	erasures := persistence.NewAccountErasureManager(txManager)
 
-	profileSvc := application.NewService(logger, txManager, persistence.NewAccountProfileManager(txManager, logger), eventWriter, testMetrics())
+	profileSvc := application.NewService(logger, txManager, persistence.NewAccountProfileManager(txManager, logger), persistence.NewAccountProfileSettingsManager(txManager), eventWriter, testMetrics())
 	settingsSvc := application.NewAccountSettingsService(persistence.NewAccountProfileSettingsManager(txManager), txManager, logger, testMetrics())
 	erasureSvc := application.NewAccountErasureService(erasures, txManager, eventWriter, logger, testMetrics())
 

@@ -31,7 +31,7 @@ func TestAccountSettingsService_UpdateSettings(t *testing.T) {
 	ctx := context.Background()
 
 	// Settings belong to a profile (foreign key).
-	profileSvc := application.NewService(logger, txManager, persistence.NewAccountProfileManager(txManager, logger), domainevent.MustNewEventWriter(txManager, logger, "account_profile"), testMetrics())
+	profileSvc := application.NewService(logger, txManager, persistence.NewAccountProfileManager(txManager, logger), persistence.NewAccountProfileSettingsManager(txManager), domainevent.MustNewEventWriter(txManager, logger, "account_profile"), testMetrics())
 	accountID := uuid.New()
 	_, err := profileSvc.CreateProfile(ctx, application.CreateProfileParams{AccountID: accountID})
 	require.NoError(t, err)

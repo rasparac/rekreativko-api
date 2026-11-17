@@ -43,26 +43,19 @@ type (
 		Level string
 	}
 
+	// ProfilesFilter looks profiles up by account id and/or nickname. ViewerID
+	// is the caller: other accounts' profiles come back as their privacy
+	// settings allow.
 	ProfilesFilter struct {
 		AccountIDs []uuid.UUID
 		Nicknames  []string
-
-		DateOfBirthOver  *time.Time
-		DateOfBirthUnder *time.Time
-
-		SortBy    *string
-		SortOrder *string
-
-		LocationCountry *string
-		LocationCity    *string
-
-		Limit     int
-		PageToken string
+		ViewerID   uuid.UUID
 	}
 
 	ProfileFilter struct {
 		AccountID *uuid.UUID
 		Nickname  *string
+		ViewerID  uuid.UUID
 	}
 
 	Setting struct {

@@ -98,16 +98,17 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	accountProfileRepo := persistence.NewAccountProfileManager(txManager, log)
 
+	accountSettingsRepo := persistence.NewAccountProfileSettingsManager(
+		txManager,
+	)
+
 	accountProfileService := application.NewService(
 		log,
 		txManager,
 		accountProfileRepo,
+		accountSettingsRepo,
 		eventWriter,
 		appMetrics,
-	)
-
-	accountSettingsRepo := persistence.NewAccountProfileSettingsManager(
-		txManager,
 	)
 
 	accountSettingsService := application.NewAccountSettingsService(

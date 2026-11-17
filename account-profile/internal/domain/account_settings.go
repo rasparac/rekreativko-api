@@ -119,111 +119,17 @@ func (ups *AccountProfileSettings) touch() {
 	ups.updatedAt = time.Now().UTC()
 }
 
+// GetDefaultSettings is every setting of the registry at its default, so what
+// an account is seeded with is exactly what GET /my/settings shows and
+// PUT /my/settings accepts.
 func GetDefaultSettings() (map[string]*Setting, error) {
-	var (
-		defaults = make(map[string]*Setting)
-		err      error
-	)
-
-	defaults["notification.email.enabled"], err = NewSetting(
-		"notification.email.enabled",
-		"true",
-		SettingTypeBool,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	defaults["notification.sms.enabled"], err = NewSetting(
-		"notification.sms.enabled",
-		"false",
-		SettingTypeBool,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	defaults["notification.push.enabled"], err = NewSetting(
-		"notification.push.enabled",
-		"false",
-		SettingTypeBool,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	// privacy
-	defaults["privacy.location.enabled"], err = NewSetting(
-		"privacy.location.enabled",
-		"false",
-		SettingTypeBool,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	defaults["privacy.profile.public"], err = NewSetting(
-		"privacy.profile.public",
-		"false",
-		SettingTypeBool,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	defaults["privacy.activity.public"], err = NewSetting(
-		"privacy.activity.public",
-		"false",
-		SettingTypeBool,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	// prefrences
-	defaults["preference.language"], err = NewSetting(
-		"preference.language",
-		"en",
-		SettingTypeString,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	defaults["preference.timezone"], err = NewSetting(
-		"preference.timezone",
-		"UTC",
-		SettingTypeString,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	defaults["preference.theme"], err = NewSetting(
-		"preference.theme",
-		"light",
-		SettingTypeString,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	defaults["activity.search_unit"], err = NewSetting(
-		"activity.search_unit",
-		"km",
-		SettingTypeString,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	defaults["activity.search_radius"], err = NewSetting(
-		"activity.search_radius",
-		"10.00",
-		SettingTypeFloat,
-	)
-	if err != nil {
-		return nil, err
+	defaults := make(map[string]*Setting, len(settingRegistry))
+	for key, def := range settingRegistry {
+		setting, err := NewSetting(key, def.Default, def.Type)
+		if err != nil {
+			return nil, err
+		}
+		defaults[key] = setting
 	}
 
 	return defaults, nil

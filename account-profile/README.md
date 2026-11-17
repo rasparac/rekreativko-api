@@ -12,27 +12,40 @@ Unlike `identity`/`activity`, this service has **no `validate:` tags anywhere** 
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/v1/profiles` | Search/list profiles by query filter — see [Known issues](#known-issues) re: privacy |
-| GET | `/api/v1/profiles/{id}` | Get a single profile by account ID |
+| GET | `/api/v1/profiles` | Look profiles up by `account_id` and/or `nickname` — cut by [privacy](#privacy) |
+| GET | `/api/v1/profiles/{id}` | Get a single profile by account ID — cut by [privacy](#privacy) |
 | GET | `/api/v1/my/profile` | Current user's profile |
 | PUT | `/api/v1/my/profile` | Update current user's profile |
 | GET | `/api/v1/my/settings` | Current user's settings |
 | PUT | `/api/v1/my/settings` | Update current user's settings |
 
-`GET /profiles` requires at least one query filter (`account_id`, `nickname`, `dob_gt`, `dob_lt`, `country`, `city`) or it 400s; `limit`, `page_token`, `sort_by` and `sort_order` only shape the answer and do not count as a filter. With `account_id` and/or `nickname` it is a **lookup**: every match is returned in one response (`limit`/`page_token` ignored, no `next_page_token`), at most 100 `account_id` + `nickname` values together (400 above that - about 49 characters per id, and proxies refuse a request line past ~8 KB, so a client with a longer roster sends it in chunks). The other filters are a paged search (default 20). The mobile app only uses the lookup (`account_id` for rosters and single profiles, one `nickname` for invites). No `/interests` or `/statistics` endpoints exist — interests are only editable as a full-replace array field on `PUT /my/profile`; statistics have no HTTP surface at all (dead feature, see below).
+`GET /profiles` is a **lookup** only: `account_id` and/or `nickname` (repeatable, both together narrow it), at least one and at most 100 values together, else 400 (about 49 characters per id, and proxies refuse a request line past ~8 KB, so a client with a longer roster sends it in chunks). Every match comes back in one `{"items": [...]}` list, newest profile first, not paged. There is no search by date of birth or location (`dob_gt`, `dob_lt`, `country`, `city` were removed in ep8.7): it would find people by what their privacy settings hide. The mobile app uses `account_id` for rosters and single profiles, one `nickname` for invites. No `/interests` or `/statistics` endpoints exist — interests are only editable as a full-replace array field on `PUT /my/profile`; statistics have no HTTP surface at all (dead feature, see below).
 
 ### Profile fields
 
 `full_name`, `nickname` (3–50 chars, `^[a-zA-Z0-9_-]+$`, **not actually unique** despite what you might expect — no DB constraint or service check), `bio` (max 500 chars), `date_of_birth` (must be ≥13 years ago, not in the future), `location_city`/`location_country` (required together), `location_latitude`/`location_longitude` (optional, only set as a pair), `profile_picture_url` (must be http/https, ≤2048 chars), `activity_interests` (array of `{name, level}` — full replace on every update, one entry per activity type, deduplicated against a shared 16-type/3-level catalog also used by the `activity` service).
 
+### Privacy
+
+`GET /profiles` and `GET /profiles/{id}` return another account's profile cut to what its owner allows (`domain.AccountProfile.SeenByOthers`, applied in `application.service.seenBy`); `GET /my/profile` and your own entry in a lookup come back whole.
+
+| Field | Shown to other accounts |
+|---|---|
+| `id`, `nickname`, `profile_picture` | always - rosters and invites need them |
+| `full_name`, `bio`, `activity_interest` | only with `privacy.profile.public` on (default off) |
+| `location` city and country | only with `privacy.show_location` on (default off) |
+| `location` coordinates, `date_of_birth` | never |
+
+The owners' settings are read in one query per request (`AccountProfileSettingsManager.FindProfilePrivacy`); an account without a settings row gets the defaults, so it is never shown more than it chose.
+
 ### Settings
 
-Free-form key/value store (`GET`/`PUT /my/settings`), namespaced dotted keys (`notification.email.enabled`, `preference.language`, etc.), each with a type (`string`/`bool`/`int`/`float`). 11 keys are seeded with defaults when an account verifies. See [Known issues](#known-issues) — the seeded defaults and the registry that validates/renders settings currently disagree on several key names and one value's type.
+Key/value store (`GET`/`PUT /my/settings`), namespaced dotted keys (`notification.email.enabled`, `preference.language`, etc.), each with a type (`string`/`bool`/`int`/`float`). The registry (`domain/account_settings_registry.go`) defines every key with its type and default: it renders `GET /my/settings`, validates `PUT /my/settings`, and is what an account is seeded with when it verifies (`GetDefaultSettings`, 10 keys), so the three cannot disagree. A key only goes in the registry once something reads it.
 
 ## Domain events
 
 **Consumed**:
-- `identity.account.verified` → creates a blank `AccountProfile` row and a default `AccountProfileSettings` row (11 seeded keys) in one transaction. This is the only place a profile gets created; there's no manual "create profile" endpoint. Dropped for an account already erased.
+- `identity.account.verified` → creates a blank `AccountProfile` row and a default `AccountProfileSettings` row (every registry key at its default) in one transaction. This is the only place a profile gets created; there's no manual "create profile" endpoint. Dropped for an account already erased.
 - `identity.account.erased` → erases every row of the account, see [Account erasure](#account-erasure).
 
 **Published** (to `account_profile.event_outbox`): `account_profile.created`, `account_profile.account.erased` (see [Account erasure](#account-erasure)), `.location.changed`, `.profile_picture.changed`, `.activity_interest.added/removed/level.changed`. `AccountProfileNicknameChangedEvent` is defined but never raised — see below. Settings changes publish nothing: no service consumes them, and the planned consumers (`notification.email.enabled`, stored language) need events carrying the new value, which they add when they are built.
@@ -58,10 +71,7 @@ An account that never verified (no profile) is recorded and confirmed all the sa
 This service had the most drift from its original design doc of anything documented so far — the list is long, but most items are low-severity/dead-code.
 
 **Broken, will error or fail silently on use:**
-- **Two settings keys are unreachable once written.** The account-creation defaults (`GetDefaultSettings()`) seed `privacy.location.enabled` and `privacy.activity.public`, but the settings *registry* (which both renders `GET /my/settings` and validates `PUT /my/settings`) only knows `privacy.show_location`/`privacy.show_activities`/`privacy.show_statistics`. Every new account ends up with 2 settings rows the API can never show and never let you update.
-- **`activity.search_radius` changes type on first update**: seeded as a float (`"10.00"`) but the registry declares it an int — updating any setting coerces this one from float to int silently.
-- **Version-conflict and invalid-`sort_by` errors return `500` instead of `409`/`400`** — both are raw `fmt.Errorf`s with no sentinel `errors.Is` mapping, so they fall through to the generic internal-error handler.
-- **Privacy settings are never enforced.** `privacy.profile.public`, `privacy.show_location`, etc. are stored but no query/handler anywhere actually filters profile visibility based on them — `GET /profiles` returns full profile data to any authenticated user regardless of these flags.
+- **A version conflict on `PUT /my/settings` returns `500` instead of `409`** — it is a raw `fmt.Errorf` with no sentinel `errors.Is` mapping, so it falls through to the generic internal-error handler.
 
 **Dead code / scaffolding never wired up** (safe to ignore unless you're the one finishing them):
 
@@ -73,5 +83,5 @@ This service had the most drift from its original design doc of anything documen
 - Optimistic locking isn't actually exposed to clients: `PUT /my/settings` accepts no `version` field, so there's no way for a caller to detect "someone else changed this concurrently" the way the original design intended — the internal version check only guards against two in-flight requests racing each other server-side.
 - `location_region` column exists in the `profiles` table but no Go code reads or writes it.
 - Minor field-name asymmetry: the update request uses `activity_interests` (plural), the response uses `activity_interest` (singular), for the same data.
-- A few typo'd exported identifiers if you're browsing the code: `Cooridantes` (→ `Coordinates`), `SeetingPrivacyShowLocation` (→ `SettingPrivacyShowLocation`).
+- A typo'd exported identifier if you're browsing the code: `Cooridantes` (→ `Coordinates`).
 - If `Subscribe()` fails at startup (`identity.account.verified` or `identity.account.erased`), the service logs it and keeps running anyway — meaning it could serve traffic indefinitely without ever creating profiles for newly-verified accounts or erasing erased ones, with no retry and no health-check signal for this state.

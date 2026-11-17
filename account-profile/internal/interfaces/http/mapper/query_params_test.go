@@ -17,71 +17,32 @@ func parse(t *testing.T, raw string) url.Values {
 	return q
 }
 
-// Only what selects profiles is a filter. Without one the request would list
-// every profile, whatever else it asks for.
-func TestQueryToProfilesFilter_ShapingParamsAreNotFilters(t *testing.T) {
+// Only account_id and nickname select profiles. The removed search filters
+// (date of birth, location) and paging params select nothing, so on their own
+// they are refused rather than listing everyone.
+func TestQueryToProfilesFilter_OnlyALookupIsAFilter(t *testing.T) {
 	for _, raw := range []string{
 		"",
 		"limit=100000",
-		"limit=0",
 		"page_token=abc",
 		"sort_by=nickname",
-		"sort_order=desc",
-		"limit=50&sort_by=nickname&sort_order=asc",
-	} {
-		_, err := QueryToProfilesFilter(parse(t, raw))
-		assert.ErrorIs(t, err, ErrMissingAccountProfilesFilter, "%q", raw)
-	}
-}
-
-func TestQueryToProfilesFilter_SelectingParamsAreFilters(t *testing.T) {
-	for _, raw := range []string{
-		"account_id=" + uuid.NewString(),
-		"nickname=jd",
 		"country=HR",
 		"city=Zagreb",
 		"dob_gt=1990-01-01",
 		"dob_lt=2000-01-01",
 	} {
 		_, err := QueryToProfilesFilter(parse(t, raw))
-		assert.NoError(t, err, "%q", raw)
+		assert.ErrorIs(t, err, ErrMissingAccountProfilesFilter, "%q", raw)
 	}
 }
 
-func TestQueryToProfilesFilter_SearchIsPaged(t *testing.T) {
-	filter, err := QueryToProfilesFilter(parse(t, "city=Zagreb"))
-	require.NoError(t, err)
-	assert.Equal(t, 20, filter.Limit)
+func TestQueryToProfilesFilter_Lookup(t *testing.T) {
+	id := uuid.New()
 
-	filter, err = QueryToProfilesFilter(parse(t, "city=Zagreb&limit=5&page_token=tok"))
+	filter, err := QueryToProfilesFilter(parse(t, "account_id="+id.String()+"&nickname=jd&nickname=ana"))
 	require.NoError(t, err)
-	assert.Equal(t, 5, filter.Limit)
-	assert.Equal(t, "tok", filter.PageToken)
-}
-
-// A lookup returns everything asked for: the page size must not cut it, and a
-// stray page_token must not skip part of it.
-func TestQueryToProfilesFilter_LookupIsNotPaged(t *testing.T) {
-	ids := url.Values{}
-	for range 25 {
-		ids.Add("account_id", uuid.NewString())
-	}
-
-	filter, err := QueryToProfilesFilter(ids)
-	require.NoError(t, err)
-	assert.Len(t, filter.AccountIDs, 25)
-	assert.Equal(t, MaxProfileLookups, filter.Limit, "not the default 20")
-
-	ids.Set("limit", "5")
-	ids.Set("page_token", "tok")
-	filter, err = QueryToProfilesFilter(ids)
-	require.NoError(t, err)
-	assert.Equal(t, MaxProfileLookups, filter.Limit, "a client's limit does not cut a lookup")
-	assert.Empty(t, filter.PageToken)
-
-	filter, err = QueryToProfilesFilter(parse(t, "nickname=jd&limit=1"))
-	require.NoError(t, err)
-	assert.Equal(t, MaxProfileLookups, filter.Limit)
+	assert.Equal(t, []uuid.UUID{id}, filter.AccountIDs)
+	assert.Equal(t, []string{"jd", "ana"}, filter.Nicknames)
 }
 
 func TestQueryToProfilesFilter_LookupIsCapped(t *testing.T) {
@@ -110,19 +71,4 @@ func TestQueryToProfilesFilter_LookupIsCapped(t *testing.T) {
 func TestQueryToProfilesFilter_RejectsABadAccountID(t *testing.T) {
 	_, err := QueryToProfilesFilter(parse(t, "account_id=not-a-uuid"))
 	assert.Error(t, err)
-}
-
-// A search is paged and a page is bounded: limit=0 is the default, not
-// everything, and a huge limit is cut.
-func TestQueryToProfilesFilter_SearchLimitIsBounded(t *testing.T) {
-	for raw, want := range map[string]int{
-		"city=Zagreb&limit=0":         20,
-		"city=Zagreb&limit=100":       100,
-		"city=Zagreb&limit=100000":    100,
-		"city=Zagreb&limit=100000000": 100,
-	} {
-		filter, err := QueryToProfilesFilter(parse(t, raw))
-		require.NoError(t, err, raw)
-		assert.Equal(t, want, filter.Limit, raw)
-	}
 }
