@@ -94,6 +94,9 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	// accounts deleted or erased in identity (epic dh7)
 	accountStates := persistence.NewAccountStateManager(txManager)
 
+	// reports and blocks (rekreativko-api-ep8.8)
+	moderationRepo := persistence.NewModerationRepository(txManager, log)
+
 	eventWriter, err := domainevent.NewEventWriter(txManager, log, "activity")
 	if err != nil {
 		return err
@@ -237,6 +240,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		inviteRepo,
 		memberRepo,
 		accountStates,
+		moderationRepo,
 		eventWriter,
 		appMetrics,
 	)
@@ -247,6 +251,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		sessionRepo,
 		attendeeRepo,
 		accountStates,
+		moderationRepo,
 		eventWriter,
 		appMetrics,
 	)
@@ -313,6 +318,11 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		log,
 	)
 
+	moderationHandler := activityHttp.NewModerationHandler(
+		application.NewModerationService(log, txManager, moderationRepo, activityGroupRepo, memberRepo, sessionRepo, appMetrics),
+		log,
+	)
+
 	middlewaresChain := middleware.NewChain(
 		middleware.Recover(log),
 		middleware.RequestID,
@@ -339,6 +349,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	}))
 
 	activityHandler.RegisterRoutes(mux, middlewaresChain)
+	moderationHandler.RegisterRoutes(mux, middlewaresChain)
 
 	if interval := cfg.ActivityServiceConfig.SessionExpiryInterval; interval > 0 {
 		go sessionService.RunSessionExpiry(ctx, interval)

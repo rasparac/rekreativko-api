@@ -52,8 +52,11 @@ type (
 		City      string
 		Country   string
 		Interests []postgres.InterestPair
-		Limit     int
-		PageToken string
+		// RequesterID, when set, hides groups created by accounts the
+		// requester blocked (unless the requester is a member).
+		RequesterID uuid.UUID
+		Limit       int
+		PageToken   string
 	}
 
 	// MemberFilter defines query filters for listing members
@@ -114,8 +117,11 @@ type (
 		Lng       float64
 		RadiusKM  float64
 		Interests []postgres.InterestPair
-		Limit     int
-		PageToken string
+		// RequesterID, when set, hides sessions created by accounts the
+		// requester blocked (unless the requester already takes part).
+		RequesterID uuid.UUID
+		Limit       int
+		PageToken   string
 	}
 
 	// SessionWithDistance pairs a session with its distance from the search location
@@ -276,4 +282,20 @@ type AttendeeRepository interface {
 	CountConfirmedAttendees(ctx context.Context, sessionID uuid.UUID) (int, error)
 	GetAttendeeStatusesForUser(ctx context.Context, userID uuid.UUID, sessionIDs []uuid.UUID) (map[uuid.UUID]domain.AttendeeStatus, error)
 	ListTeamMembers(ctx context.Context, sessionID uuid.UUID) (map[uuid.UUID][]uuid.UUID, error)
+}
+
+// ModerationRepository stores reports and blocks.
+type ModerationRepository interface {
+	// CreateReport returns false, storing nothing, when the reporter already
+	// has an open report on that target.
+	CreateReport(ctx context.Context, report *domain.Report) (bool, error)
+	Block(ctx context.Context, block *domain.AccountBlock) error
+	Unblock(ctx context.Context, blockerID, blockedID uuid.UUID) error
+	ListBlocked(ctx context.Context, blockerID uuid.UUID, limit int) ([]*domain.AccountBlock, error)
+	IsBlockedEitherWay(ctx context.Context, a, b uuid.UUID) (bool, error)
+}
+
+// blockChecker tells whether either of two accounts has blocked the other.
+type blockChecker interface {
+	IsBlockedEitherWay(ctx context.Context, a, b uuid.UUID) (bool, error)
 }

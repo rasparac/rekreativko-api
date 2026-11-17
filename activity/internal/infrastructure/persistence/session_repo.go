@@ -685,6 +685,7 @@ func (m *sessionManager) ListSessions(ctx context.Context, filter application.Se
 			)`,
 			requesterParam, requesterParam, requesterParam, requesterParam,
 		)
+		qb.BaseQuery += sessionNotHiddenByBlock(requesterParam)
 		qb.Args = append(qb.Args, filter.RequesterID)
 	}
 
@@ -858,6 +859,12 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter applicatio
 	limitParam := paramCount + 2
 	cursorDistParam := paramCount + 3
 	cursorIDParam := paramCount + 4
+	requesterParam := paramCount + 5
+
+	blockCondition := ""
+	if filter.RequesterID != uuid.Nil {
+		blockCondition = sessionNotHiddenByBlock(requesterParam)
+	}
 
 	query := fmt.Sprintf(`
 		SELECT * FROM (
@@ -903,12 +910,13 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter applicatio
 				AND location_lat BETWEEN $3 AND $4
 				AND location_lng BETWEEN $5 AND $6
 				%s
+				%s
 		) nearby
 		WHERE distance_km <= $%d
 			AND ($%d::float8 IS NULL OR (distance_km, id) > ($%d::float8, $%d::uuid))
 		ORDER BY distance_km ASC, id ASC
 		LIMIT $%d
-	`, interestCondition, radiusParam, cursorDistParam, cursorDistParam, cursorIDParam, limitParam)
+	`, interestCondition, blockCondition, radiusParam, cursorDistParam, cursorDistParam, cursorIDParam, limitParam)
 
 	args := []any{
 		filter.Lat,
@@ -920,6 +928,9 @@ func (m *sessionManager) DiscoverSessions(ctx context.Context, filter applicatio
 	}
 	args = append(args, interestArgs...)
 	args = append(args, filter.RadiusKM, filter.Limit+1, cursorDistance, cursorID)
+	if filter.RequesterID != uuid.Nil {
+		args = append(args, filter.RequesterID)
+	}
 
 	q := m.tx.Querier(ctx)
 

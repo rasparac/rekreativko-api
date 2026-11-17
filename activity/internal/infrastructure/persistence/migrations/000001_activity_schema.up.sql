@@ -507,6 +507,45 @@ CREATE TABLE IF NOT EXISTS activity.erased_account(
     erased_at timestamptz NOT NULL DEFAULT NOW()
 );
 
+-- A user's report of a user, group or session (POST /reports, required by the
+-- App Store and Google Play for user-generated content). target_id is the
+-- reported account, group or session; there is no foreign key, a report
+-- outlives nothing it points at (erasure deletes the reports about what it
+-- deletes). note is free text the reporter typed: never logged.
+CREATE TABLE IF NOT EXISTS activity.report(
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    reporter_id uuid NOT NULL,
+    target_type varchar(20) NOT NULL CHECK (target_type IN ('user', 'group', 'session')),
+    target_id uuid NOT NULL,
+    reason varchar(20) NOT NULL CHECK (reason IN ('spam', 'harassment', 'hate', 'violence', 'inappropriate', 'other')),
+    note text DEFAULT NULL CHECK (note IS NULL OR length(note) <= 1000),
+    status varchar(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'reviewed')),
+    created_at timestamptz NOT NULL DEFAULT NOW(),
+    reviewed_at timestamptz DEFAULT NULL
+);
+
+-- One open report per reporter and target: reporting it again is a no-op.
+CREATE UNIQUE INDEX uq_report_open ON activity.report(reporter_id, target_type, target_id)
+WHERE (status = 'open');
+
+-- The review queue: open reports, oldest first.
+CREATE INDEX idx_report_open_created_at ON activity.report(created_at)
+WHERE (status = 'open');
+
+-- blocker_id has blocked blocked_id: neither can invite the other, and the
+-- blocked account's groups and sessions are hidden from the blocker's
+-- discover and browse lists (not those they already share).
+CREATE TABLE IF NOT EXISTS activity.account_block(
+    blocker_id uuid NOT NULL,
+    blocked_id uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (blocker_id, blocked_id),
+    CHECK (blocker_id <> blocked_id)
+);
+
+-- "has anyone blocked this account" (invites in either direction, erasure).
+CREATE INDEX idx_account_block_blocked ON activity.account_block(blocked_id);
+
 -- activity event outbox table
 CREATE TABLE IF NOT EXISTS activity.event_outbox(
     event_id uuid PRIMARY KEY NOT NULL,

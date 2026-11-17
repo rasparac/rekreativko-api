@@ -78,3 +78,13 @@ groups:
         annotations:
           summary: "Account erasures not confirmed by every bounded context"
           description: "{{ $value | humanize }} erased account(s) are missing a <context>.account.erased confirmation past ACCOUNT_ERASURE_INCOMPLETE_AFTER (GDPR Art. 17 erasure must finish within a month). See identity.account_erasure for which contexts are missing."
+
+  - name: rekreativko.moderation
+    rules:
+      - alert: ActivityReportReceived
+        expr: sum(increase(activity_reports_created_total[1h])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "A user reported content - review it"
+          description: "{{ $value | humanize }} new report(s) of users, groups or sessions in the last hour. Review the open ones: SELECT * FROM activity.report WHERE status = 'open' ORDER BY created_at; mark each reviewed (status = 'reviewed', reviewed_at = now()) once handled. The stores expect reports of objectionable content to be acted on within 24 hours."

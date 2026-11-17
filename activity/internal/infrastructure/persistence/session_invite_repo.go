@@ -181,7 +181,7 @@ func (m *sessionInviteManager) ListPendingInvitesForUser(
 		return nil, "", err
 	}
 
-	conditions := []string{"invited_user_id = $1", "status = 'pending'", "expires_at > NOW()"}
+	conditions := []string{"invited_user_id = $1", "status = 'pending'", "expires_at > NOW()", inviteNotFromBlocked}
 	args := []interface{}{filter.InvitedUserID}
 	argIndex := 2
 

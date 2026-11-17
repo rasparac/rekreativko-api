@@ -176,3 +176,15 @@ var (
 	ErrSessionTemplateDeleted          = errors.New("session template is deleted")
 	ErrSessionTemplateNotRecurring     = errors.New("session template is not recurring")
 )
+
+// Moderation errors (reports and blocks)
+var (
+	ErrInvalidReportTarget  = errors.New("report target must be user, group or session")
+	ErrInvalidReportReason  = errors.New("invalid report reason")
+	ErrReportNoteTooLong    = errors.New("report note is too long")
+	ErrCannotReportYourself = errors.New("you cannot report yourself")
+	ErrCannotBlockYourself  = errors.New("you cannot block yourself")
+	// ErrAccountBlocked: one of the two accounts has blocked the other, so they
+	// can't invite each other.
+	ErrAccountBlocked = errors.New("account is blocked")
+)

@@ -1485,12 +1485,13 @@ func (s *SessionService) DiscoverSessions(
 	span.SetAttributes(attribute.Int("interests_count", len(interests)))
 
 	results, nextPageToken, err := s.sessionRepo.DiscoverSessions(ctx, DiscoverSessionsFilter{
-		Lat:       params.Lat,
-		Lng:       params.Lng,
-		RadiusKM:  params.RadiusKM,
-		Interests: interests,
-		Limit:     params.Limit,
-		PageToken: params.PageToken,
+		Lat:         params.Lat,
+		Lng:         params.Lng,
+		RadiusKM:    params.RadiusKM,
+		Interests:   interests,
+		RequesterID: requesterID,
+		Limit:       params.Limit,
+		PageToken:   params.PageToken,
 	})
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())

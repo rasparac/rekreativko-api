@@ -130,11 +130,13 @@ type ActivityInterestFilter struct {
 
 // DiscoverActivityGroupsParams contains parameters for discovering public activity groups
 type DiscoverActivityGroupsParams struct {
-	City      *string
-	Country   *string
-	Interests []ActivityInterestFilter
-	Limit     int
-	PageToken string
+	// RequesterID is the caller: groups of accounts they blocked are hidden.
+	RequesterID uuid.UUID
+	City        *string
+	Country     *string
+	Interests   []ActivityInterestFilter
+	Limit       int
+	PageToken   string
 }
 
 // CreateSessionParams contains parameters for creating a new session

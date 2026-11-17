@@ -55,6 +55,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	// accounts deleted or erased in identity (epic dh7)
 	accountStates := persistence.NewAccountStateManager(txManager)
+	moderationRepo := persistence.NewModerationRepository(txManager, log)
 	eventWriter, err := domainevent.NewEventWriter(txManager, log, "activity")
 	if err != nil {
 		return err
@@ -117,6 +118,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		groupInviteRepo,
 		memberRepo,
 		accountStates,
+		moderationRepo,
 		eventWriter,
 		appMetrics,
 	)
@@ -134,6 +136,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		sessionRepo,
 		attendeeRepo,
 		accountStates,
+		moderationRepo,
 		eventWriter,
 		appMetrics,
 	)

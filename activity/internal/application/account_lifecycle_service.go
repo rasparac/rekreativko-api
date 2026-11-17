@@ -215,6 +215,21 @@ func ensureAccountActive(ctx context.Context, accounts inactiveAccountChecker, a
 	return nil
 }
 
+// ensureNotBlocked refuses something between two accounts (an invite) when
+// either has blocked the other. The same error both ways: the inviter doesn't
+// learn whether they are the one who was blocked.
+func ensureNotBlocked(ctx context.Context, blocks blockChecker, a, b uuid.UUID) error {
+	blocked, err := blocks.IsBlockedEitherWay(ctx, a, b)
+	if err != nil {
+		return fmt.Errorf("check blocks: %w", err)
+	}
+	if blocked {
+		return domain.ErrAccountBlocked
+	}
+
+	return nil
+}
+
 // IsInactive reports whether the account was deleted or erased.
 func (s *AccountLifecycleService) IsInactive(ctx context.Context, accountID uuid.UUID) (bool, error) {
 	return s.states.IsInactive(ctx, accountID)

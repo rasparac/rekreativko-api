@@ -28,6 +28,7 @@ type SessionInviteService struct {
 	sessionRepo       SessionRepository
 	attendeeRepo      AttendeeRepository
 	accounts          inactiveAccountChecker
+	blocks            blockChecker
 	eventWriter       domainevent.EventWriter
 	tracer            trace.Tracer
 	metrics           *metrics.Metrics
@@ -41,6 +42,7 @@ func NewSessionInviteService(
 	sessionRepo SessionRepository,
 	attendeeRepo AttendeeRepository,
 	accounts inactiveAccountChecker,
+	blocks blockChecker,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *SessionInviteService {
@@ -51,6 +53,7 @@ func NewSessionInviteService(
 		sessionRepo:       sessionRepo,
 		attendeeRepo:      attendeeRepo,
 		accounts:          accounts,
+		blocks:            blocks,
 		eventWriter:       eventWriter,
 		tracer:            telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:           metrics,
@@ -83,6 +86,10 @@ func (s *SessionInviteService) SendInvite(
 
 	err := s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
 		if err := ensureAccountActive(tCtx, s.accounts, params.InvitedUserID); err != nil {
+			return err
+		}
+
+		if err := ensureNotBlocked(tCtx, s.blocks, params.RequesterID, params.InvitedUserID); err != nil {
 			return err
 		}
 

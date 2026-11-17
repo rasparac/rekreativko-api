@@ -638,8 +638,9 @@ func (s *ActivityGroupService) DiscoverActivityGroups(
 
 	// Convert params to repository filter
 	filter := DiscoveryFilter{
-		Limit:     params.Limit,
-		PageToken: params.PageToken,
+		RequesterID: params.RequesterID,
+		Limit:       params.Limit,
+		PageToken:   params.PageToken,
 	}
 
 	if params.City != nil {

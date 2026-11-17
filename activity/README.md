@@ -54,6 +54,8 @@ Routes, grouped by resource (all under `/api/v1`):
 
 **Team formation** (team sports only - see [Team formation and live updates](#team-formation-and-live-updates)): `POST/DELETE /sessions/{id}/teams` (DELETE = reset), `POST/GET/DELETE /sessions/{id}/draft`, `POST /sessions/{id}/draft/picks`, `POST/GET /sessions/{id}/proposals`, `PUT /sessions/{id}/proposals/vote` (`DELETE` takes your vote back), `DELETE /sessions/{id}/proposals/{proposalId}` (the author withdraws; withdrawing the last proposal cancels the round), `POST /sessions/{id}/proposals/close`, `GET /sessions/{id}/team-formation` (whole state as one document), `GET /sessions/{id}/events` (SSE stream of that document).
 
+**Reports and blocks**: `POST /reports`, `GET /blocks`, `POST /blocks`, `DELETE /blocks/{accountId}` - see [Reports and blocks](#reports-and-blocks).
+
 Service methods that exist but have **no route** (incomplete/parked, not necessarily broken): `CancelActivityGroup`, invite-link create/revoke/use (the `InviteLink` domain aggregate is fully built), `PromoteMember`/`DemoteMember` (only the generic `PATCH .../role` is exposed).
 
 ## Team formation and live updates
@@ -122,6 +124,21 @@ Detailed behaviour (wire format, guarantees, timeouts, notification payloads) is
 - **SessionTemplate** — recurring-session blueprint: optional `RecurrenceRule`, default capacity/location, `generatedUpTo` cron watermark.
 - **RecurrenceRule** — daily/weekly/monthly + interval, optional day-of-week/day-of-month, time-of-day, optional end date.
 
+## Reports and blocks
+
+The App Store (guideline 1.2) and Google Play require a way to report objectionable content and to block abusive users in apps with user-generated content (`rekreativko-api-ep8.8`). Both live here, since this service owns the content and every list that would have to hide it. `application.ModerationService`, `interfaces/http/moderation_handler.go`.
+
+**Report** - `POST /reports`:
+```json
+{ "target_type": "group", "target_id": "<uuid>", "reason": "spam", "note": "optional, max 1000 characters" }
+```
+`target_type`: `user`, `group` or `session`. `reason`: `spam`, `harassment`, `hate`, `violence`, `inappropriate`, `other`. → `201`. A group or session the reporter can't see is `404` with the same code as one that doesn't exist (`activity_group_not_found`, `session_not_found`); a reported account is not checked (this service keeps no account list). Reporting the same target while your report on it is still open is accepted and stores nothing (`uq_report_open`). Errors: `400 validation_error` for a missing or unknown field value, `422 cannot_report_self`. Reports go to `activity.report` with `status = 'open'`; the note is free text and is never logged. **Operators**: `activity_reports_created_total{target_type,reason}` counts new reports and the `ActivityReportReceived` alert (`observability/alerts/rekreativko.yml`) fires for an hour after one arrives; review with `SELECT * FROM activity.report WHERE status = 'open' ORDER BY created_at` and set `status = 'reviewed', reviewed_at = now()` when handled. There is no admin API or operator email yet - an email can follow once notifications has a real sender (`rekreativko-api-ep8.1`).
+
+**Block** - `POST /blocks` `{ "account_id": "<uuid>" }` → `201` (again: no-op; yourself: `422 cannot_block_self`); `DELETE /blocks/{accountId}` → `200` (not blocked: no-op); `GET /blocks` → `{items: [{account_id, blocked_at}]}`, newest first, not paginated, at most 500 (`application.MaxListedBlocks`). Names come from account-profile's `GET /profiles?account_id=...`. A block (`activity.account_block`) means:
+- **no invites between the two**, either way: group and session `SendInvite` answer `403 account_blocked` - the same code whichever side blocked, so the inviter doesn't learn they were blocked (`ensureNotBlocked`);
+- **pending invites from the blocked account disappear** from the blocker's `GET /invites` and `GET /session-invites` (`inviteNotFromBlocked`); they still expire as usual;
+- **the blocked account's groups and sessions are hidden from the blocker** in `GET /activity-groups/discover`, `GET /activity-groups`, `GET /sessions/discover` and `GET /sessions` (`groupNotHiddenByBlock`, `sessionNotHiddenByBlock` in `persistence/moderation_repo.go`) - **except** a group the blocker is a confirmed member of and a session they RSVP'd to or whose group they belong to: blocking hides new content, it doesn't throw anyone out of what they share. Direct fetches by id, member and attendee lists and profiles are unchanged.
+
 ## Authorization
 
 `MemberRole.CanManageMembers()` (creator/admin only) is the base check for most group operations. Sessions use a superset, `Session.canManageSession(userID, role)`:
@@ -156,7 +173,7 @@ Identity's grace period is the only one; this service follows its two events (`a
 - **Deleted** (`identity.account.deleted`): the account goes into `deleted_account`, and from then on every request from it that changes something gets `403 account_deleted` (`RejectInactiveAccounts` - its access token is still valid for up to `JWT_ACCESS_TOKEN_DURATION`). Then, through the same service calls as when the user does it (so the usual events and notifications follow): its RSVPs to scheduled sessions are cancelled (`CancelRSVP` - the waitlist moves up, team formation resets), the invites it can still answer are declined, and it leaves every group it did not create. What it created - its groups, templates and sessions - keeps working for the other members until the erasure; a creator cannot leave its group anyway. Pending join requests, and invites and invite links it sent, are left as they are: they belong to the group. Others cannot create new data about the account either: inviting it (`InviteMember`, both `SendInvite`s) or approving a request it made before the deletion (`ApproveMember`, `ApproveAttendee`) fails with `409 account_deleted` (`ensureAccountActive`, `domain.ErrAccountDeleted`).
 - **Erased** (`identity.account.erased`, at the end of the grace period): one transaction inserts the account into `erased_account` (if it was already there, this is a redelivery and nothing more happens), runs `persistence.accountErasureSteps` and raises `activity.account.erased` for identity's erasure tracking (`activity` is in identity's `ACCOUNT_ERASURE_CONTEXTS`):
   1. **what it created is deleted**: groups with `creator_id` = the account, templates and sessions it created (in any group) and every template and session of its groups, each with everything in it - members, invites, invite links and their uses, attendees, teams, drafts and picks, voting rounds, proposals and votes, statistics. Other members lose these from their history;
-  2. **rows about it in others' records are deleted**: its memberships, invites it received, its invite-link uses and RSVPs it withdrew;
+  2. **rows about it in others' records are deleted**: its memberships, invites it received, its invite-link uses and RSVPs it withdrew; reports it filed, reports about it or about anything step 1 deletes, and blocks it made or received;
   3. **rows where it is only an actor stay**: past attendance, draft captain and picks, proposals and votes, invites and invite links it sent keep its id - clients show a deleted user, and the id alone identifies nobody once identity has erased the account.
 
   Steps run children first (no `ON DELETE CASCADE`). `TestAccountErasureSteps_CoverEveryTable` fails until a new table is added to the steps or to `tablesKeptOnErasure`. `activity_accounts_erased_total` counts erasures.
@@ -167,7 +184,7 @@ A bad payload is dead-lettered; any other failure is retried - both operations a
 
 `PORT=8084` (api), no port for cron (one-shot). `SERVICE_NAME=activity` / `activity_cron`. Plus shared config (Postgres, NATS, gateway key, telemetry).
 
-Schema (`activity` Postgres schema, one migration file): `activity_group`, `member`, `group_invites`, `group_invite_links`, `group_invite_link_usage`, `session_template`, `session`, `session_attendee`, `activity_group_statistics`, `session_statistics` (see [Known issues](#known-issues) — the two `*_statistics` tables are dead), `deleted_account`, `erased_account` (see above), `event_outbox`.
+Schema (`activity` Postgres schema, one migration file): `activity_group`, `member`, `group_invites`, `group_invite_links`, `group_invite_link_usage`, `session_template`, `session`, `session_attendee`, `activity_group_statistics`, `session_statistics` (see [Known issues](#known-issues) — the two `*_statistics` tables are dead), `deleted_account`, `erased_account` (see above), `report`, `account_block` (see [Reports and blocks](#reports-and-blocks)), `event_outbox`.
 
 ## Known issues
 

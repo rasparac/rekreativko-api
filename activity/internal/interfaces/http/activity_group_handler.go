@@ -291,6 +291,7 @@ func (h *Handler) DiscoverActivityGroups(w http.ResponseWriter, r *http.Request)
 		api.WriteBadRequestResponse(w, "invalid_params", "Invalid query parameters")
 		return
 	}
+	params.RequesterID = authcontext.GetAccountID(ctx)
 
 	// Discover groups
 	groups, nextPageToken, err := h.activityGroupService.DiscoverActivityGroups(ctx, *params)

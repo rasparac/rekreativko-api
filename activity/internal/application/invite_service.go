@@ -25,6 +25,7 @@ type InviteService struct {
 	inviteRepo  GroupInviteRepository
 	memberRepo  MemberRepository
 	accounts    inactiveAccountChecker
+	blocks      blockChecker
 	eventWriter domainevent.EventWriter
 	tracer      trace.Tracer
 	metrics     *metrics.Metrics
@@ -37,6 +38,7 @@ func NewInviteService(
 	inviteRepo GroupInviteRepository,
 	memberRepo MemberRepository,
 	accounts inactiveAccountChecker,
+	blocks blockChecker,
 	eventWriter domainevent.EventWriter,
 	metrics *metrics.Metrics,
 ) *InviteService {
@@ -46,6 +48,7 @@ func NewInviteService(
 		inviteRepo:  inviteRepo,
 		memberRepo:  memberRepo,
 		accounts:    accounts,
+		blocks:      blocks,
 		eventWriter: eventWriter,
 		tracer:      telemetry.Tracer(telemetry.TracerActivityService),
 		metrics:     metrics,
@@ -87,6 +90,10 @@ func (s *InviteService) SendInvite(
 
 	err = s.txManager.WithTransaction(ctx, func(tCtx context.Context) error {
 		if err := ensureAccountActive(tCtx, s.accounts, params.InvitedUserID); err != nil {
+			return err
+		}
+
+		if err := ensureNotBlocked(tCtx, s.blocks, params.RequesterID, params.InvitedUserID); err != nil {
 			return err
 		}
 

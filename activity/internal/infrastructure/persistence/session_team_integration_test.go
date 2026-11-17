@@ -68,7 +68,7 @@ func setupSessionTeamTest(t *testing.T) *sessionTeamTestEnv {
 		votingSvc:    votingSvc,
 		formation:    application.NewTeamFormationQuery(txManager, sessionRepo, memberRepo, attendeeRepo, draftSvc, votingSvc),
 		memberSvc:    application.NewMemberService(logger, txManager, memberRepo, groupRepo, accountStates, eventWriter, testMetrics()),
-		inviteSvc:    application.NewInviteService(logger, txManager, inviteRepo, memberRepo, accountStates, eventWriter, testMetrics()),
+		inviteSvc:    application.NewInviteService(logger, txManager, inviteRepo, memberRepo, accountStates, persistence.NewModerationRepository(txManager, logger), eventWriter, testMetrics()),
 		templateSvc:  application.NewSessionTemplateService(logger, txManager, templateRepo, groupRepo, memberRepo, eventWriter, testMetrics()),
 		sessionRepo:  sessionRepo,
 		attendeeRepo: attendeeRepo,

@@ -164,6 +164,12 @@ func TestMapErrToAppError_EveryDomainErrorIsMapped(t *testing.T) {
 		"ErrSessionTemplateNotActive":        domain.ErrSessionTemplateNotActive,
 		"ErrSessionTemplateDeleted":          domain.ErrSessionTemplateDeleted,
 		"ErrSessionTemplateNotRecurring":     domain.ErrSessionTemplateNotRecurring,
+		"ErrInvalidReportTarget":             domain.ErrInvalidReportTarget,
+		"ErrInvalidReportReason":             domain.ErrInvalidReportReason,
+		"ErrReportNoteTooLong":               domain.ErrReportNoteTooLong,
+		"ErrCannotReportYourself":            domain.ErrCannotReportYourself,
+		"ErrCannotBlockYourself":             domain.ErrCannotBlockYourself,
+		"ErrAccountBlocked":                  domain.ErrAccountBlocked,
 	}
 
 	file, err := parser.ParseFile(token.NewFileSet(), "../domain/errors.go", nil, 0)

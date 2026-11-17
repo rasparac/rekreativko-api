@@ -37,6 +37,11 @@ type Metrics struct {
 	// AccountsErasedTotal counts accounts whose activity data was erased on identity.account.erased.
 	AccountsErasedTotal prometheus.Counter
 
+	// Business metrics - Moderation
+	// ReportsCreatedTotal counts new reports by target_type and reason; the
+	// ActivityReportReceived alert tells an operator to review them.
+	ReportsCreatedTotal *prometheus.CounterVec
+
 	// Event metrics
 	EventsPublishedTotal *prometheus.CounterVec
 	EventPublishDuration *prometheus.HistogramVec
@@ -118,6 +123,13 @@ func New() *Metrics {
 				Name: "activity_accounts_erased_total",
 				Help: "Total number of accounts whose activity data was erased (identity.account.erased)",
 			},
+		),
+		ReportsCreatedTotal: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "activity_reports_created_total",
+				Help: "Total number of new reports of users, groups and sessions (repeats of an open report not counted)",
+			},
+			[]string{"target_type", "reason"},
 		),
 		SessionTemplateCreatedTotal: promauto.NewCounter(
 			prometheus.CounterOpts{

@@ -428,6 +428,7 @@ func buildActivityGroupQuery(filter application.ActivityGroupFilter) (string, []
 			` AND (visibility = 'public' OR creator_id = $%d OR id IN (SELECT activity_group_id FROM activity.member WHERE account_id = $%d AND status = 'confirmed' AND deleted_at IS NULL))`,
 			requesterParam, requesterParam,
 		)
+		qb.BaseQuery += groupNotHiddenByBlock(requesterParam)
 		qb.Args = append(qb.Args, filter.RequesterID)
 	}
 
@@ -489,6 +490,12 @@ func buildDiscoveryQuery(filter application.DiscoveryFilter) (string, []interfac
 	}
 
 	qb.AddInterestsCondition("activity_type", "difficulty_level", filter.Interests)
+
+	if filter.RequesterID != uuid.Nil {
+		qb.ParamCount++
+		qb.BaseQuery += groupNotHiddenByBlock(qb.ParamCount)
+		qb.Args = append(qb.Args, filter.RequesterID)
+	}
 
 	cursor, err := postgres.DecodePageToken(filter.PageToken)
 	if err != nil {

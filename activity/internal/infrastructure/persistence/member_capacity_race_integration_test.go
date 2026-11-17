@@ -159,7 +159,7 @@ func TestInvites_BringBackFormerMembers(t *testing.T) {
 	eventWriter := domainevent.MustNewEventWriter(txManager, logger, "activity")
 	accounts := persistence.NewAccountStateManager(txManager)
 	members := application.NewMemberService(logger, txManager, memberRepo, groupRepo, accounts, eventWriter, testMetrics())
-	invites := application.NewInviteService(logger, txManager, persistence.NewGroupInviteRepository(txManager, logger), memberRepo, accounts, eventWriter, testMetrics())
+	invites := application.NewInviteService(logger, txManager, persistence.NewGroupInviteRepository(txManager, logger), memberRepo, accounts, persistence.NewModerationRepository(txManager, logger), eventWriter, testMetrics())
 
 	ctx := context.Background()
 	title, err := domain.NewTitle("Invite Back Test Group")

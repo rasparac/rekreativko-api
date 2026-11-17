@@ -49,8 +49,8 @@ func setupAccountLifecycleTest(t *testing.T) *accountLifecycleTestEnv {
 		ctx:            context.Background(),
 		db:             db,
 		members:        application.NewMemberService(logger, txManager, memberRepo, groupRepo, accountStates, eventWriter, testMetrics()),
-		invites:        application.NewInviteService(logger, txManager, persistence.NewGroupInviteRepository(txManager, logger), memberRepo, accountStates, eventWriter, testMetrics()),
-		sessionInvites: application.NewSessionInviteService(logger, txManager, sessionInviteRepo, sessionRepo, attendeeRepo, accountStates, eventWriter, testMetrics()),
+		invites:        application.NewInviteService(logger, txManager, persistence.NewGroupInviteRepository(txManager, logger), memberRepo, accountStates, persistence.NewModerationRepository(txManager, logger), eventWriter, testMetrics()),
+		sessionInvites: application.NewSessionInviteService(logger, txManager, sessionInviteRepo, sessionRepo, attendeeRepo, accountStates, persistence.NewModerationRepository(txManager, logger), eventWriter, testMetrics()),
 		attendees:      application.NewAttendeeService(logger, txManager, attendeeRepo, memberRepo, sessionRepo, draftRepo, votingRepo, accountStates, eventWriter, testMetrics()),
 	}
 	env.accounts = application.NewAccountLifecycleService(

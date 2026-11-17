@@ -117,7 +117,9 @@ const (
 //
 //  1. everything the account created (decision dh7.3, .claude/docs/activity.md);
 //  2. the rows about the account in what others created: memberships,
-//     invites it received, invite-link uses and RSVPs it withdrew.
+//     invites it received, invite-link uses and RSVPs it withdrew;
+//  3. reports it filed, reports about it or what it created, and blocks it
+//     made or received.
 //
 // Rows where it is only an actor in others' records - inviter, link creator,
 // draft captain or pick, proposal author or member, voter, past attendee -
@@ -125,6 +127,10 @@ const (
 // once identity has erased the account. A new table holding account data
 // belongs in this list.
 var accountErasureSteps = []accountErasureStep{
+	// first, while erasedGroups/erasedSessions still find what they point at
+	{"reports about what it created", `DELETE FROM activity.report
+		WHERE (target_type = 'group' AND target_id IN (` + erasedGroups + `))
+			OR (target_type = 'session' AND target_id IN (` + erasedSessions + `))`},
 	{"team votes", `DELETE FROM activity.session_team_vote WHERE round_id IN (` + erasedRounds + `)`},
 	{"team proposal members", `DELETE FROM activity.session_team_proposal_member WHERE proposal_id IN (
 		SELECT id FROM activity.session_team_proposal WHERE round_id IN (` + erasedRounds + `))`},
@@ -152,6 +158,10 @@ var accountErasureSteps = []accountErasureStep{
 	{"session invites it received", `DELETE FROM activity.session_invites WHERE invited_user_id = $1`},
 	{"its invite link uses", `DELETE FROM activity.group_invite_link_usage WHERE account_id = $1`},
 	{"its withdrawn RSVPs", `DELETE FROM activity.session_attendee WHERE account_id = $1 AND deleted_at IS NOT NULL`},
+	// a report's note is free text its reporter typed
+	{"reports it filed or about it", `DELETE FROM activity.report
+		WHERE reporter_id = $1 OR (target_type = 'user' AND target_id = $1)`},
+	{"its blocks, either way", `DELETE FROM activity.account_block WHERE blocker_id = $1 OR blocked_id = $1`},
 }
 
 // Erase records the erasure and runs accountErasureSteps. It must run in the

@@ -327,6 +327,22 @@ func MapErrToAppError(err error) *domainerror.AppError {
 		return domainerror.ValidationError("session_not_standalone", "Invites are only supported for standalone sessions; group sessions are joined through the group", err)
 	}
 
+	// Moderation (reports and blocks)
+	switch {
+	case errors.Is(err, domain.ErrInvalidReportTarget):
+		return domainerror.ValidationError("invalid_report_target", "Report target must be user, group or session", err)
+	case errors.Is(err, domain.ErrInvalidReportReason):
+		return domainerror.ValidationError("invalid_report_reason", "Invalid report reason", err)
+	case errors.Is(err, domain.ErrReportNoteTooLong):
+		return domainerror.ValidationError("report_note_too_long", "Report note is too long", err)
+	case errors.Is(err, domain.ErrCannotReportYourself):
+		return domainerror.ValidationError("cannot_report_self", "You cannot report yourself", err)
+	case errors.Is(err, domain.ErrCannotBlockYourself):
+		return domainerror.ValidationError("cannot_block_self", "You cannot block yourself", err)
+	case errors.Is(err, domain.ErrAccountBlocked):
+		return domainerror.Forbidden("account_blocked", "This account can't be invited", err)
+	}
+
 	// Default to internal error with wrapped error for debugging
 	return domainerror.InternalWithErr(err)
 }
