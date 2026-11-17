@@ -27,7 +27,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -trimpath \
     -ldflags="-s -w" \
     -o service \
-    ./${SERVICE}/cmd/${CMD_PATH}/main.go
+    ./${SERVICE}/cmd/${CMD_PATH}
 
 # ---- runtime stage ----
 FROM gcr.io/distroless/base-debian12
