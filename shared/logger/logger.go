@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +18,10 @@ import (
 type (
 	Logger struct {
 		logger *slog.Logger
+		// name is written as one top-level "logger" field, not as a slog
+		// group: a group nests every key under it, and Loki's | json then
+		// names a field per component (activity_http_moderation_event_id).
+		name string
 	}
 )
 
@@ -83,12 +88,23 @@ func NewDevelopment() *Logger {
 func (l *Logger) WithValues(values ...any) *Logger {
 	return &Logger{
 		logger: l.logger.With(values...),
+		name:   l.name,
 	}
 }
 
+// WithName appends name to the logger's name with a dot. A name that already
+// starts with it replaces it: main names the logger after the service and
+// components usually spell the full "<service>.<component>".
 func (l *Logger) WithName(name string) *Logger {
+	switch {
+	case l.name == "", name == l.name, strings.HasPrefix(name, l.name+"."):
+	default:
+		name = l.name + "." + name
+	}
+
 	return &Logger{
-		logger: l.logger.WithGroup(name),
+		logger: l.logger,
+		name:   name,
 	}
 }
 
@@ -123,25 +139,26 @@ func (l *Logger) log(
 	userAgent := api.UserAgentFromContext(ctx)
 	eventID := api.EventIDFromContext(ctx)
 
-	// Empty (not uuid.Nil.String()) when unset, matching the other fields
-	// here - most log lines happen after auth middleware has populated this,
-	// but plenty (startup, public endpoints, background jobs) never have it.
+	// Left out (not uuid.Nil.String()) when unset: startup, public endpoints
+	// and background jobs never have it.
 	var accountID string
 	if id := authcontext.GetAccountID(ctx); id != uuid.Nil {
 		accountID = id.String()
 	}
 
 	// A key the caller passed wins over the context's value: the JSON
-	// handler doesn't dedupe, and a second, empty "event_id" would hide the
-	// real one from anything that reads the line as JSON (jq, Loki).
+	// handler doesn't dedupe, and a second "event_id" would hide the real one
+	// from anything that reads the line as JSON (jq, Loki). An unset value is
+	// left out rather than logged empty.
 	for _, field := range [...]struct{ key, value string }{
+		{"logger", l.name},
 		{"ip_address", ipAddress},
 		{"user_agent", userAgent},
 		{"request_id", requestID},
 		{"event_id", eventID},
 		{"account_id", accountID},
 	} {
-		if !hasKey(keysAndValues, field.key) {
+		if field.value != "" && !hasKey(keysAndValues, field.key) {
 			keysAndValues = append(keysAndValues, field.key, field.value)
 		}
 	}

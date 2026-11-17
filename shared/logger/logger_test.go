@@ -49,6 +49,59 @@ func Test_logger_contextFields(t *testing.T) {
 	}
 }
 
+func Test_logger_leavesOutUnsetContextFields(t *testing.T) {
+	var buf bytes.Buffer
+	NewWithWriter("debug", "json", &buf).Info(api.WithEventID(context.Background(), "e1"), "msg")
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+	assert.Equal(t, "e1", got["event_id"])
+	for _, key := range []string{"logger", "ip_address", "user_agent", "request_id", "account_id"} {
+		assert.NotContains(t, got, key)
+	}
+}
+
+// The name is one top-level field, so every component's keys have the same
+// names (Loki's | json flattens a nested object into prefixed fields).
+func Test_logger_WithName(t *testing.T) {
+	for name, tc := range map[string]struct {
+		build func(l *Logger) *Logger
+		want  string
+	}{
+		"one name": {
+			build: func(l *Logger) *Logger { return l.WithName("activity") },
+			want:  "activity",
+		},
+		"a short name is appended": {
+			build: func(l *Logger) *Logger { return l.WithName("activity").WithName("domainevent") },
+			want:  "activity.domainevent",
+		},
+		"a full name replaces its prefix": {
+			build: func(l *Logger) *Logger { return l.WithName("activity").WithName("activity.http.moderation") },
+			want:  "activity.http.moderation",
+		},
+		"the same name twice": {
+			build: func(l *Logger) *Logger { return l.WithName("activity").WithName("activity") },
+			want:  "activity",
+		},
+		"kept by WithValues": {
+			build: func(l *Logger) *Logger { return l.WithName("activity").WithValues("method", "Report") },
+			want:  "activity",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			tc.build(NewWithWriter("debug", "json", &buf)).Info(api.WithEventID(context.Background(), "e1"), "msg")
+
+			var got map[string]any
+			require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+			assert.Equal(t, tc.want, got["logger"])
+			assert.Equal(t, "e1", got["event_id"], "top level, not nested under the name")
+			assert.Equal(t, 1, strings.Count(buf.String(), `"logger"`))
+		})
+	}
+}
+
 func Test_logger_New(t *testing.T) {
 	testCases := []struct {
 		name   string

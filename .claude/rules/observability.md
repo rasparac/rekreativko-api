@@ -20,6 +20,13 @@ The access log (`query_params`) and the span's `http.target` show a parameter's 
 `[redacted]`. A new endpoint's parameters are therefore redacted by default (tokens, codes, coordinates, street,
 date of birth, free-text search...) - add a key there only if its value is safe to store in Loki/Jaeger.
 
+## Log line shape
+
+`shared/logger` writes every key at the top level of the JSON line: the component as `logger`
+(`activity.http.moderation`, from `WithName`), then `request_id`, `event_id`, `account_id`, `ip_address`,
+`user_agent` - each only when set. Keep it flat: a slog group would nest the keys, and Loki's `| json` would
+then name them per component (`activity_http_moderation_event_id`), so one query could not find them all.
+
 ## Tracing a domain event
 
 With `LOG_LEVEL=debug`, every hop logs a line carrying the event's `event_id`, so one query shows its whole path -
