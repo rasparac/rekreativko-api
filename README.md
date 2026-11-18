@@ -471,7 +471,7 @@ open coverage.html
 
 ## CI/CD
 
-GitHub Actions workflow automatically builds and pushes Docker images to GitHub Container Registry on push to `main`.
+Changes reach `main` through pull requests: the `ci.yaml` workflow (`go build`, unit and integration tests, golangci-lint) must pass first. After a merge, GitHub Actions builds and pushes the Docker images to GitHub Container Registry and deploys them to dev; that workflow runs `ci.yaml` again and builds nothing if it fails.
 
 Manual builds can be triggered via GitHub Actions UI by selecting a service and version.
 
