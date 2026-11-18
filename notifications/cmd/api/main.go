@@ -22,6 +22,7 @@ import (
 	metricstracer "github.com/rasparac/rekreativko-api/shared/store/metrics_tracer"
 	"github.com/rasparac/rekreativko-api/shared/store/postgres"
 	"github.com/rasparac/rekreativko-api/shared/telemetry"
+	"github.com/resend/resend-go/v4"
 
 	notificationsEvents "github.com/rasparac/rekreativko-api/notifications/internal/interfaces/events"
 
@@ -188,7 +189,8 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		if notifyCfg.EmailFrom == "" {
 			return fmt.Errorf("EMAIL_FROM is required with RESEND_API_KEY")
 		}
-		emailSender = delivery.NewResendEmailSender(notifyCfg.ResendAPIKey, notifyCfg.EmailFrom, log)
+		resendClient := resend.NewCustomClient(&http.Client{Timeout: 10 * time.Second}, notifyCfg.ResendAPIKey)
+		emailSender = delivery.NewResendEmailSender(resendClient.Emails, notifyCfg.EmailFrom, log)
 	case cfg.IsDevMode():
 		emailSender = delivery.NewInMemoryEmailSender(log)
 	}

@@ -2,66 +2,57 @@ package delivery
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/events"
 	testutil "github.com/rasparac/rekreativko-api/shared/testing"
+	"github.com/resend/resend-go/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// fakeResend answers every request with status and body, keeping the requests.
-func fakeResend(t *testing.T, status int, body string) (*ResendEmailSender, *[]*http.Request, *[]resendSendRequest) {
-	t.Helper()
+// fakeResendEmails answers every send with err (or an id), keeping the calls.
+type fakeResendEmails struct {
+	err      error
+	requests []*resend.SendEmailRequest
+	options  []*resend.SendEmailOptions
+}
 
-	var (
-		reqs     []*http.Request
-		payloads []resendSendRequest
-	)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var p resendSendRequest
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&p))
-		reqs = append(reqs, r)
-		payloads = append(payloads, p)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
-		_, _ = w.Write([]byte(body))
-	}))
-	t.Cleanup(srv.Close)
+func (f *fakeResendEmails) SendWithOptions(_ context.Context, params *resend.SendEmailRequest, options *resend.SendEmailOptions) (*resend.SendEmailResponse, error) {
+	f.requests = append(f.requests, params)
+	f.options = append(f.options, options)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &resend.SendEmailResponse{Id: "49a3999c-0ce1-4ea6-ab68-afcd6dc2e794"}, nil
+}
 
-	s := NewResendEmailSender("re_test", "Rekreativko <no-reply@mail.example.com>", testutil.CreateLogger())
-	s.baseURL = srv.URL
-	return s, &reqs, &payloads
+func newTestSender(err error) (*resendEmailSender, *fakeResendEmails) {
+	fake := &fakeResendEmails{err: err}
+	return NewResendEmailSender(fake, "Rekreativko <no-reply@mail.example.com>", testutil.CreateLogger()), fake
 }
 
 func TestResendEmailSender_Sends(t *testing.T) {
-	s, reqs, payloads := fakeResend(t, http.StatusOK, `{"id":"49a3999c-0ce1-4ea6-ab68-afcd6dc2e794"}`)
+	s, fake := newTestSender(nil)
 
 	require.NoError(t, s.SendEmail(context.Background(), "ana@example.com", "Your code", "123456"))
 
-	require.Len(t, *reqs, 1)
-	r := (*reqs)[0]
-	assert.Equal(t, http.MethodPost, r.Method)
-	assert.Equal(t, "/emails", r.URL.Path)
-	assert.Equal(t, "Bearer re_test", r.Header.Get("Authorization"))
-	assert.Empty(t, r.Header.Get("Idempotency-Key"), "no event being handled")
-	assert.Equal(t, resendSendRequest{
+	require.Len(t, fake.requests, 1)
+	assert.Equal(t, &resend.SendEmailRequest{
 		From:    "Rekreativko <no-reply@mail.example.com>",
 		To:      []string{"ana@example.com"},
 		Subject: "Your code",
 		Text:    "123456",
-	}, (*payloads)[0])
+	}, fake.requests[0])
+	assert.Nil(t, fake.options[0], "no idempotency key outside an event's handling")
 }
 
 // A redelivered event sends the same key, so Resend sends the email once.
 func TestResendEmailSender_IdempotencyKeyPerEventAndRecipient(t *testing.T) {
-	s, reqs, _ := fakeResend(t, http.StatusOK, `{"id":"x"}`)
+	s, fake := newTestSender(nil)
 	ctx := api.WithEventID(context.Background(), "e1")
 
 	require.NoError(t, s.SendEmail(ctx, "ana@example.com", "s", "b"))
@@ -69,33 +60,38 @@ func TestResendEmailSender_IdempotencyKeyPerEventAndRecipient(t *testing.T) {
 	require.NoError(t, s.SendEmail(ctx, "ivo@example.com", "s", "b"))
 	require.NoError(t, s.SendEmail(api.WithEventID(context.Background(), "e2"), "ana@example.com", "s", "b"))
 
-	keys := make([]string, len(*reqs))
-	for i, r := range *reqs {
-		keys[i] = r.Header.Get("Idempotency-Key")
+	keys := make([]string, len(fake.options))
+	for i, o := range fake.options {
+		require.NotNil(t, o)
+		keys[i] = o.IdempotencyKey
 	}
 	assert.Equal(t, keys[0], keys[1], "the same event and recipient")
 	assert.NotEqual(t, keys[0], keys[2], "another recipient")
 	assert.NotEqual(t, keys[0], keys[3], "another event")
-	assert.True(t, strings.HasPrefix(keys[0], "notifications/e1/"))
-	assert.NotContains(t, keys[0], "ana", "the address is hashed")
+	assert.Regexp(t, `^notifications/e1/[0-9a-f]{16}$`, keys[0], "the address is hashed")
 }
 
 func TestResendEmailSender_Errors(t *testing.T) {
+	// Resend's message may quote the address, so it must not reach the error.
+	rejected := func(status int, name string) error {
+		return &resend.ResendError{StatusCode: status, Name: name, Message: "Invalid `to`: ana@example.com"}
+	}
+
 	for name, tc := range map[string]struct {
-		status    int
-		body      string
+		err       error
 		permanent bool
 	}{
-		"validation error":      {http.StatusUnprocessableEntity, `{"name":"validation_error","message":"Invalid ana@example.com"}`, true},
-		"bad api key":           {http.StatusUnauthorized, `{"name":"missing_api_key"}`, true},
-		"unverified domain":     {http.StatusForbidden, `{"name":"invalid_from_address"}`, true},
-		"rate limited":          {http.StatusTooManyRequests, `{"name":"rate_limit_exceeded"}`, false},
-		"same key in flight":    {http.StatusConflict, `{"name":"concurrent_idempotent_requests"}`, false},
-		"outage":                {http.StatusServiceUnavailable, `<html>down</html>`, false},
-		"internal server error": {http.StatusInternalServerError, `{"name":"internal_server_error"}`, false},
+		"validation error":      {rejected(http.StatusUnprocessableEntity, "validation_error"), true},
+		"bad api key":           {rejected(http.StatusUnauthorized, "missing_api_key"), true},
+		"unverified domain":     {rejected(http.StatusForbidden, "invalid_from_address"), true},
+		"same key in flight":    {rejected(http.StatusConflict, "concurrent_idempotent_requests"), false},
+		"outage":                {rejected(http.StatusServiceUnavailable, ""), false},
+		"internal server error": {rejected(http.StatusInternalServerError, "internal_server_error"), false},
+		"rate limited":          {&resend.RateLimitError{Message: "Too many requests", RetryAfter: "1"}, false},
+		"network error":         {errors.New("Post \"https://api.resend.com/emails\": dial tcp: connection refused"), false},
 	} {
 		t.Run(name, func(t *testing.T) {
-			s, _, _ := fakeResend(t, tc.status, tc.body)
+			s, _ := newTestSender(tc.err)
 
 			err := s.SendEmail(context.Background(), "ana@example.com", "Your code", "123456")
 
@@ -106,14 +102,4 @@ func TestResendEmailSender_Errors(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestResendEmailSender_NetworkErrorIsRetried(t *testing.T) {
-	s := NewResendEmailSender("re_test", "a@b.c", testutil.CreateLogger())
-	s.baseURL = "http://127.0.0.1:1" // nothing listens
-
-	err := s.SendEmail(context.Background(), "ana@example.com", "s", "b")
-
-	require.Error(t, err)
-	assert.False(t, errors.Is(err, events.ErrPermanent))
 }

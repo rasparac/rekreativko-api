@@ -175,15 +175,15 @@ Chosen in `notifications/cmd/api/main.go`:
 
 | Email | When |
 |---|---|
-| `ResendEmailSender` | `RESEND_API_KEY` is set, in any mode (dev too, to test real delivery); `EMAIL_FROM` is then required |
+| Resend (`delivery.NewResendEmailSender`, given the SDK client's `Emails`) | `RESEND_API_KEY` is set, in any mode (dev too, to test real delivery); `EMAIL_FROM` is then required |
 | `InMemoryEmailSender` (logs only) | dev mode without a key |
 | none - startup fails | any other environment without a key |
 
 SMS: `InMemorySMSSender` (logs only) in dev mode; outside it `DisabledSMSSender` (errors loudly if ever called) while `PHONE_REGISTRATION_ENABLED=false`, and startup fails with it on, since no SMS provider exists. Deliberate fail-fast: a nil sender would otherwise panic mid-flight on the first real event.
 
-**Resend** (`infrastructure/delivery/resend_sender.go`) calls the REST API (`POST /emails`) directly, not the Go SDK, which reports a 400/422 as a bare string (a request Resend will never accept couldn't be told from an outage) and may quote the address in its error text. The rendered templates are sent as plain text; templates stay in this repo (not in Resend) so they are versioned, tested and localized here.
+**Resend** (`infrastructure/delivery/resend_sender.go`) sends with the official Go SDK, `github.com/resend/resend-go/v4`, which returns typed errors (`*resend.ResendError` with the status and error name, `*resend.RateLimitError` for a 429). The rendered templates are sent as plain text; templates stay in this repo (not in Resend) so they are versioned, tested and localized here.
 - **Idempotency:** each email carries `Idempotency-Key: notifications/<event_id>/<hashed recipient>`, so a redelivered event, or a retry after a lost response, sends it once (Resend keeps keys 24 hours).
-- **Errors:** `429`, `409` (the same key still in flight), `5xx` and network errors are retried by redelivering the event; any other `4xx` (bad key, unverified sender domain, invalid address) is `events.Permanent` and goes straight to the DLQ. An error carries only the status and Resend's error `name` - never the recipient, the text, or Resend's message. `Retry-After` is not honored; JetStream's redelivery backoff spaces the retries.
+- **Errors:** `429`, `409` (the same key still in flight), `5xx` and network errors are retried by redelivering the event; any other `4xx` (bad key, unverified sender domain, invalid address) is `events.Permanent` and goes straight to the DLQ. An error carries only the status and Resend's error `name` - never the recipient, the text, or Resend's message (the SDK's error text is that message, which may quote the address, so it is not wrapped). `Retry-After` is not honored; JetStream's redelivery backoff spaces the retries.
 - **Logs:** `email sent` (debug) with Resend's email id, to look it up in the Resend dashboard.
 - **Key:** a sending-only key restricted to the sending domain - never the full-access one.
 - **Sender domain:** none verified yet, so `EMAIL_FROM` can only be `Rekreativko <onboarding@resend.dev>`, which Resend delivers only to the account owner's address (good for local testing). Production needs a domain verified in Resend (SPF, DKIM, DMARC) and `EMAIL_FROM=Rekreativko <no-reply@<that domain>>`.
