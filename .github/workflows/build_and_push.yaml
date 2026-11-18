@@ -39,7 +39,12 @@ env:
   IMAGE_PREFIX: ghcr.io/rasparac
 
 jobs:
+  # A failing build, test or lint run stops the images and the dev deploy
+  ci:
+    uses: ./.github/workflows/ci.yaml
+
   build-and-push:
+    needs: ci
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -149,8 +154,9 @@ jobs:
   # Runs even if some matrix builds failed, and deploys the ones that were built (a failed build
   # uploads nothing, so it is never pointed at an image that doesn't exist).
   deploy-dev:
-    needs: build-and-push
-    if: ${{ !cancelled() }}
+    needs: [ci, build-and-push]
+    # !cancelled() alone would also run after a skipped build when ci failed
+    if: ${{ !cancelled() && needs.ci.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       # Full history so the script can tell whether migrations changed since the running tag
