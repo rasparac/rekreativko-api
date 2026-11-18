@@ -803,9 +803,10 @@ func (s *Service) ResendVerificationCode(ctx context.Context, req ResendVerifica
 	)
 	defer span.End()
 
+	// req.Identity is the email or phone the client typed: personal data, never logged.
+	// account_id is added once the account is found.
 	log := s.logger.WithValues(
 		"method", "ResendVerificationCode",
-		"account_id", req.Identity,
 		"type", req.Type,
 	)
 
@@ -821,6 +822,8 @@ func (s *Service) ResendVerificationCode(ctx context.Context, req ResendVerifica
 		if err != nil {
 			return fmt.Errorf("get account by identity: %w", err)
 		}
+
+		log = log.WithValues("account_id", account.ID())
 
 		if account.IsActive() {
 			return domainerror.BadRequest("account_already_verified", "Account is already verified", nil)
