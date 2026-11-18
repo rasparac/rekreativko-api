@@ -33,7 +33,14 @@ jobs:
           golangci-lint run ./...
 
       - name: Unit tests
-        run: go test ./... -short
+        run: go test ./... -short -covermode=atomic -coverprofile=coverage.out
+
+      # Unit tests only: the integration tests below are not part of this number
+      - name: Coverage
+        run: |
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}')
+          echo "Unit test coverage: ${total}"
+          echo "### Unit test coverage: ${total}" >> "$GITHUB_STEP_SUMMARY"
 
       # Testcontainers start PostgreSQL/NATS through the runner's Docker
       - name: Integration tests
