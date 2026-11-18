@@ -64,6 +64,11 @@ type (
 		// Resend account owner's own address.
 		ResendAPIKey string `envconfig:"RESEND_API_KEY"`
 		EmailFrom    string `envconfig:"EMAIL_FROM"`
+
+		// WelcomeEmailEnabled turns the welcome email sent when an address is
+		// verified on or off; verification and password codes are unaffected.
+		// Switch it off while the email plan is small (Resend free tier).
+		WelcomeEmailEnabled bool `envconfig:"WELCOME_EMAIL_ENABLED" default:"true"`
 	}
 
 	LocationServiceConfig struct {

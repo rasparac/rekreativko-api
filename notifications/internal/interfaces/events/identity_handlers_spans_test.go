@@ -54,7 +54,7 @@ func newTestHandlers(t *testing.T, sender interface {
 
 	delivery := application.NewDeliveryService(sender, sender, renderer, metrics, log)
 
-	return NewIdentityHandlers(delivery, fakeInactiveAccounts{}, metrics, log)
+	return NewIdentityHandlers(delivery, fakeInactiveAccounts{}, metrics, log, true)
 }
 
 // fakeInactiveAccounts holds the deleted or erased accounts.

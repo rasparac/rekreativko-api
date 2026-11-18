@@ -70,6 +70,8 @@ type (
 		metrics  application.DeliveryMetrics
 		logger   *logger.Logger
 		tracer   trace.Tracer
+
+		welcomeEnabled bool
 	}
 )
 
@@ -78,6 +80,7 @@ func NewIdentityHandlers(
 	accounts inactiveAccountChecker,
 	metrics application.DeliveryMetrics,
 	log *logger.Logger,
+	welcomeEnabled bool,
 ) *IdentityHandlers {
 	return &IdentityHandlers{
 		delivery: delivery,
@@ -85,6 +88,8 @@ func NewIdentityHandlers(
 		metrics:  metrics,
 		logger:   log.WithName("notification.identity_handlers"),
 		tracer:   telemetry.Tracer("notification.identity_handlers"),
+
+		welcomeEnabled: welcomeEnabled,
 	}
 }
 
@@ -155,6 +160,12 @@ func (h *IdentityHandlers) HandleAccountVerified(ctx context.Context, payload []
 		attribute.String("event.delivery_type", event.DeliveryType),
 		attribute.String("event.account_id", event.AccountID.String()),
 	)
+
+	if !h.welcomeEnabled {
+		h.logger.Debug(ctx, "welcome email disabled")
+		span.SetStatus(codes.Ok, "skipped: welcome email disabled")
+		return nil
+	}
 
 	// Nobody proved the address is theirs, so don't mail it.
 	if event.Unconfirmed {

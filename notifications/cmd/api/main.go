@@ -215,7 +215,7 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 	}
 
 	deliveryService := application.NewDeliveryService(emailSender, smsSender, renderer, appMetrics, log)
-	identityNotifier := notificationsEvents.NewIdentityHandlers(deliveryService, accountLifecycleService, appMetrics, log)
+	identityNotifier := notificationsEvents.NewIdentityHandlers(deliveryService, accountLifecycleService, appMetrics, log, notifyCfg.WelcomeEmailEnabled)
 
 	subscriber := notificationsEvents.NewSubscriber(
 		messageBroker,

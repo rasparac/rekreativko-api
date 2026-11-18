@@ -150,6 +150,29 @@ func TestHandleAccountVerified_UnconfirmedSendsNothing(t *testing.T) {
 	assert.Empty(t, logs.String())
 }
 
+// With WELCOME_EMAIL_ENABLED off the welcome email is skipped and the event acked.
+func TestHandleAccountVerified_WelcomeDisabledSendsNothing(t *testing.T) {
+	var (
+		sender  recordingSender
+		metrics = newFakeMetrics()
+		h       = newTestHandlers(t, &sender, metrics, logger.New("error", "json"))
+	)
+	h.welcomeEnabled = false
+
+	payload, err := json.Marshal(map[string]any{
+		"event_id":   uuid.New(),
+		"account_id": uuid.New(),
+		"code_type":  "email",
+		"email":      secretEmail,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, h.HandleAccountVerified(context.Background(), payload))
+
+	assert.Empty(t, sender.emails)
+	assert.Empty(t, sender.sms)
+}
+
 // A deleted or erased account gets no email or SMS any more; the event is acked.
 func TestIdentityHandlers_DeletedAccountGetsNothing(t *testing.T) {
 	for name, handle := range map[string]func(*IdentityHandlers) func(context.Context, []byte) error{

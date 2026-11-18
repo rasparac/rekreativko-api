@@ -107,7 +107,7 @@ Each subscription creates its own durable JetStream consumer (`<service>+<subjec
 | Topic | Action |
 |---|---|
 | `identity.verification_code.created` | send the actual code (email, or SMS for `phone`) |
-| `identity.account.verified` | send welcome email — email accounts only; a phone account sends nothing, and neither does an event with `unconfirmed: true` (identity's `ACCOUNT_VERIFICATION_REQUIRED=false`: the address was never proven) |
+| `identity.account.verified` | send welcome email (unless `WELCOME_EMAIL_ENABLED=false`) — email accounts only; a phone account sends nothing, and neither does an event with `unconfirmed: true` (identity's `ACCOUNT_VERIFICATION_REQUIRED=false`: the address was never proven) |
 | `identity.account.password.changed` | send the password-changed alert (email, or SMS for `phone`) - after `change-password` or `reset-password` |
 | `identity.password_reset.requested` | send the forgot-password code (`password_reset`, email or SMS by `code_type`; same payload and handling as a verification code) |
 
@@ -194,6 +194,7 @@ SMS: `InMemorySMSSender` (logs only) in dev mode; outside it `DisabledSMSSender`
 |---|---|
 | `RESEND_API_KEY` | Resend sending-only key. Empty: dev mode logs emails, any other environment refuses to start |
 | `EMAIL_FROM` | Sender, required with `RESEND_API_KEY`: `Rekreativko <no-reply@<verified domain>>` (`Rekreativko <onboarding@resend.dev>` before a domain is verified) |
+| `WELCOME_EMAIL_ENABLED` | Default `true`. `false` skips the welcome email (the event is acked, nothing is sent); verification, password reset and password-changed messages are unaffected. Useful to save Resend's monthly quota |
 | `PHONE_REGISTRATION_ENABLED` | Default `false`. The **only** place in the codebase where this flag changes runtime behavior at startup (elsewhere it just gates registration routes): off, outside dev mode the SMS sender is `DisabledSMSSender`; on, startup fails (no SMS provider) |
 | `GATEWAY_API_KEY` | Required, validated via `X-Gateway-Key` |
 | `NATS_URL` | Required |
