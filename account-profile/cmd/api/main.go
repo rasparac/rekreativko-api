@@ -14,6 +14,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rasparac/rekreativko-api/account-profile/internal/metrics"
+	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/config"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/events"
@@ -147,9 +148,16 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		}
 	}()
 
+	// reads and validates every JSON request body
+	decoder, err := api.NewDecoder()
+	if err != nil {
+		return fmt.Errorf("create request decoder: %w", err)
+	}
+
 	accountProfileHandler := accountProfileHttp.NewHandler(
 		accountProfileService,
 		accountSettingsService,
+		decoder,
 		log,
 	)
 

@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -30,9 +29,15 @@ type (
 		UpdateSettings(ctx context.Context, accountID uuid.UUID, settings application.UpdateAccountSettingsParams) error
 	}
 
+	// requestDecoder reads a request body into a DTO and checks its validate tags (api.Decoder)
+	requestDecoder interface {
+		Decode(r *http.Request, body any) error
+	}
+
 	accountPorfileHandler struct {
 		accountProfileService  accountProfiler
 		accountSettingsService accountSettingsService
+		decoder                requestDecoder
 		logger                 *logger.Logger
 	}
 )
@@ -40,11 +45,13 @@ type (
 func NewHandler(
 	accountProfileService accountProfiler,
 	accountSettingsService accountSettingsService,
+	decoder requestDecoder,
 	log *logger.Logger,
 ) *accountPorfileHandler {
 	return &accountPorfileHandler{
 		accountProfileService:  accountProfileService,
 		accountSettingsService: accountSettingsService,
+		decoder:                decoder,
 		logger:                 log.WithName("account-profile.http.handler"),
 	}
 }
@@ -232,9 +239,10 @@ func (h *accountPorfileHandler) UpdateProfile(
 		req       = &dtos.UpdateProfileRequest{}
 	)
 
-	err := json.NewDecoder(r.Body).Decode(req)
+	err := h.decoder.Decode(r, req)
 	if err != nil {
-		api.WriteBadRequestResponse(w, "bad_request", "Invalid request body")
+		h.logger.Error(ctx, "failed to decode request body", "error", err)
+		api.WriteValidationErrorResponse(w, err)
 		return
 	}
 
@@ -277,9 +285,10 @@ func (h *accountPorfileHandler) UpdateAccountSettings(
 		req       dtos.UpdateAccountSettingsRequest
 	)
 
-	err := json.NewDecoder(r.Body).Decode(&req)
+	err := h.decoder.Decode(r, &req)
 	if err != nil {
-		api.WriteBadRequestResponse(w, "bad_request", "Invalid request body")
+		h.logger.Error(ctx, "failed to decode request body", "error", err)
+		api.WriteValidationErrorResponse(w, err)
 		return
 	}
 

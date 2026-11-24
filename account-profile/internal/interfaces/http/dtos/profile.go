@@ -21,10 +21,12 @@ type UpdateProfileRequest struct {
 	// keeps its previously saved value (e.g. sending only updated coordinates
 	// keeps the existing city/country). location_latitude/location_longitude
 	// are only applied together - if you send just one, it's ignored.
-	LocationCity      *string  `json:"location_city" example:"Belgrade"`
-	LocationCountry   *string  `json:"location_country" example:"Serbia"`
-	LocationLatitude  *float64 `json:"location_latitude" example:"44.8176"`
-	LocationLongitude *float64 `json:"location_longitude" example:"20.4633"`
+	LocationCity    *string `json:"location_city" example:"Belgrade"`
+	LocationCountry *string `json:"location_country" example:"Serbia"`
+	// The domain does not range-check coordinates, so these tags are the only check. A pointer, so
+	// that omitted is skipped and a real 0 is validated like any other value.
+	LocationLatitude  *float64 `json:"location_latitude" validate:"omitempty,min=-90,max=90" example:"44.8176"`
+	LocationLongitude *float64 `json:"location_longitude" validate:"omitempty,min=-180,max=180" example:"20.4633"`
 
 	// Profile picture
 	ProfilePictureURL *string `json:"profile_picture_url" example:"https://example.com/avatar.jpg"`

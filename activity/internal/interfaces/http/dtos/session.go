@@ -23,8 +23,8 @@ type CreateSessionRequest struct {
 	// LocationStreet is an optional venue/address line shown to attendees so they
 	// know exactly where to go, beyond just the city.
 	LocationStreet string     `json:"location_street,omitempty" validate:"omitempty,max=255" example:"Ada Ciganlija bb, Court 3"`
-	LocationLat    float64    `json:"location_lat" validate:"required,min=-90,max=90" example:"44.8176"`
-	LocationLng    float64    `json:"location_lng" validate:"required,min=-180,max=180" example:"20.4633"`
+	LocationLat    *float64   `json:"location_lat" validate:"required,min=-90,max=90" example:"44.8176"`
+	LocationLng    *float64   `json:"location_lng" validate:"required,min=-180,max=180" example:"20.4633"`
 	StartTime      time.Time  `json:"start_time" validate:"required" example:"2024-02-01T18:00:00Z"`
 	EndTime        *time.Time `json:"end_time,omitempty" example:"2024-02-01T20:00:00Z"`
 	Capacity       *int       `json:"capacity,omitempty" validate:"omitempty,min=1,max=1000" example:"20"`
@@ -74,8 +74,8 @@ type UpdateSessionRequest struct {
 	LocationCity    string     `json:"location_city" validate:"required,min=2,max=100" example:"Belgrade"`
 	LocationCountry string     `json:"location_country" validate:"required,min=2,max=100" example:"Serbia"`
 	LocationStreet  string     `json:"location_street,omitempty" validate:"omitempty,max=255" example:"Ada Ciganlija bb, Court 3"`
-	LocationLat     float64    `json:"location_lat" validate:"required,min=-90,max=90" example:"44.8176"`
-	LocationLng     float64    `json:"location_lng" validate:"required,min=-180,max=180" example:"20.4633"`
+	LocationLat     *float64   `json:"location_lat" validate:"required,min=-90,max=90" example:"44.8176"`
+	LocationLng     *float64   `json:"location_lng" validate:"required,min=-180,max=180" example:"20.4633"`
 	StartTime       time.Time  `json:"start_time" validate:"required" example:"2024-02-01T18:00:00Z"`
 	EndTime         *time.Time `json:"end_time,omitempty" example:"2024-02-01T20:00:00Z"`
 	Capacity        *int       `json:"capacity,omitempty" validate:"omitempty,min=1,max=1000" example:"20"`

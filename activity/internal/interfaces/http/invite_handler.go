@@ -40,7 +40,7 @@ func (h *Handler) SendInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req dtos.SendInviteRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := h.decoder.Decode(r, &req); err != nil {
 		h.logger.Error(ctx, "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
 		return

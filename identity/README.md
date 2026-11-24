@@ -51,6 +51,8 @@ Verification codes are 6 digits; bcrypt cost is 10. Both are hardcoded, not conf
 
 Public/auth split is enforced at the gateway (`gateway/internal/router.go`), not by this service itself.
 
+**Request validation.** `api.Decoder` (built in `main`, injected into the handler) checks the DTOs' `validate` tags: a missing required field, a `type` other than `email`/`phone`, a too-short password or a code that is not 6 characters is `400 validation_error`, with `details` keyed by the JSON field name (`{"type": "type must be one of [email phone]"}`). So an empty `identity` on `forgot-password` / `resend-verification-code` is a `400`, not a silent `200`; the "same answer whether or not the address has an account" rule below is about a *well-formed* request. Email and phone format are **not** tags: the domain trims and lowercases the address first (`domain.NormalizeEmail`) and then validates it (`400 identity_invalid_email_format` / `400 identity_invalid_phone_number_format`), so `"User@Gmail.com "` still works.
+
 ### Register — `POST /register`
 
 ```json

@@ -43,7 +43,7 @@ func (h *Handler) InviteMember(w http.ResponseWriter, r *http.Request) {
 
 	// Decode request body
 	var req dtos.InviteMemberRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := h.decoder.Decode(r, &req); err != nil {
 		h.logger.Error(ctx, "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
 		return
@@ -231,7 +231,7 @@ func (h *Handler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
 
 	// Decode request body
 	var req dtos.UpdateMemberRoleRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := h.decoder.Decode(r, &req); err != nil {
 		h.logger.Error(ctx, "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
 		return

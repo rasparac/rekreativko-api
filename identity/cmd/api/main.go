@@ -16,6 +16,7 @@ import (
 	"github.com/rasparac/rekreativko-api/identity/internal/application"
 	"github.com/rasparac/rekreativko-api/identity/internal/infrastructure/persistence"
 	"github.com/rasparac/rekreativko-api/identity/internal/metrics"
+	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/config"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/events"
@@ -224,9 +225,16 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	mux := http.NewServeMux()
 
+	// reads and validates every JSON request body
+	decoder, err := api.NewDecoder()
+	if err != nil {
+		return fmt.Errorf("create request decoder: %w", err)
+	}
+
 	identityHandler := identityHttp.NewHandler(
 		identityService,
 		passwordService,
+		decoder,
 		log,
 	)
 

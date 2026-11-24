@@ -41,7 +41,7 @@ func (h *Handler) CreateRSVP(w http.ResponseWriter, r *http.Request) {
 
 	// Decode request body
 	var req dtos.CreateRSVPRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := h.decoder.Decode(r, &req); err != nil {
 		h.logger.Error(ctx, "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
 		return
@@ -91,7 +91,7 @@ func (h *Handler) UpdateRSVP(w http.ResponseWriter, r *http.Request) {
 
 	// Decode request body
 	var req dtos.UpdateRSVPRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := h.decoder.Decode(r, &req); err != nil {
 		h.logger.Error(ctx, "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
 		return
@@ -455,7 +455,7 @@ func (h *Handler) AssignAttendeeTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req dtos.AssignTeamRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := h.decoder.Decode(r, &req); err != nil {
 		h.logger.Error(ctx, "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
 		return
