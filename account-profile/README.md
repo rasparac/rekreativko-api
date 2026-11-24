@@ -6,7 +6,7 @@ User profiles (name, nickname, bio, location, activity interests) and per-accoun
 
 Part of `docker compose up` (container `account-profile`). Every route requires a bearer token at the gateway; the gateway restricts this prefix to `GET`/`POST`/`PUT` only (no `DELETE`, no `PATCH`) — matching the fact that none of this service's current routes use those methods. Any authenticated user can call any endpoint here, including bulk profile search.
 
-Unlike `identity`/`activity`, this service has **no `validate:` tags anywhere** — all request validation happens by hand in the domain layer (value objects) and application layer, not via a validator library.
+Request bodies (`PUT /my/profile`, `PUT /my/settings`) are read by the shared `api.Decoder`, built in `main` and injected like in `identity`/`activity`: a body over 1 MiB, malformed JSON, an unknown field or a field of the wrong type is `400 validation_error` with `details` keyed by the JSON field name. The only `validate:` tags are the ranges of `location_latitude` (-90..90) and `location_longitude` (-180..180), because the domain does not check coordinates. Everything else is validated by hand in the domain layer (value objects) and application layer, with their own error codes (`invalid_nickname`, bio length, the activity type and level, the profile picture URL...), and deliberately **not** repeated as tags: the domain trims nickname, name, city and country first, so a tag would judge the raw input and could refuse what the domain accepts.
 
 ## API
 

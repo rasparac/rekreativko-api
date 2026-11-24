@@ -17,7 +17,7 @@ type fakeBroker struct {
 }
 
 func (b *fakeBroker) Publish(context.Context, string, string, []byte) error { return nil }
-func (b *fakeBroker) Close(context.Context) error                          { return nil }
+func (b *fakeBroker) Close(context.Context) error                           { return nil }
 
 func (b *fakeBroker) Subscribe(_ context.Context, topic string, _ events.MessageHandler) error {
 	if err := b.failOn[topic]; err != nil {
