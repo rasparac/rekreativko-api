@@ -48,6 +48,8 @@ Key/value store (`GET`/`PUT /my/settings`), namespaced dotted keys (`notificatio
 - `identity.account.verified` → creates a blank `AccountProfile` row and a default `AccountProfileSettings` row (every registry key at its default) in one transaction. This is the only place a profile gets created; there's no manual "create profile" endpoint. Dropped for an account already erased.
 - `identity.account.erased` → erases every row of the account, see [Account erasure](#account-erasure).
 
+Both subscriptions are created at startup. If either fails the service **exits** (the pod restarts), like `notifications`, `activity` and `identity` do: serving without them would mean new accounts never get a profile and erased ones are never erased, with nothing in `/health` to show it.
+
 **Published** (to `account_profile.event_outbox`): `account_profile.created`, `account_profile.account.erased` (see [Account erasure](#account-erasure)), `.location.changed`, `.profile_picture.changed`, `.activity_interest.added/removed/level.changed`. `AccountProfileNicknameChangedEvent` is defined but never raised — see below. Settings changes publish nothing: no service consumes them, and the planned consumers (`notification.email.enabled`, stored language) need events carrying the new value, which they add when they are built.
 
 ## Configuration & schema
@@ -84,4 +86,3 @@ This service had the most drift from its original design doc of anything documen
 - `location_region` column exists in the `profiles` table but no Go code reads or writes it.
 - Minor field-name asymmetry: the update request uses `activity_interests` (plural), the response uses `activity_interest` (singular), for the same data.
 - A typo'd exported identifier if you're browsing the code: `Cooridantes` (→ `Coordinates`).
-- If `Subscribe()` fails at startup (`identity.account.verified` or `identity.account.erased`), the service logs it and keeps running anyway — meaning it could serve traffic indefinitely without ever creating profiles for newly-verified accounts or erasing erased ones, with no retry and no health-check signal for this state.
