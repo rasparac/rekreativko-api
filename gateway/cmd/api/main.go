@@ -177,6 +177,8 @@ func main() {
 		middleware.Tracing,
 		middleware.SpanEnrichment,
 		middleware.CORS(corsConfig),
+		// After CORS so a browser sees the 413; before everything that reads the body.
+		middleware.LimitBodySize(cfg.GatewayServiceConfig.MaxRequestBodyBytes),
 		// After CORS: a browser's preflight can't carry the header.
 		middleware.RequireAppKey(appKeys, enforceAppKey, func(reason string) {
 			appMetrics.AppKeyRejections.WithLabelValues(reason, strconv.FormatBool(enforceAppKey)).Inc()

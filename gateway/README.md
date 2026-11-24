@@ -51,7 +51,7 @@ Independent of user JWT auth: the gateway injects `X-Gateway-Key` (`AddGatewayKe
 
 ```
 Recover → RequestID → ClientInfo → Logging → Tracing → SpanEnrichment
-  → CORS → RequireAppKey → RateLimiter (per IP) → RequireAuth → LimitCaller (per account) → AddGatewayKey
+  → CORS → LimitBodySize → RequireAppKey → RateLimiter (per IP) → RequireAuth → LimitCaller (per account) → AddGatewayKey
   → [Metrics, if enabled] → Router
 ```
 
@@ -69,10 +69,19 @@ Recover → RequestID → ClientInfo → Logging → Tracing → SpanEnrichment
 | `RATE_LIMIT_<CLASS>_BURST`, `RATE_LIMIT_<CLASS>_PER_MINUTE` | Token buckets, classes `IP`, `ACCOUNT`, `ANONYMOUS`, `LOGIN`, `SENSITIVE`. See [Rate limiting](#rate-limiting) for the defaults. Replaces `REQUESTS_PER_MINUTE` |
 | `APP_KEYS`, `APP_KEY_ENFORCE` | Mobile app key, see [App key](#app-key). Empty `APP_KEYS` (the default) turns the check off; `APP_KEY_ENFORCE=false` (the default) only counts requests without a valid key |
 | `TRUSTED_PROXY_CIDRS` | Comma-separated CIDRs/addresses of the proxies in front of the gateway (ingress, load balancer). See [Client IP](#client-ip). Empty (the default, right for docker compose) means no forwarded header is believed |
+| `MAX_REQUEST_BODY_BYTES` | Default `1048576` (1 MiB). A request body over it is refused with `413 request_too_large`, see [Request body size](#request-body-size) |
 | `METRICS_ENABLED` | Gates `/metrics` registration |
 | `SERVICE_ENVIRONMENT=development` | Also enables `/swagger/*` (aggregates all 4 services' specs via `swagger-ui` container, separate from this one) |
 
 No database, no NATS connection (removed this session — notification-sending was moved to the `notifications` service, which now owns that NATS subscription).
+
+## Request body size
+
+`middleware.LimitBodySize` (after CORS, before anything reads the body) caps every request body at `MAX_REQUEST_BODY_BYTES` (1 MiB by default; nothing uploads files), so one client cannot make a service buffer an arbitrary amount of memory (pods are limited to 256Mi):
+
+- A request that **declares** a bigger `Content-Length` is answered `413` (`request_too_large`, with `max_bytes`) before a byte is read.
+- One that does **not** declare its size (chunked) is cut off by `http.MaxBytesReader` once it sends more than the limit; while it is streamed to the backend the proxy's `ErrorHandler` turns that into the same `413` (not `503`).
+- Second line, in the services: `api.DecodeJSONBody` reads at most `api.MaxRequestBodyBytes` (the same 1 MiB) and answers a `400 validation_error` ("Request body is too large") for more, in case a service is reached some other way. Raise both together if an endpoint ever needs bigger bodies.
 
 ## Client IP
 

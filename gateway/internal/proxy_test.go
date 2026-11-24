@@ -311,3 +311,37 @@ func TestReverseProxy_ForwardsTheResolvedClientAddress(t *testing.T) {
 		})
 	}
 }
+
+// A chunked body that outgrows LimitBodySize fails while it is streamed to the
+// backend. The client is told 413, not "service unavailable", and the backend
+// never gets to process a body it could not have read in full.
+func TestReverseProxy_AnUndeclaredBodyOverTheLimitIs413(t *testing.T) {
+	const limit = 1024
+
+	var backendErr error
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, backendErr = io.Copy(io.Discard, r.Body)
+	}))
+	defer backend.Close()
+
+	proxy, err := NewReverseProxy(map[string]ServiceConfig{"svc": {URL: backend.URL, Timeout: time.Second}}, logger.New("error", "json"))
+	require.NoError(t, err)
+
+	gw := httptest.NewServer(middleware.LimitBodySize(limit)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxy.ProxyToService("svc", w, r)
+	})))
+	defer gw.Close()
+
+	// A reader that is not a *strings.Reader and so has no known length: sent chunked.
+	body := io.MultiReader(strings.NewReader(strings.Repeat("a", 4*limit)))
+	req, err := http.NewRequest(http.MethodPost, gw.URL+"/x", body)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, req.ContentLength, "no declared length")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
+	assert.Error(t, backendErr, "the backend's read of the body was cut short")
+}
