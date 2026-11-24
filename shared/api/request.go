@@ -19,25 +19,10 @@ func (e *ValidationError) Error() string {
 	return e.Message
 }
 
-// MaxRequestBodyBytes is the biggest JSON body a handler reads. The gateway
+// MaxRequestBodyBytes is the biggest JSON body Decoder.Decode reads. The gateway
 // refuses bigger requests first (MAX_REQUEST_BODY_BYTES, same default); this is
 // the second line for a service reached some other way. Nothing uploads files.
 const MaxRequestBodyBytes = 1 << 20
-
-// DecodeJSONBody decodes the request body and returns detailed validation errors
-func DecodeJSONBody(r *http.Request, body any) error {
-	decoder := json.NewDecoder(http.MaxBytesReader(nil, r.Body, MaxRequestBodyBytes))
-	decoder.DisallowUnknownFields() // Reject unknown fields
-
-	err := decoder.Decode(body)
-	if err != nil {
-		// Parse JSON decode errors into field-level details
-		return parseJSONDecodeError(err)
-	}
-
-	// Well-formed JSON of the right shape: now the validate tags
-	return validateBody(body)
-}
 
 // parseJSONDecodeError converts JSON decode errors into structured ValidationError
 func parseJSONDecodeError(err error) error {

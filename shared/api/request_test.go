@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDecodeJSONBody_ReadsAtMostMaxRequestBodyBytes(t *testing.T) {
+func TestDecoder_ReadsAtMostMaxRequestBodyBytes(t *testing.T) {
 	type payload struct {
 		Note string `json:"note"`
 	}
@@ -19,7 +19,7 @@ func TestDecodeJSONBody_ReadsAtMostMaxRequestBodyBytes(t *testing.T) {
 		var p payload
 		r := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(`{"note":"hi"}`))
 
-		require.NoError(t, DecodeJSONBody(r, &p))
+		require.NoError(t, MustNewDecoder().Decode(r, &p))
 		assert.Equal(t, "hi", p.Note)
 	})
 
@@ -28,7 +28,7 @@ func TestDecodeJSONBody_ReadsAtMostMaxRequestBodyBytes(t *testing.T) {
 		huge := `{"note":"` + strings.Repeat("a", MaxRequestBodyBytes) + `"}`
 		r := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(huge))
 
-		err := DecodeJSONBody(r, &p)
+		err := MustNewDecoder().Decode(r, &p)
 
 		var validation *ValidationError
 		require.ErrorAs(t, err, &validation)

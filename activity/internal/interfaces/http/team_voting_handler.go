@@ -41,7 +41,7 @@ func (h *Handler) ProposeTeams(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req dtos.ProposeTeamsRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := h.decoder.Decode(r, &req); err != nil {
 		h.logger.Error(ctx, "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
 		return
@@ -91,7 +91,7 @@ func (h *Handler) VoteTeams(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req dtos.CastVoteRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := h.decoder.Decode(r, &req); err != nil {
 		h.logger.Error(ctx, "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
 		return
@@ -248,7 +248,7 @@ func (h *Handler) CloseTeamVoting(w http.ResponseWriter, r *http.Request) {
 
 	var req dtos.CloseVotingRequest
 	if r.ContentLength != 0 {
-		if err := api.DecodeJSONBody(r, &req); err != nil {
+		if err := h.decoder.Decode(r, &req); err != nil {
 			h.logger.Error(ctx, "failed to decode request body", "error", err)
 			api.WriteValidationErrorResponse(w, err)
 			return

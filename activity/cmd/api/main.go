@@ -19,6 +19,7 @@ import (
 	activityHttp "github.com/rasparac/rekreativko-api/activity/internal/interfaces/http"
 	"github.com/rasparac/rekreativko-api/activity/internal/interfaces/live"
 	"github.com/rasparac/rekreativko-api/activity/internal/metrics"
+	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/config"
 	"github.com/rasparac/rekreativko-api/shared/domainevent"
 	"github.com/rasparac/rekreativko-api/shared/events"
@@ -302,6 +303,12 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 
 	mux := http.NewServeMux()
 
+	// reads and validates every JSON request body
+	decoder, err := api.NewDecoder()
+	if err != nil {
+		return fmt.Errorf("create request decoder: %w", err)
+	}
+
 	// Initialize HTTP handler
 	activityHandler := activityHttp.NewHandler(
 		sessionTemplateService,
@@ -315,11 +322,13 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		teamVotingService,
 		teamFormationQuery,
 		liveHub,
+		decoder,
 		log,
 	)
 
 	moderationHandler := activityHttp.NewModerationHandler(
 		application.NewModerationService(log, txManager, moderationRepo, activityGroupRepo, memberRepo, sessionRepo, appMetrics),
+		decoder,
 		log,
 	)
 

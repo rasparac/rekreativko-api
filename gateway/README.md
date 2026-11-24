@@ -81,7 +81,7 @@ No database, no NATS connection (removed this session — notification-sending w
 
 - A request that **declares** a bigger `Content-Length` is answered `413` (`request_too_large`, with `max_bytes`) before a byte is read.
 - One that does **not** declare its size (chunked) is cut off by `http.MaxBytesReader` once it sends more than the limit; while it is streamed to the backend the proxy's `ErrorHandler` turns that into the same `413` (not `503`).
-- Second line, in the services: `api.DecodeJSONBody` reads at most `api.MaxRequestBodyBytes` (the same 1 MiB) and answers a `400 validation_error` ("Request body is too large") for more, in case a service is reached some other way. Raise both together if an endpoint ever needs bigger bodies.
+- Second line, in the services: `api.Decoder.Decode` reads at most `api.MaxRequestBodyBytes` (the same 1 MiB) and answers a `400 validation_error` ("Request body is too large") for more, in case a service is reached some other way. Raise both together if an endpoint ever needs bigger bodies.
 
 ## Client IP
 

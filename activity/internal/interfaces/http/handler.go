@@ -126,6 +126,11 @@ type (
 		Disconnect(client *live.Client)
 	}
 
+	// requestDecoder reads a request body into a DTO and checks its validate tags (api.Decoder)
+	requestDecoder interface {
+		Decode(r *http.Request, body any) error
+	}
+
 	// Handler handles HTTP requests for the activity module
 	Handler struct {
 		sessionTemplateService sessionTemplateService
@@ -139,6 +144,7 @@ type (
 		teamVotingService      teamVotingService
 		teamFormation          teamFormationQuery
 		live                   liveHub
+		decoder                requestDecoder
 		logger                 *logger.Logger
 	}
 )
@@ -156,6 +162,7 @@ func NewHandler(
 	teamVotingService teamVotingService,
 	teamFormation teamFormationQuery,
 	live liveHub,
+	decoder requestDecoder,
 	logger *logger.Logger,
 ) *Handler {
 	return &Handler{
@@ -170,6 +177,7 @@ func NewHandler(
 		teamVotingService:      teamVotingService,
 		teamFormation:          teamFormation,
 		live:                   live,
+		decoder:                decoder,
 		logger:                 logger.WithName("activity.http.handler"),
 	}
 }

@@ -52,10 +52,10 @@ func decodeInto(t *testing.T, payload map[string]any) (*validateRequest, error) 
 	var req validateRequest
 	r := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(sb.String()))
 
-	return &req, DecodeJSONBody(r, &req)
+	return &req, MustNewDecoder().Decode(r, &req)
 }
 
-func TestDecodeJSONBody_ValidatesTheTags(t *testing.T) {
+func TestDecoder_ValidatesTheTags(t *testing.T) {
 	t.Run("a valid body passes, and a latitude of exactly 0 is a value, not a missing field", func(t *testing.T) {
 		req, err := decodeInto(t, validRequest())
 
@@ -64,28 +64,32 @@ func TestDecodeJSONBody_ValidatesTheTags(t *testing.T) {
 		assert.Zero(t, *req.Lat)
 	})
 
+	// The wording is the validator library's own; the test pins what a client relies on: the
+	// failing field's key (nested as a path) and a message that names the JSON field and says
+	// what is wrong, without Go struct names or tag jargon.
 	for name, tc := range map[string]struct {
-		change  func(map[string]any)
-		field   string
-		message string
+		change   func(map[string]any)
+		field    string // key in Fields
+		leaf     string // the JSON name the message must mention
+		contains string // part of what is wrong
 	}{
-		"missing required":    {func(p map[string]any) { delete(p, "type") }, "type", "This field is required"},
-		"a missing pointer":   {func(p map[string]any) { delete(p, "lat") }, "lat", "This field is required"},
-		"not in oneof":        {func(p map[string]any) { p["type"] = "fax" }, "type", "Must be one of: email, phone"},
-		"wrong length":        {func(p map[string]any) { p["code"] = "12" }, "code", "Must be exactly 6 characters"},
-		"text too short":      {func(p map[string]any) { p["title"] = "ab" }, "title", "Must be at least 3 characters"},
-		"text too long":       {func(p map[string]any) { p["title"] = strings.Repeat("a", 11) }, "title", "Must be at most 10 characters"},
-		"number out of range": {func(p map[string]any) { p["lat"] = 91 }, "lat", "Must be at most 90"},
-		"optional but bad":    {func(p map[string]any) { p["capacity"] = 0 }, "capacity", "Must be at least 1"},
-		"bad email":           {func(p map[string]any) { p["contact"] = "nope" }, "contact", "Must be a valid email address"},
-		"bad time zone":       {func(p map[string]any) { p["zone"] = "Mars/Base" }, "zone", "Must be a valid IANA time zone, e.g. Europe/Belgrade"},
-		"too few list items":  {func(p map[string]any) { p["items"] = []map[string]string{} }, "items", "Must be at least 1 items"},
+		"missing required":    {func(p map[string]any) { delete(p, "type") }, "type", "type", "required"},
+		"a missing pointer":   {func(p map[string]any) { delete(p, "lat") }, "lat", "lat", "required"},
+		"not in oneof":        {func(p map[string]any) { p["type"] = "fax" }, "type", "type", "one of"},
+		"wrong length":        {func(p map[string]any) { p["code"] = "12" }, "code", "code", "6"},
+		"text too short":      {func(p map[string]any) { p["title"] = "ab" }, "title", "title", "3"},
+		"text too long":       {func(p map[string]any) { p["title"] = strings.Repeat("a", 11) }, "title", "title", "10"},
+		"number out of range": {func(p map[string]any) { p["lat"] = 91 }, "lat", "lat", "90"},
+		"optional but bad":    {func(p map[string]any) { p["capacity"] = 0 }, "capacity", "capacity", "1"},
+		"bad email":           {func(p map[string]any) { p["contact"] = "nope" }, "contact", "contact", "email"},
+		"bad time zone":       {func(p map[string]any) { p["zone"] = "Mars/Base" }, "zone", "zone", "time zone"},
+		"too few list items":  {func(p map[string]any) { p["items"] = []map[string]string{} }, "items", "items", "1"},
 		"too many items": {func(p map[string]any) {
 			p["items"] = []map[string]string{{"name": "aa"}, {"name": "bb"}, {"name": "cc"}}
-		}, "items", "Must be at most 2 items"},
+		}, "items", "items", "2"},
 		"a nested field is named by its path": {func(p map[string]any) {
 			p["items"] = []map[string]string{{"name": "ok"}, {"name": "x"}}
-		}, "items[1].name", "Must be at least 2 characters"},
+		}, "items[1].name", "name", "2"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			payload := validRequest()
@@ -96,7 +100,13 @@ func TestDecodeJSONBody_ValidatesTheTags(t *testing.T) {
 			var validation *ValidationError
 			require.ErrorAs(t, err, &validation)
 			assert.Equal(t, "Validation failed", validation.Message)
-			assert.Equal(t, tc.message, validation.Fields[tc.field])
+
+			message, ok := validation.Fields[tc.field]
+			require.True(t, ok, "fields: %v", validation.Fields)
+			assert.Contains(t, message, tc.leaf)
+			assert.Contains(t, message, tc.contains)
+			assert.NotContains(t, message, "Key:", "no validator internals")
+			assert.NotContains(t, message, "validateRequest", "no Go type names")
 		})
 	}
 
@@ -116,7 +126,7 @@ func TestDecodeJSONBody_ValidatesTheTags(t *testing.T) {
 		var m map[string]any
 		r := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(`{"a":1}`))
 
-		require.NoError(t, DecodeJSONBody(r, &m))
+		require.NoError(t, MustNewDecoder().Decode(r, &m))
 	})
 }
 

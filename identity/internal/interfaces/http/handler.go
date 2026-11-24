@@ -34,20 +34,28 @@ type passwordService interface {
 	ChangePassword(ctx context.Context, req application.ChangePasswordParams) (*domain.RefreshToken, error)
 }
 
+// requestDecoder reads a request body into a DTO and checks its validate tags (api.Decoder).
+type requestDecoder interface {
+	Decode(r *http.Request, body any) error
+}
+
 type Handler struct {
 	service   service
 	passwords passwordService
+	decoder   requestDecoder
 	logger    *logger.Logger
 }
 
 func NewHandler(
 	service service,
 	passwords passwordService,
+	decoder requestDecoder,
 	logger *logger.Logger,
 ) *Handler {
 	return &Handler{
 		service:   service,
 		passwords: passwords,
+		decoder:   decoder,
 		logger:    logger,
 	}
 }
@@ -124,7 +132,7 @@ func (h *Handler) RegisterAccountHandler(
 	ctx := r.Context()
 
 	var req dtos.RegisterAccountRequest
-	err := api.DecodeJSONBody(r, &req)
+	err := h.decoder.Decode(r, &req)
 	if err != nil {
 		h.logger.Error(r.Context(), "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
@@ -168,7 +176,7 @@ func (h *Handler) LoginHandler(
 	ctx := r.Context()
 
 	var req dtos.LoginRequest
-	err := api.DecodeJSONBody(r, &req)
+	err := h.decoder.Decode(r, &req)
 	if err != nil {
 		h.logger.Error(r.Context(), "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
@@ -286,7 +294,7 @@ func (h *Handler) LogoutHandler(
 		req       dtos.LogoutRequest
 	)
 
-	err := api.DecodeJSONBody(r, &req)
+	err := h.decoder.Decode(r, &req)
 	if err != nil {
 		h.logger.Error(r.Context(), "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
@@ -325,7 +333,7 @@ func (h *Handler) RefreshTokenHandler(
 	ctx := r.Context()
 
 	var req dtos.RefreshTokenRequest
-	err := api.DecodeJSONBody(r, &req)
+	err := h.decoder.Decode(r, &req)
 	if err != nil {
 		h.logger.Error(r.Context(), "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
@@ -367,7 +375,7 @@ func (h *Handler) VerifyAccountHandler(
 	ctx := r.Context()
 
 	var req dtos.VerifyAccountRequest
-	err := api.DecodeJSONBody(r, &req)
+	err := h.decoder.Decode(r, &req)
 	if err != nil {
 		h.logger.Error(r.Context(), "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
@@ -405,7 +413,7 @@ func (h *Handler) ResendVerificationCodeHandler(
 	ctx := r.Context()
 
 	var req dtos.ResendVerificationCodeRequest
-	err := api.DecodeJSONBody(r, &req)
+	err := h.decoder.Decode(r, &req)
 	if err != nil {
 		h.logger.Error(r.Context(), "failed to decode request body", "error", err)
 		api.WriteValidationErrorResponse(w, err)
@@ -441,7 +449,7 @@ func (h *Handler) ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 
 	var req dtos.ForgotPasswordRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := h.decoder.Decode(r, &req); err != nil {
 		api.WriteValidationErrorResponse(w, err)
 		return
 	}
@@ -475,7 +483,7 @@ func (h *Handler) ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var req dtos.ResetPasswordRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := h.decoder.Decode(r, &req); err != nil {
 		api.WriteValidationErrorResponse(w, err)
 		return
 	}
@@ -513,7 +521,7 @@ func (h *Handler) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 
 	var req dtos.ChangePasswordRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := h.decoder.Decode(r, &req); err != nil {
 		api.WriteValidationErrorResponse(w, err)
 		return
 	}

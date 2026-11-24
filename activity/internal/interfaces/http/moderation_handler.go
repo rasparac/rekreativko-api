@@ -25,11 +25,12 @@ type moderationService interface {
 // ModerationHandler serves reports and blocks (rekreativko-api-ep8.8).
 type ModerationHandler struct {
 	moderation moderationService
+	decoder    requestDecoder
 	logger     *logger.Logger
 }
 
-func NewModerationHandler(moderation moderationService, logger *logger.Logger) *ModerationHandler {
-	return &ModerationHandler{moderation: moderation, logger: logger.WithName("activity.http.moderation")}
+func NewModerationHandler(moderation moderationService, decoder requestDecoder, logger *logger.Logger) *ModerationHandler {
+	return &ModerationHandler{moderation: moderation, decoder: decoder, logger: logger.WithName("activity.http.moderation")}
 }
 
 func (h *ModerationHandler) RegisterRoutes(mux *http.ServeMux, middlewares *middleware.Chain) {
@@ -59,7 +60,7 @@ func (h *ModerationHandler) Report(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var req dtos.ReportRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := h.decoder.Decode(r, &req); err != nil {
 		api.WriteValidationErrorResponse(w, err)
 		return
 	}
@@ -123,7 +124,7 @@ func (h *ModerationHandler) Block(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var req dtos.BlockRequest
-	if err := api.DecodeJSONBody(r, &req); err != nil {
+	if err := h.decoder.Decode(r, &req); err != nil {
 		api.WriteValidationErrorResponse(w, err)
 		return
 	}

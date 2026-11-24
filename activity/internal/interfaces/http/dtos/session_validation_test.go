@@ -20,7 +20,7 @@ func decodeSession(t *testing.T, coords string) (*CreateSessionRequest, error) {
 	var req CreateSessionRequest
 	body := strings.Replace(sessionBody, "%s", coords, 1)
 
-	return &req, api.DecodeJSONBody(httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(body)), &req)
+	return &req, api.MustNewDecoder().Decode(httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(body)), &req)
 }
 
 // 0 is a real coordinate (the equator, the prime meridian): a plain `required` on a
