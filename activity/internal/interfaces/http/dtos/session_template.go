@@ -26,9 +26,9 @@ type CreateSessionTemplateRequest struct {
 	LocationCountry string `json:"location_country" validate:"required,min=2,max=100" example:"Serbia"`
 	// LocationStreet is an optional venue/address line, inherited by every
 	// session generated from this template.
-	LocationStreet string  `json:"location_street,omitempty" validate:"omitempty,max=255" example:"Ada Ciganlija bb, Court 3"`
-	LocationLat    float64 `json:"location_lat" validate:"required,min=-90,max=90" example:"44.8176"`
-	LocationLng    float64 `json:"location_lng" validate:"required,min=-180,max=180" example:"20.4633"`
+	LocationStreet string   `json:"location_street,omitempty" validate:"omitempty,max=255" example:"Ada Ciganlija bb, Court 3"`
+	LocationLat    *float64 `json:"location_lat" validate:"required,min=-90,max=90" example:"44.8176"`
+	LocationLng    *float64 `json:"location_lng" validate:"required,min=-180,max=180" example:"20.4633"`
 }
 
 // UpdateSessionTemplateRequest is a request to update a session template
@@ -51,9 +51,9 @@ type UpdateSessionTemplateRequest struct {
 	LocationCountry string `json:"location_country" validate:"required,min=2,max=100" example:"Serbia"`
 	// LocationStreet is an optional venue/address line, inherited by every
 	// session generated from this template.
-	LocationStreet string  `json:"location_street,omitempty" validate:"omitempty,max=255" example:"Ada Ciganlija bb, Court 3"`
-	LocationLat    float64 `json:"location_lat" validate:"required,min=-90,max=90" example:"44.8176"`
-	LocationLng    float64 `json:"location_lng" validate:"required,min=-180,max=180" example:"20.4633"`
+	LocationStreet string   `json:"location_street,omitempty" validate:"omitempty,max=255" example:"Ada Ciganlija bb, Court 3"`
+	LocationLat    *float64 `json:"location_lat" validate:"required,min=-90,max=90" example:"44.8176"`
+	LocationLng    *float64 `json:"location_lng" validate:"required,min=-180,max=180" example:"20.4633"`
 }
 
 // RecurrenceInfo contains recurrence rule information

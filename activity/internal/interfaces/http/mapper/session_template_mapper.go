@@ -30,8 +30,8 @@ func CreateRequestToParams(
 		LocationCity:         req.LocationCity,
 		LocationCountry:      req.LocationCountry,
 		LocationStreet:       req.LocationStreet,
-		LocationLat:          req.LocationLat,
-		LocationLng:          req.LocationLng,
+		LocationLat:          *req.LocationLat,
+		LocationLng:          *req.LocationLng,
 	}
 
 	// Convert day of week from int to time.Weekday if provided
@@ -71,8 +71,8 @@ func UpdateRequestToParams(req *dtos.UpdateSessionTemplateRequest, requesterID u
 		LocationCity:         req.LocationCity,
 		LocationCountry:      req.LocationCountry,
 		LocationStreet:       req.LocationStreet,
-		LocationLat:          req.LocationLat,
-		LocationLng:          req.LocationLng,
+		LocationLat:          *req.LocationLat,
+		LocationLng:          *req.LocationLng,
 	}
 
 	// Convert day of week from int to time.Weekday if provided

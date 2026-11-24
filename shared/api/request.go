@@ -30,12 +30,13 @@ func DecodeJSONBody(r *http.Request, body any) error {
 	decoder.DisallowUnknownFields() // Reject unknown fields
 
 	err := decoder.Decode(body)
-	if err == nil {
-		return nil
+	if err != nil {
+		// Parse JSON decode errors into field-level details
+		return parseJSONDecodeError(err)
 	}
 
-	// Parse JSON decode errors into field-level details
-	return parseJSONDecodeError(err)
+	// Well-formed JSON of the right shape: now the validate tags
+	return validateBody(body)
 }
 
 // parseJSONDecodeError converts JSON decode errors into structured ValidationError

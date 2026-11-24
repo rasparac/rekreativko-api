@@ -11,15 +11,15 @@ type (
 
 	// RegisterAccountRequest is a request to register a new account
 	RegisterAccountRequest struct {
-		Email       string `json:"email" validate:"omitempty,email" example:"user@gmail.com"`
-		PhoneNumber string `json:"phone_number" validate:"omitempty,e164" example:"+1234567890"`
+		Email       string `json:"email" example:"user@gmail.com"`
+		PhoneNumber string `json:"phone_number" example:"+1234567890"`
 		Password    string `json:"password" validate:"required,min=8" example:"StrongPassw0rd!"`
 	}
 
 	// LoginRequest is a request to login
 	LoginRequest struct {
-		Email       string `json:"email" validate:"omitempty,email" example:"user@gmail.com"`
-		PhoneNumber string `json:"phone_number" validate:"omitempty,e164" example:"+1234567890"`
+		Email       string `json:"email" example:"user@gmail.com"`
+		PhoneNumber string `json:"phone_number" example:"+1234567890"`
 		Password    string `json:"password" validate:"required" example:"StrongPassw0rd!"`
 	}
 

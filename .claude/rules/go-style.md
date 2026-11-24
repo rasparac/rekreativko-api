@@ -41,6 +41,11 @@ Match the surrounding code first; these are the conventions it follows.
 
 ## Small things
 
+- Request DTO fields carry go-playground `validate` tags and `api.DecodeJSONBody` enforces them (`400
+  validation_error`, `details` keyed by the JSON name). A number or bool where the zero value is valid is a pointer
+  (`*float64` + `required`: a missing field is rejected, `0` is accepted); a plain `required` on it would reject `0`.
+  Do not put a tag on a field the domain normalizes first (identity's email/phone: trimmed and lowercased) - the tag
+  would see the raw input and refuse what the domain accepts.
 - Sets are `map[K]struct{}` (`m[k] = struct{}{}`, `_, ok := m[k]`), never `map[K]bool`.
 - Time is UTC: `time.Now().UTC()`.
 - Config is `kelseyhightower/envconfig` in `shared/config`. Every binary loads the whole struct, so a
