@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -201,8 +202,10 @@ func run(ctx context.Context, cfg *config.Config, log *logger.Logger) error {
 		//appMetrics, TODO: // check how and what to track
 	)
 
+	// Without these subscriptions new accounts never get a profile and erased ones are never
+	// erased, so a failure stops the service (the pod restarts) instead of serving without them.
 	if err := accountProfileSubscriber.Subscribe(ctx); err != nil {
-		log.Error(ctx, "failed to subscribe to account profile events", "error", err)
+		return fmt.Errorf("subscribe to account events: %w", err)
 	}
 
 	return startServer(cfg.Server.Address(), mux, log)
