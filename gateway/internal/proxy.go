@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/rasparac/rekreativko-api/shared/api"
 	"github.com/rasparac/rekreativko-api/shared/logger"
+	"github.com/rasparac/rekreativko-api/shared/middleware"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -83,6 +85,13 @@ func NewReverseProxy(
 				}
 			},
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+				// A chunked body that outgrew middleware.LimitBodySize fails while it
+				// is streamed to the backend: the client's fault, not an outage.
+				if tooLarge, ok := errors.AsType[*http.MaxBytesError](err); ok {
+					middleware.WriteBodyTooLarge(w, tooLarge.Limit)
+					return
+				}
+
 				rp.logger.Error(r.Context(), "failed to proxy request", "error", err)
 				http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 			},

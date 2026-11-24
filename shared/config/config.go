@@ -68,6 +68,10 @@ type (
 		// AppKeyEnforce refuses requests without a valid key. False only
 		// counts them, to see who would be turned away first.
 		AppKeyEnforce bool `envconfig:"APP_KEY_ENFORCE" default:"false"`
+
+		// MaxRequestBodyBytes is the biggest request body the gateway lets
+		// through (413 above it). Nothing uploads files, so 1 MiB is plenty.
+		MaxRequestBodyBytes int64 `envconfig:"MAX_REQUEST_BODY_BYTES" default:"1048576"`
 	}
 
 	ServerConfig struct {
