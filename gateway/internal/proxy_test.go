@@ -318,9 +318,12 @@ func TestReverseProxy_ForwardsTheResolvedClientAddress(t *testing.T) {
 func TestReverseProxy_AnUndeclaredBodyOverTheLimitIs413(t *testing.T) {
 	const limit = 1024
 
-	var backendErr error
+	// The backend handler runs on its own goroutine, possibly after the client has its
+	// answer: its result is handed over on a channel, never read from a shared variable.
+	backendRead := make(chan error, 1)
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, backendErr = io.Copy(io.Discard, r.Body)
+		_, err := io.Copy(io.Discard, r.Body)
+		backendRead <- err
 	}))
 	defer backend.Close()
 
@@ -343,5 +346,11 @@ func TestReverseProxy_AnUndeclaredBodyOverTheLimitIs413(t *testing.T) {
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
-	assert.Error(t, backendErr, "the backend's read of the body was cut short")
+
+	select {
+	case err := <-backendRead:
+		assert.Error(t, err, "the backend's read of the body was cut short")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the backend never finished reading the body")
+	}
 }
