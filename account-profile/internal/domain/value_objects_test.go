@@ -76,13 +76,33 @@ func TestNewDateOfBirth(t *testing.T) {
 			expected: ErrDateOfBirthInvalid,
 		},
 		{
-			name:     "Value is too young",
+			name:     "Value is a child",
 			value:    time.Now().AddDate(-12, 0, 0),
 			expected: ErrAgeTooYoung,
 		},
 		{
+			name:     "13 was the old minimum and is now too young",
+			value:    time.Now().AddDate(-13, 0, 0),
+			expected: ErrAgeTooYoung,
+		},
+		{
+			name:     "15 is too young",
+			value:    time.Now().AddDate(-15, 0, 0),
+			expected: ErrAgeTooYoung,
+		},
+		{
+			name:     "a day short of the minimum age is too young",
+			value:    time.Now().AddDate(-MinimumAge, 0, 1),
+			expected: ErrAgeTooYoung,
+		},
+		{
+			name:     "a day past the minimum age is valid",
+			value:    time.Now().AddDate(-MinimumAge, 0, -1),
+			expected: nil,
+		},
+		{
 			name:     "Valid value",
-			value:    time.Now().AddDate(-14, 0, 0),
+			value:    time.Now().AddDate(-20, 0, 0),
 			expected: nil,
 		},
 	}
