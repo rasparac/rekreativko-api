@@ -12,7 +12,7 @@ type UpdateProfileRequest struct {
 	Bio      *string `json:"bio" example:"I love playing basketball and soccer"`
 
 	// DateOfBirth, format YYYY-MM-DD. Omit to leave the existing value untouched;
-	// send an empty string to clear it. Must be in the past and at least 13 years ago.
+	// send an empty string to clear it. Must be in the past and at least 16 years ago (domain.MinimumAge).
 	DateOfBirth *string `json:"date_of_birth,omitempty" example:"1990-05-15"`
 
 	// Location fields (flattened for swagger compatibility). Omit all four to

@@ -61,6 +61,10 @@ func (f *FullName) Value() string {
 	return f.value
 }
 
+// MinimumAge is the youngest age a date of birth may give: 16, the age of digital consent
+// under the GDPR in Croatia (the website's terms say the same).
+const MinimumAge = 16
+
 type DateOfBirth struct {
 	value time.Time
 }
@@ -74,7 +78,7 @@ func NewDateOfBirth(value time.Time) (*DateOfBirth, error) {
 		return nil, ErrDateOfBirthInvalid
 	}
 
-	minDate := time.Now().AddDate(-13, 0, 0)
+	minDate := time.Now().AddDate(-MinimumAge, 0, 0)
 	if value.After(minDate) {
 		return nil, ErrAgeTooYoung
 	}

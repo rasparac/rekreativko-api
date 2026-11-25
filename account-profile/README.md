@@ -23,7 +23,7 @@ Request bodies (`PUT /my/profile`, `PUT /my/settings`) are read by the shared `a
 
 ### Profile fields
 
-`full_name`, `nickname` (3–50 chars, `^[a-zA-Z0-9_-]+$`, **not actually unique** despite what you might expect — no DB constraint or service check), `bio` (max 500 chars), `date_of_birth` (must be ≥13 years ago, not in the future), `location_city`/`location_country` (required together), `location_latitude`/`location_longitude` (optional, only set as a pair), `profile_picture_url` (must be http/https, ≤2048 chars), `activity_interests` (array of `{name, level}` — full replace on every update, one entry per activity type, deduplicated against a shared 16-type/3-level catalog also used by the `activity` service).
+`full_name`, `nickname` (3–50 chars, `^[a-zA-Z0-9_-]+$`, **not actually unique** despite what you might expect — no DB constraint or service check), `bio` (max 500 chars), `date_of_birth` (must be ≥16 years ago - `domain.MinimumAge`, the GDPR age of digital consent in Croatia - and not in the future; answers `age_too_young` otherwise. It is optional and not asked at registration, so this is a check on the field, not an age gate on creating an account), `location_city`/`location_country` (required together), `location_latitude`/`location_longitude` (optional, only set as a pair), `profile_picture_url` (must be http/https, ≤2048 chars), `activity_interests` (array of `{name, level}` — full replace on every update, one entry per activity type, deduplicated against a shared 16-type/3-level catalog also used by the `activity` service).
 
 ### Privacy
 
