@@ -109,10 +109,43 @@ Why it is shaped this way:
 - **activity-cron** is a one-shot job and was not measured. Give it 50m / 64Mi with a 128Mi limit and
   check its peak in `kubectl top` after the first runs.
 
+## Session discovery against realistic data (2026-11-26)
+
+`session discover` is 20% of the mix, and with 40 sessions it returns the same hot rows every time, so the
+test cannot show how it grows. `loadtest/discover-bench` (`task loadtest:discover`) seeds a throwaway
+database with N upcoming public sessions spread over Croatian cities (plus 4N rows of history, cancelled and
+private sessions), runs the query exactly as `DiscoverSessions` builds it, block filter included, under
+`EXPLAIN (ANALYZE, BUFFERS)`, and drops the database. Median of 7 warm runs, this workstation, Postgres 17
+with default settings:
+
+| upcoming public sessions | Zagreb 50 km | Zagreb 10 km | Split 50 km | Osijek 50 km | rural 50 km |
+|---:|---:|---:|---:|---:|---:|
+| 40 | 0.25 ms | 0.19 ms | 0.22 ms | 0.19 ms | 0.18 ms |
+| 1,000 | 1.8 ms | 0.8 ms | 0.9 ms | 0.6 ms | 0.3 ms |
+| 10,000 | 15 ms | 5.9 ms | 6.8 ms | 4.7 ms | 1.6 ms |
+| 100,000 | 73 ms | 55 ms | 60 ms | 41 ms | 14 ms |
+
+- **The cost grows with the data, linearly.** The partial index on `(location_lat, location_lng)` only
+  narrows the search to a latitude band (the longitude bounds are checked inside the scan), and the query then
+  computes the Haversine distance of every candidate and sorts them all before `LIMIT 21` can pick 21: about
+  4,500 candidates at 10,000 sessions for 21 rows returned. History, cancelled and private sessions are
+  not in the partial index, so only *upcoming public* sessions count.
+- **What it means for sizing**: at 20% of the mix, 400 rps is 80 discovers a second. With 10,000 upcoming
+  sessions that is about 1.2 cores in Postgres alone, more than the rest of the stack at that rate (1.0 core);
+  with 100,000 it is about 6 cores. At launch rates (25 to 50 rps) with a few thousand sessions it is
+  under 0.15 core. So the CPU table above holds for a small dataset and understates this endpoint for a big one.
+- **A spatial index removes the growth.** A prototype with a GiST index on a `cube` point and a nearest-first
+  `ORDER BY ... <->` took 0.6 to 1.1 ms at both 10,000 and 100,000 sessions (Zagreb 50 km: 21 ms to 0.75 ms,
+  77 ms to 0.89 ms). It is not applied: it needs the `cube` extension, a schema change, and a pagination
+  design (ticket `rekreativko-api-40g`).
+- **Read it as relative growth**: these are one workstation's times, the query ran with literal values (the
+  service's driver may switch to a generic plan after a few calls), and only the first page was timed.
+
 ## What this test does not tell you
 
-- **Scale of data**: 40 users and 40 sessions. Discovery, the feed and attendee lists get more expensive
-  as tables grow, so re-run with a realistic dataset before trusting the CPU per request for those.
+- **Scale of data** for everything but session discovery (above): the notification feed, attendee lists and
+  group discovery (which filters by city) still run on 40 users. Re-run with a realistic dataset before trusting
+  their CPU per request.
 - **One host**: Postgres, NATS, k6 and every service share 8 cores, with no network between them. Repeat
   `task loadtest:run` against a staging cluster, and compare with `kubectl top pod` and
   `container_cpu_usage_seconds_total` in production.

@@ -450,6 +450,11 @@ tasks:
       - go run ./scripts/seed-users -db "{{.DB_URL}}" -file loadtest/users.yaml
       - docker run --rm --network rekreativko-api_rekreativko -v "$PWD/loadtest/k6:/scripts:ro" -e MODE=prepare grafana/k6:1.0.0 run -q /scripts/load.js
 
+  loadtest:discover:
+    desc: "Time the session discover query against 40 to 100,000 upcoming sessions in a throwaway database (needs task docker:up)"
+    cmds:
+      - loadtest/discover-bench/run.sh
+
   loadtest:run:
     desc: "Load the stack at each rate and sample every service's CPU and memory. Usage: RATES=\"0 50 100\" DURATION=60s task loadtest:run"
     cmds:
