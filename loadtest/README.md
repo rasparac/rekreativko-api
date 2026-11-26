@@ -29,7 +29,74 @@ task docker:up                    # back to the dev settings afterwards
   whatever rate a pod is expected to carry. Memory barely moves with rate, so it is sized from the observed
   maximum.
 
-Results go to `loadtest/results/<timestamp>/` (gitignored), with `report.txt` holding the tables.
+Results go to `loadtest/results/<timestamp>/` (gitignored), with `report.txt` holding the tables: the
+per-container CPU and memory, the CPU fit, the latency k6 saw (overall, and p95 per endpoint by rate), and
+the whole host (below).
+
+## Is the host big enough: whole-host numbers, logins, the disk
+
+The per-container numbers say what each service needs. Whether the machine they share is big enough is
+a different question, and these answer it (they are what to compare between candidate VPSes):
+
+- **Whole host**, sampled every second next to the containers (`summary-node.csv`, printed in the report):
+  CPU busy, **steal** (time the hypervisor gave to someone else while this machine had work: how an oversold
+  shared-vCPU host shows up) and iowait from `/proc/stat`; **pressure stall information** (`/proc/pressure/*`:
+  the share of wall time work waited for CPU, memory or disk, which utilisation alone cannot show); the
+  lowest `MemAvailable` of the run and swap in use. A host without PSI says `na` for the pressure columns.
+  Steal staying near 0 and memory pressure at 0 while CPU pressure stays low is a host with room.
+- **A wave of logins**: `MODE=spike RATES="25 50 100 200" DURATION=10s loadtest/run.sh` (`task loadtest:spike`)
+  sends only logins at that many per second. A bcrypt check (cost 10, hardcoded in identity's `main.go`) takes
+  tens of milliseconds of one core (measured below), so a host tops out at a handful of logins a second per
+  core; past that logins queue, which shows as latency and dropped iterations. This is the spike after a
+  release that logs everyone out. The CPU fit in that report is meaningless (it is for the request mix); read
+  latency, dropped and identity's CPU.
+- **Disk**: `loadtest/disk-check.sh` (`task loadtest:disk`) runs Postgres' `pg_test_fsync` on the database
+  volume. Every commit waits for one flush of the write-ahead log, so this is the floor of commit latency and
+  where VPS tiers and storage types differ most. `TARGET=k8s` runs it in the CloudNativePG primary.
+- **Per-endpoint latency**: the report lists p95 per endpoint by rate, since the overall p99 is just the 1%
+  of requests that are logins.
+
+### Measured on the development workstation (2026-11-26)
+
+An 8-core desktop that is itself busy (load average about 7, CPU pressure 44 to 59% before any test starts),
+so read these as a baseline to compare a VPS against, not as capacity:
+
+- **Login spike** (only logins, everything on one host):
+
+  | logins per second | achieved | p50 | p95 | dropped | identity CPU | host CPU busy |
+  |---:|---:|---:|---:|---:|---:|---:|
+  | 10 | 10 | 82 ms | 101 ms | 0 | 0.79 cores | 38% |
+  | 30 | 29 | 106 ms | 151 ms | 0 | 2.95 cores | 73% |
+  | 60 | 45 | 1,817 ms | 2,301 ms | 54 | 4.72 cores | 99.7% |
+
+  A login costs about 80 ms of identity CPU at a low rate and about 100 ms as the host saturates, more than
+  the 60 ms the first (quieter) run suggested. This host stopped keeping up at about 45 logins a second, and
+  past it logins queue: at 60 a second the median wait was 1.8 s. As a rough extrapolation, not a
+  measurement, a free 4 vCPU host would manage about 30 a second, so a thousand people signing in at once
+  (a release that logs everyone out) takes about half a minute to drain, and the first of them see no delay
+  at all only if the rate stays below that.
+- **Disk**: `pg_test_fsync` on the compose volume, 8 kB write + flush: `fdatasync` 3,800 per second at 263 µs
+  (`open_datasync` 4,300, `fsync` 2,300). A VPS whose `fdatasync` is several times slower than this is the one
+  to be careful with for the database.
+- **Reading the host table**: compare each run to the idle run (rate 0) of the same batch. Here the CPU
+  pressure was 44 to 59% in every run, idle included, because the workstation is busy by itself; on a quiet
+  VPS it should be near 0 until the load starts. Steal was 0 (this is not a shared virtual CPU), memory
+  pressure 0, and at least 16 GB stayed available.
+
+### Running it against a VPS
+
+Not tried yet (there is no VPS): the steps this tooling is meant for.
+
+1. Install the stack on the candidate host (single-node k3s, everything from `rekreativko-infra`), create the
+   load-test users there, and lift the gateway's rate limits for the run (as `docker-compose.loadtest.yml`
+   does) - then put them back.
+2. Run k6 from **another machine** against the host (`BASE_URL=https://...`), so the load generator does not
+   compete for its CPU. The compose-based `run.sh` is for one host; for a remote one run the k6 container by
+   hand with `-e BASE_URL`, `-e RATE`, `-e DURATION`, `--summary-export`.
+3. On the host, sample the node during each run: `go run ./scripts/resource-sampler -containers "" -label
+   <rate> -out results/summary.csv`, interrupt it when k6 ends, then `-report`. Per-pod numbers come from
+   `kubectl top pods` (the sampler reads docker's cgroups, which k3s does not use).
+4. `TARGET=k8s loadtest/disk-check.sh` on the host, and a spike run.
 
 ## Results (2026-11-07, Go 1.27.3, 8-core host, everything on one machine)
 
@@ -66,7 +133,8 @@ What the numbers say:
   That covers JWT verification, proxying, access logging and metrics.
 - **identity's CPU is almost entirely logins.** A bcrypt check (cost 10) takes about 60 ms of one core
   (the p99 above), and the 1% of requests that are logins are most of identity's CPU: at 400 rps, 4
-  logins/s ≈ 240 of its 277 m. Size identity by logins per second (≈ 60 m per login/s), not by total
+  logins/s ≈ 240 of its 277 m. Size identity by logins per second (≈ 60 m per login/s on this first run; a
+  later login-spike run on a busier host measured 80 to 105 m, see below), not by total
   traffic, and give it room to burst: a wave of logins, e.g. after
   a release logs everyone out, is a CPU spike.
 - **Memory is small and flat.** Every Go service stays under 45 MiB of working set even at 800 rps. Latency
