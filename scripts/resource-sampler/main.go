@@ -11,9 +11,12 @@
 //     is what the kubelet compares against a memory limit and what an OOM
 //     kill is decided on.
 //
-// Sample until interrupted, then append one row per container to a CSV:
+// Sample until interrupted, then append one row per container to a CSV (and one row of whole-host numbers
+// to the -node.csv next to it, see node.go):
 //
 //	go run ./scripts/resource-sampler -label 50 -out loadtest/results/summary.csv
+//
+// On a k3s VPS there are no compose containers: -containers "" samples the host only.
 //
 // Print the table and a per-service fit of CPU against request rate, from
 // every run in the CSV (the label is the run's request rate, 0 = idle):
@@ -62,7 +65,9 @@ func main() {
 	flag.StringVar(&opts.report, "report", "", "print the report for this CSV instead of sampling")
 	flag.Float64Var(&opts.fitMaxRPS, "fit-max-rps", 0, "fit CPU only on runs up to this rate, where it is still linear (0 = every run)")
 	flag.Parse()
-	opts.containers = strings.Split(containers, ",")
+	if containers != "" {
+		opts.containers = strings.Split(containers, ",")
+	}
 
 	var err error
 	if opts.report != "" {
@@ -115,6 +120,12 @@ func sample(ctx context.Context, opts options) error {
 		all = append(all, s)
 	}
 
+	prevNode, err := readNode()
+	if err != nil {
+		return fmt.Errorf("read the host's counters: %w", err)
+	}
+	var node []nodeSample
+
 	started := time.Now()
 	ticker := time.NewTicker(opts.interval)
 	defer ticker.Stop()
@@ -122,11 +133,21 @@ func sample(ctx context.Context, opts options) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return summarize(opts, all)
+			return summarize(opts, all, node)
 		case <-ticker.C:
 		}
 
 		keep := time.Since(started) >= opts.skip
+
+		curNode, err := readNode()
+		if err != nil {
+			return fmt.Errorf("read the host's counters: %w", err)
+		}
+		if keep {
+			node = append(node, between(prevNode, curNode))
+		}
+		prevNode = curNode
+
 		for _, s := range all {
 			r, err := read(s.cgroup)
 			if err != nil {
@@ -204,10 +225,21 @@ func statValue(path, key string) (int64, error) {
 
 var header = []string{"rps", "container", "samples", "cpu_avg_m", "cpu_p95_m", "cpu_max_m", "mem_avg_mib", "mem_max_mib"}
 
-func summarize(opts options, all []*series) error {
+func summarize(opts options, all []*series, node []nodeSample) error {
 	if err := os.MkdirAll(filepath.Dir(opts.out), 0o755); err != nil {
 		return err
 	}
+	if len(node) == 0 {
+		return fmt.Errorf("no samples kept: the run was shorter than -skip %s", opts.skip)
+	}
+	if err := appendCSV(nodePath(opts.out), nodeHeader, nodeRecord(opts.label, node)); err != nil {
+		return err
+	}
+	if len(all) == 0 {
+		fmt.Printf("sampled the host at %s rps, appended to %s\n", opts.label, nodePath(opts.out))
+		return nil
+	}
+
 	_, statErr := os.Stat(opts.out)
 	f, err := os.OpenFile(opts.out, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
@@ -238,8 +270,38 @@ func summarize(opts options, all []*series) error {
 		return err
 	}
 
-	fmt.Printf("sampled %d containers at %s rps, appended to %s\n", len(all), opts.label, opts.out)
+	fmt.Printf("sampled %d containers and the host at %s rps, appended to %s\n", len(all), opts.label, opts.out)
 	return nil
+}
+
+// appendCSV adds one record to path, with the header first if the file is new.
+func appendCSV(path string, header, record []string) error {
+	_, statErr := os.Stat(path)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	if errors.Is(statErr, os.ErrNotExist) {
+		_ = w.Write(header)
+	}
+	_ = w.Write(record)
+	w.Flush()
+
+	return w.Error()
+}
+
+// readCSV returns every record of a CSV, header included.
+func readCSV(path string) ([][]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	return csv.NewReader(f).ReadAll()
 }
 
 // row is one container in one run of the CSV.
@@ -251,13 +313,14 @@ type row struct {
 }
 
 func report(path string, fitMaxRPS float64) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
+	records, err := readCSV(path)
+	if errors.Is(err, os.ErrNotExist) {
+		// a host-only run (-containers "") has no container CSV
+		if _, nodeErr := os.Stat(nodePath(path)); nodeErr != nil {
+			return err
+		}
+		return reportNode(nodePath(path))
 	}
-	defer f.Close()
-
-	records, err := csv.NewReader(f).ReadAll()
 	if err != nil {
 		return err
 	}
@@ -319,7 +382,8 @@ func report(path string, fitMaxRPS float64) error {
 		intercept, slope := fit(xs, ys)
 		fmt.Printf("%-18s %10.0f %16.0f %12.1f\n", name, intercept, slope*100, maxMem)
 	}
-	return nil
+
+	return reportNode(nodePath(path))
 }
 
 func fit(xs, ys []float64) (intercept, slope float64) {

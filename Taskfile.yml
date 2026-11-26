@@ -450,6 +450,16 @@ tasks:
       - go run ./scripts/seed-users -db "{{.DB_URL}}" -file loadtest/users.yaml
       - docker run --rm --network rekreativko-api_rekreativko -v "$PWD/loadtest/k6:/scripts:ro" -e MODE=prepare grafana/k6:1.0.0 run -q /scripts/load.js
 
+  loadtest:spike:
+    desc: "A wave of logins: only logins at each rate (logins per second). Usage: RATES=\"25 50 100 200\" DURATION=10s task loadtest:spike"
+    cmds:
+      - MODE=spike RATES="${RATES:-25 50 100 200}" DURATION="${DURATION:-10s}" loadtest/run.sh
+
+  loadtest:disk:
+    desc: "How fast the database volume flushes a write (pg_test_fsync). TARGET=k8s for the CloudNativePG primary"
+    cmds:
+      - loadtest/disk-check.sh
+
   loadtest:run:
     desc: "Load the stack at each rate and sample every service's CPU and memory. Usage: RATES=\"0 50 100\" DURATION=60s task loadtest:run"
     cmds:

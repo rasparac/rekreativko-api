@@ -8,6 +8,11 @@
 //                 of sessions, the feed and profiles, some RSVP writes (which
 //                 also put events through the outbox, NATS and notifications)
 //                 and the occasional login.
+//   MODE=spike    only logins, RATE of them per second for DURATION: what a wave of
+//                 people signing in costs (after a release that logs everyone out,
+//                 or at the start of an evening). A bcrypt check is tens of ms of
+//                 one core, so a host tops out at a handful of logins/s per core;
+//                 past that they queue, which shows as latency and dropped iterations.
 import http from 'k6/http';
 import { check, fail } from 'k6';
 
@@ -19,8 +24,24 @@ const USERS = parseInt(__ENV.USERS || '40', 10);
 const PASSWORD = 'Loadtest1234!';
 const ZAGREB = { lat: 45.815, lng: 15.982 };
 
+const SPIKE = {
+  executor: 'constant-arrival-rate',
+  rate: RATE,
+  timeUnit: '1s',
+  duration: DURATION,
+  preAllocatedVUs: Math.max(20, RATE),
+  // logins that cannot start wait for a free VU: enough of them that the queue shows as latency
+  maxVUs: Math.max(400, RATE * 20),
+};
+
 export const options = MODE === 'prepare'
   ? { vus: 1, iterations: 1 }
+  : MODE === 'spike'
+  ? {
+      scenarios: { spike: SPIKE },
+      thresholds: { http_req_failed: ['rate<0.01'] },
+      summaryTrendStats: ['avg', 'p(50)', 'p(95)', 'p(99)', 'max', 'count'],
+    }
   : {
       scenarios: {
         load: {
@@ -37,7 +58,7 @@ export const options = MODE === 'prepare'
         http_req_failed: ['rate<0.01'],
         dropped_iterations: ['count<' + Math.max(1, RATE)],
       },
-      summaryTrendStats: ['avg', 'p(50)', 'p(95)', 'p(99)', 'max'],
+      summaryTrendStats: ['avg', 'p(50)', 'p(95)', 'p(99)', 'max', 'count'],
     };
 
 function email(i) {
@@ -108,7 +129,8 @@ function prepare() {
 }
 
 export function setup() {
-  if (MODE === 'prepare') return {};
+  // the spike logs in by itself, and logging in 40 users first would add a spike of its own
+  if (MODE === 'prepare' || MODE === 'spike') return {};
 
   const tokens = [];
   for (let i = 1; i <= USERS; i++) tokens.push(login(i));
@@ -125,17 +147,17 @@ function pick(xs) {
 
 // [weight, name, request]; the weights add up to 100.
 const MIX = [
-  [20, 'sessions/discover', (t) => http.get(`${BASE}/activity/api/v1/sessions/discover?lat=${ZAGREB.lat}&lng=${ZAGREB.lng}&radius_km=50`, t)],
-  [12, 'sessions/{id}', (t, d) => http.get(`${BASE}/activity/api/v1/sessions/${pick(d.sessions)}`, t)],
-  [10, 'sessions/{id}/attendees', (t, d) => http.get(`${BASE}/activity/api/v1/sessions/${pick(d.sessions)}/attendees`, t)],
-  [8, 'sessions/{id}/team-formation', (t, d) => http.get(`${BASE}/activity/api/v1/sessions/${pick(d.sessions)}/team-formation`, t)],
-  [8, 'sessions (mine)', (t) => http.get(`${BASE}/activity/api/v1/sessions`, t)],
-  [5, 'activity-groups/discover', (t) => http.get(`${BASE}/activity/api/v1/activity-groups/discover?lat=${ZAGREB.lat}&lng=${ZAGREB.lng}&radius_km=50`, t)],
+  [20, 'sessions-discover', (t) => http.get(`${BASE}/activity/api/v1/sessions/discover?lat=${ZAGREB.lat}&lng=${ZAGREB.lng}&radius_km=50`, t)],
+  [12, 'session', (t, d) => http.get(`${BASE}/activity/api/v1/sessions/${pick(d.sessions)}`, t)],
+  [10, 'session-attendees', (t, d) => http.get(`${BASE}/activity/api/v1/sessions/${pick(d.sessions)}/attendees`, t)],
+  [8, 'session-team-formation', (t, d) => http.get(`${BASE}/activity/api/v1/sessions/${pick(d.sessions)}/team-formation`, t)],
+  [8, 'my-sessions', (t) => http.get(`${BASE}/activity/api/v1/sessions`, t)],
+  [5, 'groups-discover', (t) => http.get(`${BASE}/activity/api/v1/activity-groups/discover?lat=${ZAGREB.lat}&lng=${ZAGREB.lng}&radius_km=50`, t)],
   [12, 'notifications', (t) => http.get(`${BASE}/notifications/api/v1/notifications`, t)],
-  [8, 'my/profile', (t) => http.get(`${BASE}/account-profile/api/v1/my/profile`, t)],
-  [3, 'my/settings', (t) => http.get(`${BASE}/account-profile/api/v1/my/settings`, t)],
+  [8, 'my-profile', (t) => http.get(`${BASE}/account-profile/api/v1/my/profile`, t)],
+  [3, 'my-settings', (t) => http.get(`${BASE}/account-profile/api/v1/my/settings`, t)],
   [5, 'me', (t) => http.get(`${BASE}/identity/api/v1/me`, t)],
-  [2, 'geocode/reverse', (t) => http.get(`${BASE}/location/api/v1/geocode/reverse?lat=${ZAGREB.lat}&lon=${ZAGREB.lng}`, t)],
+  [2, 'geocode-reverse', (t) => http.get(`${BASE}/location/api/v1/geocode/reverse?lat=${ZAGREB.lat}&lon=${ZAGREB.lng}`, t)],
   [6, 'rsvp', (t, d) => {
     // RSVP, or flip an existing RSVP between going and maybe - reading it
     // first, as the app does, so every write is one that succeeds
@@ -148,13 +170,34 @@ const MIX = [
     }
     return http.put(url, JSON.stringify({ status }), t);
   }],
+  // no token, so not the shared params: it carries its own tag
   [1, 'login', (_t, _d, i) => http.post(`${BASE}/identity/api/v1/login`,
-    JSON.stringify({ email: email(i), password: PASSWORD }), { headers: { 'Content-Type': 'application/json' } })],
+    JSON.stringify({ email: email(i), password: PASSWORD }),
+    { headers: { 'Content-Type': 'application/json' }, tags: { name: 'login' } })],
 ];
+
+// k6 only puts a tagged sub-metric into the summary export when a threshold names it: this threshold
+// can never fail, it exists so run.sh can report latency per endpoint instead of one global p99
+// (which, at 1% logins, is just the logins).
+if (options.thresholds) {
+  const names = MODE === 'spike' ? ['login'] : MIX.map(([, name]) => name);
+  for (const name of names) {
+    options.thresholds[`http_req_duration{name:${name}}`] = ['max>=0'];
+  }
+}
 
 export default function (data) {
   if (MODE === 'prepare') {
     prepare();
+    return;
+  }
+
+  if (MODE === 'spike') {
+    const i = 1 + Math.floor(Math.random() * USERS);
+    const res = http.post(`${BASE}/identity/api/v1/login`,
+      JSON.stringify({ email: email(i), password: PASSWORD }),
+      { headers: { 'Content-Type': 'application/json' }, tags: { name: 'login' } });
+    check(res, { 'login ok': (r) => r.status === 200 });
     return;
   }
 
